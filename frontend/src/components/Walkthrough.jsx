@@ -131,6 +131,20 @@ const Walkthrough = ({ isAppLoading }) => {
         return isVisible ? btn : null;
     }, []);
 
+    const getGuestMobileEntryButton = useCallback(() => {
+        const btn = document.querySelector('#navbar-mobile-toggle');
+        if (!btn) return null;
+
+        const rect = btn.getBoundingClientRect();
+        const isVisible = rect.width > 0 && rect.height > 0;
+        return isVisible ? btn : null;
+    }, []);
+
+    const getGuestWalkthroughTarget = useCallback(() => {
+        const isMobile = window.innerWidth <= MOBILE_BREAKPOINT;
+        return isMobile ? getGuestMobileEntryButton() : getGuestSignUpButton();
+    }, [getGuestMobileEntryButton, getGuestSignUpButton]);
+
     const checkVisibility = useCallback(() => {
         if (isAppLoading) return;
 
@@ -149,13 +163,7 @@ const Walkthrough = ({ isAppLoading }) => {
                 setIsVisible(false);
                 return;
             }
-            const isMobile = window.innerWidth <= MOBILE_BREAKPOINT;
-            if (isMobile) {
-                setNavbarBtnRect(null);
-                return;
-            }
-            // Update the rect for positioning
-            const btn = getGuestSignUpButton();
+            const btn = getGuestWalkthroughTarget();
             if (btn) {
                 const rect = btn.getBoundingClientRect();
                 setNavbarBtnRect(prev => {
@@ -181,19 +189,14 @@ const Walkthrough = ({ isAppLoading }) => {
             }
 
             setMode('guest');
-            const isMobile = window.innerWidth <= MOBILE_BREAKPOINT;
-            if (isMobile) {
-                setNavbarBtnRect(null);
+            const btn = getGuestWalkthroughTarget();
+            if (btn) {
+                const rect = btn.getBoundingClientRect();
+                setNavbarBtnRect(rect);
                 setIsVisible(true);
             } else {
-                const btn = getGuestSignUpButton();
-                if (btn) {
-                    const rect = btn.getBoundingClientRect();
-                    setNavbarBtnRect(rect);
-                    setIsVisible(true);
-                } else {
-                    setIsVisible(false);
-                }
+                setNavbarBtnRect(null);
+                setIsVisible(window.innerWidth <= MOBILE_BREAKPOINT);
             }
         } else {
             const hasSeenPostLogin = hasSeenPostLoginWalkthrough(user);
@@ -215,7 +218,7 @@ const Walkthrough = ({ isAppLoading }) => {
                 setIsVisible(false);
             }
         }
-    }, [location.pathname, currentStep, updateTargetRect, isVisible, mode, getGuestSignUpButton, getStoredUser, getGuestSeenKey, isAppLoading]);
+    }, [location.pathname, currentStep, updateTargetRect, isVisible, mode, getGuestWalkthroughTarget, getStoredUser, getGuestSeenKey, isAppLoading]);
 
     useEffect(() => {
         // Initial check with delay for page load
@@ -252,7 +255,6 @@ const Walkthrough = ({ isAppLoading }) => {
 
     useEffect(() => {
         if (!isVisible || mode !== 'guest') return;
-        if (window.innerWidth <= MOBILE_BREAKPOINT) return;
 
         const btn = getGuestSignUpButton();
         if (!btn) return;
@@ -311,24 +313,24 @@ const Walkthrough = ({ isAppLoading }) => {
     };
 
     useEffect(() => {
-        if (!isVisible || mode !== 'guest' || window.innerWidth <= MOBILE_BREAKPOINT) return;
+        if (!isVisible || mode !== 'guest') return;
         if (navbarBtnRect) return;
 
         let frameId = null;
-        const resolveDesktopTarget = () => {
-            const btn = getGuestSignUpButton();
+        const resolveGuestTarget = () => {
+            const btn = getGuestWalkthroughTarget();
             if (btn) {
                 setNavbarBtnRect(btn.getBoundingClientRect());
                 return;
             }
-            frameId = window.requestAnimationFrame(resolveDesktopTarget);
+            frameId = window.requestAnimationFrame(resolveGuestTarget);
         };
 
-        frameId = window.requestAnimationFrame(resolveDesktopTarget);
+        frameId = window.requestAnimationFrame(resolveGuestTarget);
         return () => {
             if (frameId) window.cancelAnimationFrame(frameId);
         };
-    }, [isVisible, mode, navbarBtnRect, getGuestSignUpButton]);
+    }, [isVisible, mode, navbarBtnRect, getGuestWalkthroughTarget]);
 
     if (!isVisible || isAppLoading) return null;
 
@@ -478,8 +480,8 @@ const Walkthrough = ({ isAppLoading }) => {
     };
 
     const isMobile = window.innerWidth <= MOBILE_BREAKPOINT;
-    const desktopBtn = !isMobile ? getGuestSignUpButton() : null;
-    const effectiveGuestRect = isMobile ? null : (navbarBtnRect || (desktopBtn ? desktopBtn.getBoundingClientRect() : null));
+    const guestTargetBtn = getGuestWalkthroughTarget();
+    const effectiveGuestRect = navbarBtnRect || (guestTargetBtn ? guestTargetBtn.getBoundingClientRect() : null);
 
     if (mode === 'guest' && (effectiveGuestRect || isMobile)) {
         return (
@@ -495,7 +497,10 @@ const Walkthrough = ({ isAppLoading }) => {
                 }}>
                     <h1 style={{ color: '#ff3b30', fontSize: window.innerWidth < 380 ? '0.85rem' : '0.95rem', fontWeight: 900, marginBottom: '0.4rem', textTransform: 'uppercase', margin: 0 }}>Action Required</h1>
                     <p style={{ color: 'rgba(255,255,255,0.9)', fontSize: window.innerWidth < 380 ? '0.8rem' : '0.85rem', lineHeight: 1.5, margin: '0.4rem 0 0' }}>
-                        New here? Click <b>Sign Up</b> to create your account and unlock your personalized roadmap.
+                        {isMobile
+                            ? <>New here? Tap <b>Menu</b>, then tap <b>Sign Up</b> to create your account and unlock your personalized roadmap.</>
+                            : <>New here? Click <b>Sign Up</b> to create your account and unlock your personalized roadmap.</>
+                        }
                     </p>
                     <button onClick={handleComplete} style={{ marginTop: '1.2rem', background: 'linear-gradient(135deg, #ff3b30 0%, #d72323 100%)', border: 'none', color: '#fff', fontSize: '0.75rem', fontWeight: 800, padding: '0.5rem 1.5rem', borderRadius: '100px', cursor: 'pointer' }}>
                         Got it
