@@ -37,8 +37,8 @@ const POST_LOGIN_STEPS = [
     }
 ];
 
-const GUEST_WALKTHROUGH_MOBILE_KEY = 'vithartha_guest_walkthrough_mobile_seen_v1';
-const GUEST_WALKTHROUGH_DESKTOP_KEY = 'vithartha_guest_walkthrough_desktop_seen_v1';
+const GUEST_WALKTHROUGH_MOBILE_KEY = 'vithartha_guest_walkthrough_mobile_v2';
+const GUEST_WALKTHROUGH_DESKTOP_KEY = 'vithartha_guest_walkthrough_desktop_v2';
 const MOBILE_BREAKPOINT = 768;
 
 const Walkthrough = ({ isAppLoading }) => {
@@ -56,7 +56,8 @@ const Walkthrough = ({ isAppLoading }) => {
         const userStr = localStorage.getItem('user');
         if (!userStr) return null;
         try {
-            return JSON.parse(userStr);
+            const u = JSON.parse(userStr);
+            return u && u.email ? u : null; // Ensure it's a valid user object
         } catch {
             localStorage.removeItem('user');
             return null;
@@ -149,8 +150,8 @@ const Walkthrough = ({ isAppLoading }) => {
         if (isAppLoading) return;
 
         const user = getStoredUser();
-        const isAuthPage = location.pathname.includes('/login') || location.pathname.includes('/register');
-        const isLandingPage = location.pathname === '/';
+        const isAuthPage = location.pathname.includes('/login') || location.pathname.includes('/register') || location.pathname === '/onboarding';
+        const isLandingPage = !isAuthPage; // Show on all guest-accessible pages
         
         if (isAuthPage) {
             setIsVisible(false);
@@ -193,21 +194,20 @@ const Walkthrough = ({ isAppLoading }) => {
             if (btn) {
                 const rect = btn.getBoundingClientRect();
                 setNavbarBtnRect(rect);
-                setIsVisible(true);
-            } else {
-                setNavbarBtnRect(null);
-                setIsVisible(window.innerWidth <= MOBILE_BREAKPOINT);
             }
+            else {
+                setNavbarBtnRect(null);
+            }
+            setIsVisible(true);
         } else {
             const hasSeenPostLogin = hasSeenPostLoginWalkthrough(user);
             const onboardingDone = hasCompletedOnboarding(user);
             
-            // Only show post-login guide on Services page for non-admins
+            // Show post-login guide on Services/Recommendations pages
             if (
                 !hasSeenPostLogin &&
                 onboardingDone &&
-                (location.pathname === '/services' || location.pathname === '/recommendations') &&
-                user.role !== 'admin'
+                (location.pathname === '/services' || location.pathname === '/recommendations')
             ) {
                 setMode('post-login');
                 setIsVisible(true);
@@ -483,9 +483,12 @@ const Walkthrough = ({ isAppLoading }) => {
     const guestTargetBtn = getGuestWalkthroughTarget();
     const effectiveGuestRect = navbarBtnRect || (guestTargetBtn ? guestTargetBtn.getBoundingClientRect() : null);
 
-    if (mode === 'guest' && (effectiveGuestRect || isMobile)) {
+    if (mode === 'guest') {
+        // For mobile, we don't want to point to the button, just show the message centered
+        const guestTr = isMobile ? null : effectiveGuestRect;
+
         return (
-            <TooltipWrapper targetRect={effectiveGuestRect} color="#ff3b30" isGuest={!isMobile}>
+            <TooltipWrapper targetRect={guestTr} color="#ff3b30" isGuest={!isMobile}>
                 <div style={{
                     background: 'rgba(15, 15, 18, 0.98)',
                     backdropFilter: 'blur(20px)',
@@ -498,7 +501,7 @@ const Walkthrough = ({ isAppLoading }) => {
                     <h1 style={{ color: '#ff3b30', fontSize: window.innerWidth < 380 ? '0.85rem' : '0.95rem', fontWeight: 900, marginBottom: '0.4rem', textTransform: 'uppercase', margin: 0 }}>Action Required</h1>
                     <p style={{ color: 'rgba(255,255,255,0.9)', fontSize: window.innerWidth < 380 ? '0.8rem' : '0.85rem', lineHeight: 1.5, margin: '0.4rem 0 0' }}>
                         {isMobile
-                            ? <>New here? Tap <b>Menu</b>, then tap <b>Sign Up</b> to create your account and unlock your personalized roadmap.</>
+                            ? <>Welcome to Vithartha! Sign up to create your account and unlock your personalized roadmap.</>
                             : <>New here? Click <b>Sign Up</b> to create your account and unlock your personalized roadmap.</>
                         }
                     </p>
@@ -510,7 +513,7 @@ const Walkthrough = ({ isAppLoading }) => {
         );
     }
     // POST-LOGIN MODE
-    if (mode === 'post-login' && (targetRect || isMobile)) {
+    if (mode === 'post-login') {
         const step = POST_LOGIN_STEPS[currentStep];
         const StepIcon = step.icon;
         const tr = isMobile ? null : targetRect;
