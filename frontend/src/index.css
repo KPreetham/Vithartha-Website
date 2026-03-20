@@ -1493,6 +1493,17 @@ body.light-mode .section-tag-whitesmoke {
         gap: 0.75rem !important;
     }
 
+    .admin-search-input-shell {
+        width: 100% !important;
+        min-width: 0 !important;
+    }
+
+    .admin-search-btn {
+        width: 100% !important;
+        justify-content: center !important;
+        padding: 0.8rem 1rem !important;
+    }
+
     /* Auth cards — tighter on small mobile */
     .auth-card {
         padding: 1.4rem 1.2rem !important;
@@ -1753,6 +1764,21 @@ body.light-mode .section-tag-whitesmoke {
         justify-content: center !important;
         margin-top: 1rem !important;
     }
+
+    .admin-services-shell {
+        padding-top: clamp(120px, 18vw, 150px) !important;
+        padding-bottom: 56px !important;
+    }
+
+    .admin-services-head {
+        flex-wrap: wrap !important;
+        gap: 0.6rem !important;
+        align-items: flex-start !important;
+    }
+
+    .admin-service-meta-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
 }
 
 /* ── Mobile Utility (640px) ── */
@@ -1913,6 +1939,25 @@ body.light-mode .section-tag-whitesmoke {
         justify-content: center !important;
         font-size: 0.75rem !important;
         padding: 8px !important;
+    }
+
+    .admin-service-meta-grid {
+        grid-template-columns: 1fr !important;
+        gap: 0.65rem !important;
+    }
+
+    .admin-service-doc-row {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 0.55rem !important;
+    }
+
+    .admin-service-doc-row button {
+        width: 100% !important;
+    }
+
+    .admin-service-actions-grid {
+        grid-template-columns: 1fr !important;
     }
 
     .admin-services-card {
@@ -2123,5 +2168,18 @@ body.light-mode .section-tag-whitesmoke {
     .admin-modal-grid {
         grid-template-columns: 1fr !important;
         gap: 1.25rem !important;
+    }
+
+    .admin-services-shell {
+        padding-top: 108px !important;
+        padding-bottom: 44px !important;
+    }
+
+    .admin-user-right {
+        gap: 0.75rem !important;
+    }
+
+    .admin-user-stat-pills {
+        width: 100% !important;
     }
 }

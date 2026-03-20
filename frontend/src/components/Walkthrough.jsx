@@ -104,17 +104,23 @@ const Walkthrough = ({ isAppLoading }) => {
     }, [getVisibleTargetElement]);
 
     const getGuestSignUpButton = useCallback(() => {
+        // Order of preference: 
+        // 1. The actual mobile signup button (if menu is open)
+        // 2. The desktop login/signup button
+        // 3. The mobile toggle (hamburger)
         const candidates = [
+            document.querySelector('#navbar-mobile-signup-btn'),
             document.querySelector('#navbar-login-btn'),
             document.querySelector('#navbar-mobile-toggle'),
-            document.querySelector('#navbar-mobile-signup-btn'),
         ].filter(Boolean);
 
         const visible = candidates.find((el) => {
             const rect = el.getBoundingClientRect();
-            return rect.width > 0 && rect.height > 0;
+            // Check visibility and also if it's within viewport roughly
+            return rect.width > 0 && rect.height > 0 && rect.top >= 0 && rect.top <= window.innerHeight;
         });
 
+        // Fallback to whichever candidate exists
         return visible || candidates[0] || null;
     }, []);
 
@@ -204,12 +210,17 @@ const Walkthrough = ({ isAppLoading }) => {
         // Polling for elements that might appear later
         const interval = setInterval(checkVisibility, 2000);
 
+        // Global click listener to refresh promptly after any user interaction
+        const handleGlobalClick = () => setTimeout(checkVisibility, 300);
+        window.addEventListener('click', handleGlobalClick);
+
         return () => {
             clearTimeout(timer);
             clearInterval(interval);
             window.removeEventListener('storage', checkVisibility);
             window.removeEventListener('resize', checkVisibility);
             window.removeEventListener('scroll', checkVisibility);
+            window.removeEventListener('click', handleGlobalClick);
         };
     }, [checkVisibility]);
 
@@ -219,7 +230,11 @@ const Walkthrough = ({ isAppLoading }) => {
         const btn = getGuestSignUpButton();
         if (!btn) return;
 
-        const handleGuestSignUpClick = () => {
+        const handleGuestSignUpClick = (e) => {
+            // Do not dismiss if clicking the hamburger menu toggle; 
+            // we want to wait for the menu to open and point to the real button.
+            if (btn.id === 'navbar-mobile-toggle') return;
+            
             localStorage.setItem(GUEST_WALKTHROUGH_KEY, 'true');
             setIsVisible(false);
         };
@@ -276,97 +291,182 @@ const Walkthrough = ({ isAppLoading }) => {
     if (!isVisible || isAppLoading) return null;
 
     // Common Tooltip Wrapper
-    const TooltipWrapper = ({ children, targetRect: tr, color = '#ff3b30' }) => {
-        if (!tr) return null;
+    const TooltipWrapper = ({ children, targetRect: tr, color = '#ff3b30', isGuest = false }) => {
+        const vW = window.innerWidth;
+        const vH = window.innerHeight;
+        const bW = Math.min(320, vW - 40);
+
+        if (!tr) {
+            return (
+                <div style={{ 
+                    position: 'fixed', 
+                    inset: 0, 
+                    zIndex: 100000, 
+                    pointerEvents: 'auto',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: 'rgba(0, 0, 0, 0.4)'
+                }}>
+                    <AnimatePresence mode="wait">
+                        <motion.div
+                            key="walkthrough-center"
+                            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                            style={{
+                                width: bW,
+                                zIndex: 100002,
+                                pointerEvents: 'auto',
+                            }}
+                        >
+                            {children}
+                        </motion.div>
+                    </AnimatePresence>
+                </div>
+            );
+        }
+
+        // Decide whether to show above or below
+        const spaceBelow = vH - tr.bottom;
+        const spaceAbove = tr.top;
+        const shouldShowAbove = spaceBelow < 280 && spaceAbove > spaceBelow;
+
+        // Calculate horizontal position
+        const targetCenter = tr.left + (tr.width / 2);
+        const boxLeft = Math.min(vW - bW - 20, Math.max(20, targetCenter - (bW / 2)));
+        
+        // Calculate arrow center relative to the box
+        // Clamp arrowX between 20px and (boxWidth - 20px) so it doesn't pop out of the bubble
+        const arrowX = Math.min(bW - 20, Math.max(20, targetCenter - boxLeft));
+
         return (
             <div style={{ position: 'fixed', inset: 0, zIndex: 100000, pointerEvents: 'none' }}>
                 <AnimatePresence mode="wait">
                     {/* Highlight Outline */}
                     <motion.div
-                        key="walkthrough-highlight"
+                        key={`highlight-${tr.top}-${tr.left}`} // Force re-render on move
                         initial={{ opacity: 0, scale: 1.1 }}
-                        animate={{ opacity: 1, scale: 1 }}
+                        animate={{ 
+                            opacity: [0.5, 1, 0.5], 
+                            scale: [1, 1.05, 1],
+                        }}
+                        transition={{ 
+                            opacity: { repeat: Infinity, duration: 2 },
+                            scale: { repeat: Infinity, duration: 2 },
+                        }}
                         exit={{ opacity: 0, scale: 0.9 }}
                         style={{
                             position: 'fixed',
-                            top: tr.top - 4,
-                            left: tr.left - 4,
-                            width: tr.width + 8,
-                            height: tr.height + 8,
+                            top: tr.top - 6,
+                            left: tr.left - 6,
+                            width: tr.width + 12,
+                            height: tr.height + 12,
                             borderRadius: '100px',
-                            border: `2.5px dotted ${color}`,
+                            border: `3px dashed ${color}`,
                             zIndex: 100001,
+                            pointerEvents: 'none',
                         }}
                     />
 
-                    {/* Tooltip Content */}
+                    {/* Tooltip Content Container */}
                     <motion.div
-                        key="walkthrough-tooltip"
-                        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                        key={`tooltip-${tr.top}-${tr.left}`} // Force re-render on move
+                        initial={{ opacity: 0, scale: 0.9, y: shouldShowAbove ? 20 : -20 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.9, y: 10 }}
+                        exit={{ opacity: 0, scale: 0.9, y: shouldShowAbove ? 10 : -10 }}
                         style={{
                             position: 'fixed',
-                            top: tr.bottom + 20,
-                            // Ensure the box stays within viewport with 20px padding
-                            left: Math.min(window.innerWidth - 340, Math.max(20, tr.left + (tr.width / 2) - 160)),
-                            width: '320px',
+                            top: shouldShowAbove ? 'auto' : tr.bottom + 20,
+                            bottom: shouldShowAbove ? (vH - tr.top) + 20 : 'auto',
+                            left: boxLeft,
+                            width: bW,
                             zIndex: 100002,
                             pointerEvents: 'auto',
+                            display: 'flex',
+                            flexDirection: shouldShowAbove ? 'column-reverse' : 'column',
+                            alignItems: 'center'
                         }}
                     >
-                        {children}
+                        {/* Dynamic Arrow/Triangle for Post-Login or Guest */}
+                        {!isGuest && (
+                            <div style={{ 
+                                width: '20px', 
+                                height: '20px', 
+                                background: 'rgba(15, 15, 18, 0.98)',
+                                borderLeft: `1px solid ${color}44`, 
+                                borderTop: shouldShowAbove ? 'none' : `1px solid ${color}44`,
+                                borderRight: shouldShowAbove ? `1px solid ${color}44` : 'none',
+                                borderBottom: shouldShowAbove ? `1px solid ${color}44` : 'none',
+                                transform: 'rotate(45deg)',
+                                marginBottom: shouldShowAbove ? 0 : -10,
+                                marginTop: shouldShowAbove ? -10 : 0,
+                                position: 'relative',
+                                zIndex: 1,
+                                // Center the triangle precisely under/above the target center
+                                left: arrowX - (bW / 2)
+                            }} />
+                        )}
+
+                        {isGuest && (
+                            <motion.div
+                                animate={{ y: [0, -5, 0] }}
+                                transition={{ repeat: Infinity, duration: 2 }}
+                                style={{ 
+                                    marginBottom: shouldShowAbove ? 0 : '10px',
+                                    marginTop: shouldShowAbove ? '10px' : 0,
+                                    alignSelf: 'flex-start',
+                                    marginLeft: arrowX - 16, // Center of 32px SVG
+                                    transform: shouldShowAbove ? 'rotate(180deg)' : 'none'
+                                }}
+                            >
+                                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="4">
+                                    <path d="M12 19V5M5 12l7-7 7 7"/>
+                                </svg>
+                            </motion.div>
+                        )}
+
+                        <div style={{ width: '100%' }}>
+                            {children}
+                        </div>
                     </motion.div>
                 </AnimatePresence>
             </div>
         );
     };
 
-    // GUEST MODE
     if (mode === 'guest' && navbarBtnRect) {
         return (
-            <TooltipWrapper targetRect={navbarBtnRect} color="#ff3b30">
-                <motion.div
-                    style={{ display: 'flex', justifyContent: 'center', marginBottom: '8px' }}
-                >
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ff3b30" strokeWidth="4">
-                        <path d="M12 19V5M5 12l7-7 7 7"/>
-                    </svg>
-                </motion.div>
+            <TooltipWrapper targetRect={navbarBtnRect} color="#ff3b30" isGuest={true}>
                 <div style={{
                     background: 'rgba(15, 15, 18, 0.98)',
                     backdropFilter: 'blur(20px)',
                     border: '1px solid rgba(255, 59, 48, 0.5)',
                     borderRadius: '24px',
-                    padding: '1.2rem 1.5rem',
+                    padding: window.innerWidth < 380 ? '1rem 1.25rem' : '1.2rem 1.5rem',
                     boxShadow: '0 25px 50px rgba(0,0,0,0.6)',
                     textAlign: 'center',
-                    position: 'relative'
                 }}>
-                    <div style={{ 
-                        position: 'absolute', top: '-10px', left: '50%', transform: 'translateX(-50%) rotate(45deg)',
-                        width: '20px', height: '20px', background: 'rgba(15, 15, 18, 0.98)',
-                        borderLeft: '1px solid rgba(255, 59, 48, 0.5)', borderTop: '1px solid rgba(255, 59, 48, 0.5)'
-                    }} />
-                    <h4 style={{ color: '#ff3b30', fontSize: '0.95rem', fontWeight: 900, marginBottom: '0.4rem', textTransform: 'uppercase' }}>Action Required</h4>
-                    <p style={{ color: 'rgba(255,255,255,0.9)', fontSize: '0.85rem', lineHeight: 1.5 }}>
-                        New here? Click <b>Sign Up</b> to create your account and unlock your personalized service roadmap.
+                    <h1 style={{ color: '#ff3b30', fontSize: window.innerWidth < 380 ? '0.85rem' : '0.95rem', fontWeight: 900, marginBottom: '0.4rem', textTransform: 'uppercase', margin: 0 }}>Action Required</h1>
+                    <p style={{ color: 'rgba(255,255,255,0.9)', fontSize: window.innerWidth < 380 ? '0.8rem' : '0.85rem', lineHeight: 1.5, margin: '0.4rem 0 0' }}>
+                        New here? Click <b>Sign Up</b> to create your account and unlock your personalized roadmap.
                     </p>
-                    <button onClick={handleComplete} style={{ marginTop: '1.2rem', background: 'linear-gradient(135deg, #ff3b30 0%, #d72323 100%)', border: 'none', color: '#fff', fontSize: '0.8rem', fontWeight: 800, padding: '0.5rem 1.5rem', borderRadius: '100px', cursor: 'pointer' }}>
+                    <button onClick={handleComplete} style={{ marginTop: '1.2rem', background: 'linear-gradient(135deg, #ff3b30 0%, #d72323 100%)', border: 'none', color: '#fff', fontSize: '0.75rem', fontWeight: 800, padding: '0.5rem 1.5rem', borderRadius: '100px', cursor: 'pointer' }}>
                         Got it
                     </button>
                 </div>
             </TooltipWrapper>
         );
     }
-
     // POST-LOGIN MODE
-    if (mode === 'post-login' && targetRect) {
+    const isMobile = window.innerWidth <= 768;
+    if (mode === 'post-login' && (targetRect || isMobile)) {
         const step = POST_LOGIN_STEPS[currentStep];
         const StepIcon = step.icon;
+        const tr = isMobile ? null : targetRect;
 
         return (
-            <TooltipWrapper targetRect={targetRect} color="#ff3b30">
+            <TooltipWrapper targetRect={tr} color="#ff3b30">
                 <div style={{
                     background: 'rgba(15, 15, 18, 0.98)',
                     backdropFilter: 'blur(20px)',
@@ -374,20 +474,13 @@ const Walkthrough = ({ isAppLoading }) => {
                     borderRadius: '24px',
                     padding: '1.5rem',
                     boxShadow: '0 30px 60px rgba(0,0,0,0.5)',
-                    position: 'relative'
                 }}>
-                    <div style={{ 
-                        position: 'absolute', top: '-10px', left: '50%', transform: 'translateX(-50%) rotate(45deg)',
-                        width: '20px', height: '20px', background: 'rgba(15, 15, 18, 0.98)',
-                        borderLeft: '1px solid rgba(255, 59, 48, 0.4)', borderTop: '1px solid rgba(255, 59, 48, 0.4)'
-                    }} />
-
                     <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1rem' }}>
                         <div style={{ width: '40px', height: '40px', background: 'rgba(255, 59, 48, 0.1)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ff3b30' }}>
                             <StepIcon size={20} />
                         </div>
                         <div>
-                            <h4 style={{ color: 'white', fontSize: '1rem', fontWeight: 800, margin: 0 }}>{step.title}</h4>
+                            <h1 style={{ color: 'white', fontSize: '1rem', fontWeight: 800, margin: 0 }}>{step.title}</h1>
                             <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tour: {currentStep + 1} of {POST_LOGIN_STEPS.length}</div>
                         </div>
                     </div>

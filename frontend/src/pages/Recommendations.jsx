@@ -100,16 +100,24 @@ const ALL_SERVICES = [
    PREMIUM CARD  – 3D tilt + glow (reused from Admin)
 ══════════════════════════════════════════════════ */
 const PremiumCard = ({ children, style = {}, className = '', onClick }) => {
+    const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+    useEffect(() => {
+        const handleResize = () => setIsMobile(window.innerWidth <= 768);
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
     return (
         <div className={className} onClick={onClick}
             style={{ 
                 background: 'var(--dashboard-card-bg)', 
-                borderRadius: '24px', 
+                borderRadius: isMobile ? '20px' : '24px', 
                 border: '1px solid var(--dashboard-card-border)', 
                 position: 'relative', 
                 overflow: 'hidden', 
                 backdropFilter: 'blur(10px)',
                 boxShadow: 'var(--shadow-card)',
+                padding: isMobile ? '1.25rem' : '1.5rem',
                 ...style 
             }}>
             <div style={{ position: 'relative', zIndex: 1 }}>{children}</div>
@@ -222,7 +230,7 @@ const AdminServicesView = () => {
     );
 
     return (
-        <div style={{ minHeight: '100vh', background: 'var(--bg)', color: 'var(--text)', paddingTop: 'clamp(140px, 16vw, 180px)', paddingBottom: '80px', position: 'relative' }}>
+        <div className="admin-services-shell" style={{ minHeight: '100vh', background: 'var(--bg)', color: 'var(--text)', paddingTop: 'clamp(140px, 16vw, 180px)', paddingBottom: '80px', position: 'relative' }}>
             <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 50% 0%, rgba(34, 197, 94, 0.03) 0%, transparent 70%)', pointerEvents: 'none' }} />
 
             <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 clamp(1rem, 5vw, 2rem)' }}>
@@ -244,7 +252,7 @@ const AdminServicesView = () => {
                         maxWidth: '600px',
                         margin: '0 auto'
                     }}>
-                        <div style={{
+                        <div className="admin-search-input-shell" style={{
                             flex: 1,
                             display: 'flex', alignItems: 'center', gap: '12px',
                             background: 'var(--bg-card)', border: '1px solid var(--border)',
@@ -266,7 +274,7 @@ const AdminServicesView = () => {
                                 </button>
                             )}
                         </div>
-                        <button onClick={handleSearch} style={{
+                        <button className="admin-search-btn" onClick={handleSearch} style={{
                             background: '#22c55e', border: 'none',
                             color: 'white', padding: '0.8rem 2rem', borderRadius: '18px', cursor: 'pointer',
                             display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 700,
@@ -286,7 +294,7 @@ const AdminServicesView = () => {
                     padding: 'clamp(1rem, 4vw, 2.5rem)',
                     boxShadow: 'var(--shadow-card)'
                 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                    <div className="admin-services-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
                         <h2 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0, color: 'var(--text)' }}>Services by User</h2>
                         <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>
                             {searchQuery.trim() ? `${userGroups.length} result(s)` : `${userGroups.length} users`}
@@ -389,7 +397,7 @@ const AdminServicesView = () => {
                                                                      }}
                                                                  >
                                                                      {/* Info Grid */}
-                                                                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.8rem', marginBottom: '1rem' }}>
+                                                                     <div className="admin-service-meta-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.8rem', marginBottom: '1rem' }}>
                                                                          <div>
                                                                              <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em', marginBottom: '3px' }}>Status</div>
                                                                              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text)' }}>{lead.status === 'Open' ? 'Pending' : lead.status}</div>
@@ -432,7 +440,7 @@ const AdminServicesView = () => {
                                                                      {lead.documents?.length > 0 && (
                                                                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '1rem' }}>
                                                                              {lead.documents.map((doc, idx) => (
-                                                                                 <div key={idx} style={{ 
+                                                                                 <div key={idx} className="admin-service-doc-row" style={{ 
                                                                                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                                                                                      padding: '8px 12px', 
                                                                                      background: 'var(--bg-card)', 
@@ -463,7 +471,7 @@ const AdminServicesView = () => {
                                                                      )}
 
                                                                      {/* Action Buttons - Equal Width */}
-                                                                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                                                                     <div className="admin-service-actions-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                                                                          {lead.status === 'Open' && (
                                                                              <button onClick={(e) => { e.stopPropagation(); navigate(`/admin/review/${lead._id}`); }}
                                                                                  style={{ padding: '8px', background: '#22c55e', border: 'none', color: 'white', borderRadius: '10px', fontWeight: 700, cursor: 'pointer', fontSize: '0.78rem', transition: 'all 0.3s' }}>
@@ -623,7 +631,7 @@ const AdminServicesView = () => {
 /* ══════════════════════════════════════════════════
    HELPER COMPONENTS
    ══════════════════════════════════════════════════ */
-const ServiceCard = ({ service, idx, onClick, isLightMode = false }) => {
+const ServiceCard = ({ service, idx, onClick, isLightMode = false, isMobile = false }) => {
     const cat = service.category || 'Advisory';
     const config = categoryColors[cat] || categoryColors['Advisory'];
     const Icon = iconMap[cat] || Zap;
@@ -633,43 +641,46 @@ const ServiceCard = ({ service, idx, onClick, isLightMode = false }) => {
             onClick={() => onClick(service)}
             style={{ 
                 background: 'var(--card-gradient)', 
-                borderRadius: '20px', 
+                borderRadius: isMobile ? '20px' : '24px', 
                 border: '1px solid var(--border)',
                 display: 'flex', flexDirection: 'column', cursor: 'pointer', height: '100%',
                 transition: 'all 0.2s ease',
-                position: 'relative', overflow: 'hidden'
+                position: 'relative', overflow: 'hidden',
+                minHeight: isMobile ? 'unset' : '360px'
             }}
             onMouseEnter={e => {
                 e.currentTarget.style.borderColor = isLightMode ? 'rgba(0, 0, 0, 0.2)' : 'rgba(255, 255, 255, 0.2)';
+                e.currentTarget.style.transform = 'translateY(-4px)';
             }}
             onMouseLeave={e => {
                 e.currentTarget.style.borderColor = isLightMode ? 'rgba(0, 0, 0, 0.1)' : 'rgba(255, 255, 255, 0.08)';
-            }}
-            onMouseDown={e => {
-                e.currentTarget.style.borderColor = '#22c55e';
-            }}
-            onMouseUp={e => {
-                e.currentTarget.style.borderColor = isLightMode ? 'rgba(0, 0, 0, 0.2)' : 'rgba(255, 255, 255, 0.2)';
+                e.currentTarget.style.transform = 'none';
             }}
         >
             <div style={{ height: 4, background: isLightMode ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)' }} />
-            <div style={{ padding: '2rem', flex: 1, display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+            <div style={{ padding: isMobile ? '1.25rem' : '1.8rem 2rem', flex: 1, display: 'flex', flexDirection: 'column', gap: isMobile ? '0.8rem' : '1.2rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div style={{ width: 44, height: 44, borderRadius: '12px', background: isLightMode ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.03)', border: isLightMode ? '1px solid rgba(0,0,0,0.12)' : '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <Icon size={20} color={isLightMode ? '#111111' : 'white'} />
+                    <div style={{ width: isMobile ? 40 : 44, height: isMobile ? 40 : 44, borderRadius: '12px', background: isLightMode ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.03)', border: isLightMode ? '1px solid rgba(0,0,0,0.12)' : '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Icon size={isMobile ? 18 : 20} color={isLightMode ? '#111111' : 'white'} />
                     </div>
-                    <span style={{ background: isLightMode ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.03)', border: isLightMode ? '1px solid rgba(0,0,0,0.12)' : '1px solid rgba(255,255,255,0.05)', color: isLightMode ? '#111111' : 'rgba(255,255,255,0.6)', padding: '0.3rem 0.8rem', borderRadius: '99px', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                    <span style={{ 
+                        background: isLightMode ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.03)', 
+                        border: isLightMode ? '1px solid rgba(0,0,0,0.12)' : '1px solid rgba(255,255,255,0.05)',
+                        color: isLightMode ? '#111111' : 'rgba(255,255,255,0.6)',
+                        padding: '0.35rem 0.8rem', borderRadius: '99px', fontSize: isMobile ? '0.65rem' : '0.72rem', 
+                        fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase' 
+                    }}>
                         {service.category}
                     </span>
                 </div>
                 <div>
-                    <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: isLightMode ? '#111111' : 'var(--text)', marginBottom: '0.5rem', letterSpacing: '0.01em' }}>{service.title}</h3>
-                    <p style={{ color: isLightMode ? '#1f2937' : 'var(--text-secondary)', fontSize: '0.85rem', lineHeight: 1.6, margin: 0 }}>{service.description}</p>
+                    <h3 style={{ fontSize: isMobile ? '1.1rem' : '1.25rem', fontWeight: 750, color: isLightMode ? '#111111' : 'var(--text)', marginBottom: '0.5rem', letterSpacing: '-0.01em' }}>{service.title}</h3>
+                    <p style={{ color: isLightMode ? '#4b5563' : 'var(--text-secondary)', fontSize: isMobile ? '0.82rem' : '0.88rem', lineHeight: 1.6, margin: 0 }}>{service.description}</p>
                 </div>
                 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: 'auto', paddingTop: '1rem' }}>
-                     <span style={{ fontSize: '0.8rem', color: isLightMode ? '#0f172a' : '#10b981', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                         Explore Service <ArrowRight size={14} />
+                     <span style={{ fontSize: isMobile ? '0.75rem' : '0.8rem', color: isLightMode ? '#0f172a' : '#10b981', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                         Learn More <ArrowRight size={14} />
                      </span>
                 </div>
             </div>
@@ -700,6 +711,7 @@ const Recommendations = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [userLeads, setUserLeads] = useState([]);
     const [uploadedDocs, setUploadedDocs] = useState({}); // { [serviceTitle]: { [docName]: fileName } }
+    const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
     const [isLightMode, setIsLightMode] = useState(() => {
         if (typeof document !== 'undefined' && document.body) {
             return document.body.classList.contains('light-mode');
@@ -709,6 +721,12 @@ const Recommendations = () => {
 
     const storedUser = JSON.parse(localStorage.getItem('user'));
     const isAdmin = storedUser?.role === 'admin';
+
+    useEffect(() => {
+        const handleResize = () => setIsMobile(window.innerWidth <= 768);
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
 
     useEffect(() => {
         window.scrollTo(0, 0);
@@ -1019,14 +1037,19 @@ const Recommendations = () => {
                         {/* Your Personalized Services Section */}
                         {myServices.length > 0 && (
                             <div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
-                                    <h2 style={{ fontSize: '1.75rem', fontWeight: 600, color: 'var(--text)', margin: 0, letterSpacing: '-0.01em' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: isMobile ? '1.5rem' : '2rem' }}>
+                                    <h2 style={{ fontSize: isMobile ? '1.4rem' : '1.75rem', fontWeight: 600, color: 'var(--text)', margin: 0, letterSpacing: '-0.01em' }}>
                                         {isSearching ? 'Matched Services' : (userNeeds.length > 0 || recommendations?.length > 0 ? "Your Personalised Services" : "Recommended Services")}
                                     </h2>
                                 </div>
-                                <div className="recommendations-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '2rem', justifyContent: 'center' }}>
+                                <div className="recommendations-grid" style={{ 
+                                    display: 'grid', 
+                                    gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(320px, 1fr))', 
+                                    gap: isMobile ? '1.25rem' : '2rem', 
+                                    justifyContent: 'center' 
+                                }}>
                                     {myServices.map((service, idx) => (
-                                        <ServiceCard key={`my-${idx}`} service={service} idx={idx} onClick={setSelectedService} isLightMode={isLightMode} />
+                                        <ServiceCard key={`my-${idx}`} service={service} idx={idx} onClick={setSelectedService} isLightMode={isLightMode} isMobile={isMobile} />
                                     ))}
                                 </div>
                             </div>
@@ -1035,14 +1058,19 @@ const Recommendations = () => {
                         {/* Other Services Section */}
                         {otherServices.length > 0 && (
                             <div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
-                                    <h2 style={{ fontSize: '1.75rem', fontWeight: 600, color: 'var(--text)', margin: 0, letterSpacing: '-0.01em' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: isMobile ? '1.5rem' : '2rem' }}>
+                                    <h2 style={{ fontSize: isMobile ? '1.4rem' : '1.75rem', fontWeight: 600, color: 'var(--text)', margin: 0, letterSpacing: '-0.01em' }}>
                                         {isSearching ? 'Other Services (Not Matching)' : 'Other Services'}
                                     </h2>
                                 </div>
-                                <div className="recommendations-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '2rem', justifyContent: 'center' }}>
+                                <div className="recommendations-grid" style={{ 
+                                    display: 'grid', 
+                                    gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(320px, 1fr))', 
+                                    gap: isMobile ? '1.25rem' : '2rem', 
+                                    justifyContent: 'center' 
+                                }}>
                                     {otherServices.map((service, idx) => (
-                                        <ServiceCard key={`other-${idx}`} service={service} idx={idx} onClick={setSelectedService} isLightMode={isLightMode} />
+                                        <ServiceCard key={`other-${idx}`} service={service} idx={idx} onClick={setSelectedService} isLightMode={isLightMode} isMobile={isMobile} />
                                     ))}
                                 </div>
                             </div>
@@ -1089,41 +1117,80 @@ const Recommendations = () => {
             {/* Service Detail Modal/Form */}
             <AnimatePresence>
                 {selectedService && (
-                    <div className="rec-detail-modal" style={{ position: 'fixed', inset: 0, zIndex: 2000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 'clamp(5.8rem, 9vh, 6.5rem) 1.5rem 1.5rem', background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)' }}>
+                    <div className="rec-detail-modal" style={{ 
+                        position: 'fixed', inset: 0, zIndex: 2000, 
+                        display: 'flex', alignItems: isMobile ? 'center' : 'flex-start', justifyContent: 'center', 
+                        padding: isMobile ? '1rem' : 'clamp(5.8rem, 9vh, 6.5rem) 1.5rem 1.5rem', 
+                        background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)' 
+                    }}>
                         <motion.div initial={{ opacity: 0, scale: 0.95, y: 30 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 30 }}
                             className="rec-modal-content"
-                            style={{ background: 'var(--modal-gradient)', width: '100%', maxWidth: '780px', maxHeight: 'calc(100vh - clamp(7.4rem, 12vh, 8.5rem))', borderRadius: '32px', border: '1px solid var(--border)', overflow: 'hidden', position: 'relative', boxShadow: '0 40px 100px -12px rgba(0, 0, 0, 0.4)', display: 'flex', flexDirection: 'column' }}>
+                            style={{ 
+                                background: 'var(--modal-gradient)', width: '100%', maxWidth: '780px', 
+                                maxHeight: isMobile ? '85vh' : 'calc(100vh - clamp(7.4rem, 12vh, 8.5rem))', 
+                                borderRadius: isMobile ? '24px' : '32px', border: '1px solid var(--border)', 
+                                overflow: 'hidden', position: 'relative', boxShadow: '0 40px 100px -12px rgba(0, 0, 0, 0.4)', 
+                                display: 'flex', flexDirection: 'column' 
+                            }}>
                             
                             {/* Modal Header */}
-                            <div style={{ padding: '2rem 2.5rem', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.01)' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                                    <div style={{ padding: '8px 16px', background: (categoryColors[selectedService.category] || categoryColors['Advisory']).bg, color: (categoryColors[selectedService.category] || categoryColors['Advisory']).color, borderRadius: '100px', fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            <div style={{ 
+                                padding: isMobile ? '1.2rem 1.5rem' : '1.8rem 2.5rem', 
+                                borderBottom: '1px solid rgba(255,255,255,0.05)', 
+                                display: 'flex', justifyContent: 'space-between', alignItems: 'center', 
+                                background: 'rgba(255,255,255,0.01)' 
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '0.7rem' : '1rem', flex: 1, minWidth: 0 }}>
+                                    <div style={{ 
+                                        padding: isMobile ? '4px 10px' : '8px 16px', 
+                                        background: (categoryColors[selectedService.category] || categoryColors['Advisory']).bg, 
+                                        color: (categoryColors[selectedService.category] || categoryColors['Advisory']).color, 
+                                        borderRadius: '100px', fontSize: isMobile ? '0.6rem' : '0.7rem', fontWeight: 800, 
+                                        textTransform: 'uppercase', letterSpacing: '0.05em' 
+                                    }}>
                                         {selectedService.category}
                                     </div>
-                                    <h2 style={{ fontSize: '1.4rem', fontWeight: 750, color: 'var(--text)', margin: 0 }}>{selectedService.title}</h2>
+                                    <h2 style={{ 
+                                        fontSize: isMobile ? '1.1rem' : '1.4rem', 
+                                        fontWeight: 750, color: 'var(--text)', margin: 0,
+                                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+                                    }}>{selectedService.title}</h2>
                                 </div>
                                 <button onClick={() => setSelectedService(null)}
-                                    style={{ background: isLightMode ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)', border: 'none', color: isLightMode ? '#111111' : '#fff', cursor: 'pointer', width: '36px', height: '36px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: '0.2s' }}>
-                                    <X size={20} />
+                                    style={{ 
+                                        background: isLightMode ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)', 
+                                        border: 'none', color: isLightMode ? '#111111' : '#fff', cursor: 'pointer', 
+                                        width: '32px', height: '32px', borderRadius: '50%', 
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                                        transition: '0.2s', flexShrink: 0, marginLeft: '10px' 
+                                    }}>
+                                    <X size={18} />
                                 </button>
                             </div>
 
                             {/* Scrollable Content */}
-                            <div style={{ padding: '2rem 2.5rem', overflowY: 'auto', flex: 1 }} className="custom-scrollbar">
-                                <div style={{ marginBottom: '2.5rem' }}>
-                                    <h3 style={{ fontSize: '0.85rem', fontWeight: 800, color: '#22c55e', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.8rem' }}>Service Overview</h3>
-                                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', lineHeight: 1.7, margin: 0 }}>{selectedService.description}</p>
+                            <div style={{ 
+                                padding: isMobile ? '1.5rem' : '2rem 2.5rem', 
+                                overflowY: 'auto', flex: 1 
+                            }} className="custom-scrollbar">
+                                <div style={{ marginBottom: isMobile ? '1.8rem' : '2.5rem' }}>
+                                    <h3 style={{ fontSize: '0.8rem', fontWeight: 800, color: '#22c55e', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.6rem' }}>Service Overview</h3>
+                                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.6, margin: 0 }}>{selectedService.description}</p>
                                     
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1.5rem' }}>
-                                        <div style={{ background: isLightMode ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.02)', padding: '1.2rem', borderRadius: '18px', border: isLightMode ? '1px solid rgba(0,0,0,0.12)' : '1px solid rgba(255,255,255,0.05)' }}>
-                                            <span style={{ fontSize: '0.7rem', color: isLightMode ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.4)', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>Expert Fee</span>
-                                            <span style={{ fontSize: '1.2rem', fontWeight: 800, color: '#22c55e' }}>₹1,000</span>
+                                    <div style={{ 
+                                        display: 'grid', 
+                                        gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', 
+                                        gap: '0.8rem', marginTop: '1.2rem' 
+                                    }}>
+                                        <div style={{ background: isLightMode ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.02)', padding: '1rem', borderRadius: '16px', border: isLightMode ? '1px solid rgba(0,0,0,0.12)' : '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                            <span style={{ fontSize: '0.7rem', color: isLightMode ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.4)', fontWeight: 700, textTransform: 'uppercase' }}>Expert Fee</span>
+                                            <span style={{ fontSize: '1.1rem', fontWeight: 800, color: '#22c55e' }}>₹1,000</span>
                                         </div>
-                                        <div style={{ background: isLightMode ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.02)', padding: '1.2rem', borderRadius: '18px', border: isLightMode ? '1px solid rgba(0,0,0,0.12)' : '1px solid rgba(255,255,255,0.05)' }}>
-                                            <span style={{ fontSize: '0.7rem', color: isLightMode ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.4)', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>Turnaround</span>
+                                        <div style={{ background: isLightMode ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.02)', padding: '1rem', borderRadius: '16px', border: isLightMode ? '1px solid rgba(0,0,0,0.12)' : '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                            <span style={{ fontSize: '0.7rem', color: isLightMode ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.4)', fontWeight: 700, textTransform: 'uppercase' }}>Turnaround</span>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                 <Clock size={16} color="#22c55e" />
-                                                <span style={{ fontSize: '1rem', fontWeight: 700, color: isLightMode ? '#111111' : 'var(--text)' }}>2-4 Days</span>
+                                                <span style={{ fontSize: '0.95rem', fontWeight: 700, color: isLightMode ? '#111111' : 'var(--text)' }}>2-4 Days</span>
                                             </div>
                                         </div>
                                     </div>
@@ -1131,18 +1198,25 @@ const Recommendations = () => {
 
                                 {/* Checklist Section */}
                                 <div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                                        <h3 style={{ fontSize: '0.85rem', fontWeight: 800, color: '#22c55e', textTransform: 'uppercase', letterSpacing: '0.1em', margin: 0 }}>Required Documentation</h3>
+                                    <div style={{ 
+                                        display: 'flex', 
+                                        flexDirection: isMobile ? 'column' : 'row',
+                                        justifyContent: 'space-between', 
+                                        alignItems: isMobile ? 'flex-start' : 'center', 
+                                        marginBottom: '1rem',
+                                        gap: isMobile ? '0.5rem' : 0
+                                    }}>
+                                        <h3 style={{ fontSize: '0.8rem', fontWeight: 800, color: '#22c55e', textTransform: 'uppercase', letterSpacing: '0.1em', margin: 0 }}>Required Documentation</h3>
                                         {(() => {
                                             const docs = getActiveDocs(selectedService);
                                             const required = docs.filter(d => d.required);
                                             const uploaded = uploadedDocs[selectedService.title] || {};
                                             const count = required.filter(d => uploaded[d.name]).length;
                                             return (
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <span style={{ fontSize: '0.75rem', color: '#22c55e', fontWeight: 800 }}>{count}/{required.length} Required</span>
-                                                    <div style={{ width: '80px', height: '6px', background: isLightMode ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.05)', borderRadius: '10px', overflow: 'hidden' }}>
-                                                        <div style={{ width: `${(count / required.length) * 100}%`, height: '100%', background: '#22c55e', transition: 'width 0.4s ease' }} />
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: isMobile ? '100%' : 'auto' }}>
+                                                    <span style={{ fontSize: '0.72rem', color: '#22c55e', fontWeight: 800 }}>{count}/{required.length} Required</span>
+                                                    <div style={{ flex: isMobile ? 1 : 'unset', width: isMobile ? 'auto' : '80px', height: '6px', background: isLightMode ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.05)', borderRadius: '10px', overflow: 'hidden' }}>
+                                                        <div style={{ width: `${(count / Math.max(1, required.length)) * 100}%`, height: '100%', background: '#22c55e', transition: 'width 0.4s ease' }} />
                                                     </div>
                                                 </div>
                                             );
@@ -1157,38 +1231,40 @@ const Recommendations = () => {
                                             return docs.map((doc, idx) => (
                                                 <div key={idx} style={{ 
                                                     display: 'flex', alignItems: 'center', justifyContent: 'space-between', 
-                                                    padding: '1rem 1.25rem', background: uploaded[doc.name] ? (isLightMode ? 'rgba(16,185,129,0.15)' : 'rgba(16,185,129,0.04)') : (isLightMode ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.01)'), 
+                                                    padding: isMobile ? '0.8rem 1rem' : '1rem 1.25rem', 
+                                                    background: uploaded[doc.name] ? (isLightMode ? 'rgba(16,185,129,0.15)' : 'rgba(16,185,129,0.04)') : (isLightMode ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.01)'), 
                                                     borderRadius: '18px', border: uploaded[doc.name] ? (isLightMode ? '1px solid rgba(16,185,129,0.35)' : '1px solid rgba(16,185,129,0.15)') : (isLightMode ? '1px solid rgba(0,0,0,0.14)' : '1px solid rgba(255,255,255,0.05)'),
                                                     transition: 'all 0.2s',
-                                                    opacity: !doc.required && !uploaded[doc.name] ? 0.7 : 1
+                                                    opacity: !doc.required && !uploaded[doc.name] ? 0.7 : 1,
+                                                    gap: isMobile ? '0.6rem' : '1rem'
                                                 }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1, minWidth: 0 }}>
-                                                        <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: uploaded[doc.name] ? 'rgba(16,185,129,0.1)' : (isLightMode ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.03)'), display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                                            {uploaded[doc.name] ? <Check size={18} color="#10b981" /> : <FileText size={18} color={isLightMode ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.2)'} />}
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '0.7rem' : '1rem', flex: 1, minWidth: 0 }}>
+                                                        <div style={{ width: isMobile ? '30px' : '36px', height: isMobile ? '30px' : '36px', borderRadius: '8px', background: uploaded[doc.name] ? 'rgba(16,185,129,0.1)' : (isLightMode ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.03)'), display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                                            {uploaded[doc.name] ? <Check size={16} color="#10b981" /> : <FileText size={16} color={isLightMode ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.2)'} />}
                                                         </div>
-                                                        <div style={{ minWidth: 0 }}>
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                <p style={{ fontSize: '0.85rem', fontWeight: 700, color: isLightMode ? '#111111' : 'var(--text)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                        <div style={{ minWidth: 0, flex: 1 }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                                                <p style={{ fontSize: isMobile ? '0.8rem' : '0.85rem', fontWeight: 700, color: isLightMode ? '#111111' : 'var(--text)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                                                     {doc.name}
                                                                 </p>
                                                                 {doc.required ? (
-                                                                    <span style={{ fontSize: '0.6rem', padding: '2px 6px', background: 'rgba(239,68,68,0.1)', color: '#ef4444', borderRadius: '4px', fontWeight: 800, textTransform: 'uppercase' }}>Required</span>
+                                                                    <span style={{ fontSize: '0.55rem', padding: '2px 5px', background: 'rgba(239,68,68,0.1)', color: '#ef4444', borderRadius: '4px', fontWeight: 800, textTransform: 'uppercase' }}>Required</span>
                                                                 ) : (
-                                                                    <span style={{ fontSize: '0.6rem', padding: '2px 6px', background: isLightMode ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.05)', color: isLightMode ? 'rgba(0,0,0,0.65)' : 'rgba(255,255,255,0.3)', borderRadius: '4px', fontWeight: 700, textTransform: 'uppercase' }}>Optional</span>
+                                                                    <span style={{ fontSize: '0.55rem', padding: '2px 5px', background: isLightMode ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.05)', color: isLightMode ? 'rgba(0,0,0,0.65)' : 'rgba(255,255,255,0.3)', borderRadius: '4px', fontWeight: 700, textTransform: 'uppercase' }}>Optional</span>
                                                                 )}
                                                             </div>
-                                                            <p style={{ fontSize: '0.7rem', color: isLightMode ? 'rgba(0,0,0,0.7)' : 'var(--text-muted)', margin: '2px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical' }}>
+                                                            <p style={{ fontSize: '0.65rem', color: isLightMode ? 'rgba(0,0,0,0.7)' : 'var(--text-muted)', margin: '1px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical' }}>
                                                                 {uploaded[doc.name] ? `Uploaded: ${uploaded[doc.name].name}` : (doc.desc || 'Documentation needed')}
                                                             </p>
                                                         </div>
                                                     </div>
 
                                                     <label style={{ 
-                                                        cursor: 'pointer', padding: '6px 14px', background: uploaded[doc.name] ? 'rgba(255,255,255,0.05)' : '#22c55e', 
-                                                        color: '#fff', borderRadius: '10px', fontSize: '0.75rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', 
-                                                        transition: '0.2s', border: 'none', flexShrink: 0, marginLeft: '1rem'
-                                                    }}>
-                                                        <Upload size={13} /> {uploaded[doc.name] ? 'Change' : 'Upload'}
+                                                        cursor: 'pointer', padding: isMobile ? '5px 12px' : '6px 14px', background: uploaded[doc.name] ? 'rgba(255,255,255,0.05)' : '#22c55e', 
+                                                        color: '#fff', borderRadius: '8px', fontSize: isMobile ? '0.7rem' : '0.75rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '5px', 
+                                                        transition: '0.2s', border: 'none', flexShrink: 0, marginLeft: isMobile ? '4px' : '0.5rem'
+                                                     }}>
+                                                        <Upload size={12} /> {isMobile && uploaded[doc.name] ? '' : (uploaded[doc.name] ? 'Change' : 'Upload')}
                                                         <input type="file" hidden onChange={async (e) => {
                                                             const file = e.target.files[0];
                                                             if (file) {
@@ -1235,7 +1311,12 @@ const Recommendations = () => {
                             </div>
 
                             {/* Sticky Modal Footer */}
-                            <div style={{ padding: '1.5rem 2.5rem', borderTop: '1px solid rgba(255,255,255,0.05)', background: 'rgba(255,255,255,0.01)', display: 'flex', gap: '1rem' }}>
+                            <div style={{ 
+                                padding: isMobile ? '1.2rem 1.5rem' : '1.5rem 2.5rem', 
+                                borderTop: '1px solid rgba(255,255,255,0.05)', 
+                                background: 'rgba(255,255,255,0.01)', 
+                                display: 'flex', gap: '1rem' 
+                            }}>
                                 {(() => {
                                     const docs = getActiveDocs(selectedService);
                                     const required = docs.filter(d => d.required);
@@ -1281,14 +1362,15 @@ const Recommendations = () => {
                                             }}
                                             disabled={!isComplete || isSubmitting}
                                             style={{ 
-                                                flex: 1, padding: '1.1rem', background: isComplete ? 'linear-gradient(135deg, #16a34a, #22c55e)' : 'rgba(255,255,255,0.03)', 
+                                                flex: 1, padding: isMobile ? '0.9rem' : '1.1rem', 
+                                                background: isComplete ? 'linear-gradient(135deg, #16a34a, #22c55e)' : 'rgba(255,255,255,0.03)', 
                                                 color: isComplete ? '#fff' : 'rgba(255,255,255,0.15)', border: isComplete ? 'none' : '1px solid rgba(255,255,255,0.05)', 
-                                                borderRadius: '16px', fontWeight: 800, fontSize: '0.95rem', cursor: isComplete ? 'pointer' : 'not-allowed', 
-                                                transition: 'all 0.3s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+                                                borderRadius: isMobile ? '12px' : '16px', fontWeight: 800, fontSize: isMobile ? '0.85rem' : '0.95rem', cursor: isComplete ? 'pointer' : 'not-allowed', 
+                                                transition: 'all 0.3s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                                                 boxShadow: isComplete ? '0 6px 20px rgba(34,197,94,0.25)' : 'none'
                                             }}
                                         >
-                                            {isSubmitting ? 'Submitting...' : isComplete ? 'Confirm Interest & Submit' : 'Upload Required Files to Unlock'}
+                                            {isSubmitting ? 'Submitting...' : isComplete ? 'Confirm Interest & Submit' : (isMobile ? 'Upload Required Files' : 'Upload Required Files to Unlock')}
                                             {isComplete && <ArrowRight size={18} />}
                                         </button>
                                     );
