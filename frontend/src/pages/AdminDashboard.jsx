@@ -159,6 +159,10 @@ const AdminDashboard = () => {
 
   const handleUploadDraft = async (leadId, file, type = "Draft") => {
     if (!file) return;
+    if (file.type !== 'application/pdf') {
+      toast.error("Please upload only PDF documents");
+      return;
+    }
     const loadingToast = toast.loading(
       `Uploading ${type.toLowerCase()} document...`,
     );
@@ -169,9 +173,14 @@ const AdminDashboard = () => {
 
       const user = JSON.parse(localStorage.getItem("user"));
       const token = user?.token;
+
+      if (!token) {
+        toast.error("Administrator session expired. Please re-login.", { id: loadingToast });
+        return;
+      }
+
       const uploadRes = await axios.post(`${apiUrl}/leads/upload`, formData, {
         headers: {
-          "Content-Type": "multipart/form-data",
           Authorization: `Bearer ${token}`,
         },
       });
@@ -1221,6 +1230,7 @@ const AdminDashboard = () => {
                                   <input
                                     type="file"
                                     id={`draft-upload-${lead._id}`}
+                                    accept=".pdf"
                                     hidden
                                     onChange={(e) =>
                                       handleUploadDraft(
@@ -1277,6 +1287,7 @@ const AdminDashboard = () => {
                                   <input
                                     type="file"
                                     id={`final-upload-${lead._id}`}
+                                    accept=".pdf"
                                     hidden
                                     onChange={(e) =>
                                       handleUploadDraft(

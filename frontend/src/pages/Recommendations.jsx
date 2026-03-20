@@ -1265,9 +1265,13 @@ const Recommendations = () => {
                                                         transition: '0.2s', border: 'none', flexShrink: 0, marginLeft: isMobile ? '4px' : '0.5rem'
                                                      }}>
                                                         <Upload size={12} /> {isMobile && uploaded[doc.name] ? '' : (uploaded[doc.name] ? 'Change' : 'Upload')}
-                                                        <input type="file" hidden onChange={async (e) => {
+                                                        <input type="file" accept=".pdf" hidden onChange={async (e) => {
                                                             const file = e.target.files[0];
                                                             if (file) {
+                                                                if (file.type !== 'application/pdf') {
+                                                                    toast.error("Please upload only PDF documents");
+                                                                    return;
+                                                                }
                                                                 const loadingToast = toast.loading(`Uploading ${doc.name}...`);
                                                                 try {
                                                                     const apiUrl = import.meta.env.VITE_API_URL;
@@ -1276,9 +1280,14 @@ const Recommendations = () => {
                                                                     
                                                                     const user = JSON.parse(localStorage.getItem('user'));
                                                                     const token = user?.token;
+
+                                                                    if (!token) {
+                                                                        toast.error("Please log in to upload documents", { id: loadingToast });
+                                                                        return;
+                                                                    }
+
                                                                     const uploadRes = await axios.post(`${apiUrl}/leads/upload`, formData, {
                                                                         headers: { 
-                                                                            'Content-Type': 'multipart/form-data',
                                                                             'Authorization': `Bearer ${token}`
                                                                         }
                                                                     });
