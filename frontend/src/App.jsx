@@ -11,9 +11,12 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import UserDashboard from './pages/UserDashboard';
 import AdminDashboard from './pages/AdminDashboard';
+import DocumentReview from './pages/DocumentReview';
+import DraftReview from './pages/DraftReview';
 import ProtectedRoute from './components/ProtectedRoute';
 import Profile from './pages/Profile';
 import About from './pages/About';
+import Walkthrough from './components/Walkthrough';
 import AIAssistant from './components/AIAssistant';
 import Loader from './components/Loader';
 import { Toaster } from 'react-hot-toast';
@@ -21,9 +24,9 @@ import './App.css';
 
 
 // Routes that hide the Footer
-const HIDE_FOOTER_ROUTES = ['/login', '/register', '/services'];
+const HIDE_FOOTER_ROUTES = ['/login', '/register', '/services', '/onboarding'];
 // Routes that hide the Navbar — only auth pages (login/register) since dashboard now uses the shared navbar
-const HIDE_NAVBAR_ROUTES = ['/login', '/register'];
+const HIDE_NAVBAR_ROUTES = ['/login', '/register', '/onboarding'];
 
 function App() {
     const location = useLocation();
@@ -85,6 +88,7 @@ function App() {
                 transition={{ duration: 0.5 }}
             >
                 {!shouldHideNavbar && <Navbar />}
+                <Walkthrough isAppLoading={isLoading} />
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                     <Routes>
                         <Route path="/" element={<Home />} />
@@ -95,6 +99,8 @@ function App() {
                         <Route path="/register" element={<Register />} />
                         <Route path="/dashboard" element={<ProtectedRoute><UserDashboard /></ProtectedRoute>} />
                         <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
+                        <Route path="/admin/review/:leadId" element={<ProtectedRoute><DocumentReview /></ProtectedRoute>} />
+                        <Route path="/dashboard/review-draft/:leadId" element={<ProtectedRoute><DraftReview /></ProtectedRoute>} />
                         <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
                         <Route path="/about" element={<About />} />
                     </Routes>

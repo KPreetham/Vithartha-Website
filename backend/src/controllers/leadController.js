@@ -2,14 +2,16 @@ import Lead from '../models/Lead.js';
 
 export const createLead = async (req, res) => {
     try {
-        const { user, name, email, serviceName, cost } = req.body;
+        const { user, name, email, serviceName, cost, documents } = req.body;
+        console.log(`[LeadController] Creating lead for ${email}. Documents:`, documents?.length || 0);
 
         const newLead = new Lead({
             user: user || null,
             name,
             email,
             serviceName,
-            cost: cost || 1000
+            cost: cost || 1000,
+            documents: Array.isArray(documents) ? documents : []
         });
 
         await newLead.save();
@@ -32,6 +34,17 @@ export const getLeads = async (req, res) => {
         res.status(200).json(leads);
     } catch (error) {
         res.status(500).json({ message: error.message });
+    }
+};
+
+export const getLeadById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const lead = await Lead.findById(id).populate('user', 'name email profile');
+        if (!lead) return res.status(404).json({ success: false, message: 'Lead not found' });
+        res.status(200).json(lead);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
     }
 };
 export const updateLead = async (req, res) => {
@@ -63,5 +76,31 @@ export const updateLead = async (req, res) => {
     } catch (error) {
         console.error('Error updating lead:', error);
         res.status(500).json({ success: false, message: 'Error updating lead' });
+    }
+};
+
+export const updateDocumentStatus = async (req, res) => {
+    try {
+        const { leadId, docId } = req.params;
+        const { status } = req.body;
+
+        if (!['Pending', 'Accepted', 'Rejected'].includes(status)) {
+            return res.status(400).json({ success: false, message: 'Invalid status' });
+        }
+
+        const lead = await Lead.findById(leadId);
+        if (!lead) return res.status(404).json({ success: false, message: 'Lead not found' });
+
+        const doc = lead.documents.id(docId);
+        if (!doc) return res.status(404).json({ success: false, message: 'Document not found' });
+
+        doc.status = status;
+        lead.updatedAt = Date.now();
+        await lead.save();
+
+        res.status(200).json({ success: true, lead });
+    } catch (error) {
+        console.error('Error updating document status:', error);
+        res.status(500).json({ success: false, message: 'Error updating document status' });
     }
 };

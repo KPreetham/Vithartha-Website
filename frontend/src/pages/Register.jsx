@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { User, Mail, Lock, Building, ArrowLeft, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { useLocation } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
+import {
+    clearOnboardingCompleted,
+    clearPostLoginWalkthroughSeen,
+} from '../utils/onboardingFlow';
 
 const Register = () => {
     const navigate = useNavigate();
@@ -15,7 +18,7 @@ const Register = () => {
         email: initialData.email || '',
         company: '',
         password: '',
-        role: 'user'
+        role: 'user',
     });
     const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -35,26 +38,20 @@ const Register = () => {
         try {
             const response = await fetch(`${import.meta.env.VITE_API_URL}/auth/register`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(formData),
             });
-
             const data = await response.json();
-
             if (response.ok) {
-                toast.success(`Welcome aboard, ${data.name || formData.name}! Taking you to onboarding...`, {
-                    icon: '✅',
-                });
-                localStorage.setItem('user', JSON.stringify(data));
+                toast.success(`Welcome aboard, ${data.name || formData.name}!`, { icon: '✅' });
+                const newUser = { ...data, onboardingCompleted: false };
+                localStorage.setItem('vithartha_guest_walkthrough_seen_v2', 'true');
+                localStorage.setItem('user', JSON.stringify(newUser));
+                clearOnboardingCompleted(newUser);
+                clearPostLoginWalkthroughSeen(newUser);
                 window.dispatchEvent(new Event('storage'));
                 setTimeout(() => {
-                    if (data.role === 'admin') {
-                        navigate('/admin');
-                    } else {
-                        navigate('/onboarding');
-                    }
+                    navigate(data.role === 'admin' ? '/admin' : '/onboarding');
                 }, 1200);
             } else {
                 toast.error(data.message || 'Registration failed');
@@ -67,6 +64,17 @@ const Register = () => {
         }
     };
 
+    const inputStyle = {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.75rem',
+        background: 'var(--bg-card)',
+        border: '1px solid var(--border)',
+        borderRadius: '8px',
+        padding: '0.8rem 1rem',
+        transition: 'border-color 0.2s ease',
+    };
+
     return (
         <div style={{
             minHeight: '100vh',
@@ -76,38 +84,30 @@ const Register = () => {
             background: 'var(--bg)',
             position: 'relative',
             overflow: 'hidden',
-            padding: 'clamp(5rem, 10vw, 2rem) 1rem',
+            padding: '4.5rem 1rem 1rem',
         }}>
-            {/* Background decoration */}
+            {/* Green radial glow */}
             <div style={{
                 position: 'absolute', inset: 0,
                 background: `
-                    radial-gradient(circle at 10% 10%, rgba(0,123,255,0.05) 0%, transparent 40%),
-                    radial-gradient(circle at 90% 90%, rgba(0,123,255,0.05) 0%, transparent 40%)
+                    radial-gradient(ellipse 40% 30% at 20% 20%, rgba(34,197,94,0.05) 0%, transparent 60%),
+                    radial-gradient(ellipse 40% 30% at 80% 80%, rgba(74,173,160,0.04) 0%, transparent 60%)
                 `,
                 pointerEvents: 'none',
             }} />
 
             <motion.div
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 24 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6 }}
-                style={{
-                    width: '100%',
-                    maxWidth: '620px',
-                    position: 'relative',
-                    zIndex: 1,
-                }}
+                transition={{ duration: 0.5, ease: [0.23, 1, 0.32, 1] }}
+                style={{ width: '100%', maxWidth: '680px', position: 'relative', zIndex: 1 }}
             >
-                {/* Modern Glass Card */}
-                <div className="auth-card" style={{
-                    background: 'var(--card-bg)',
-                    backdropFilter: 'blur(30px)',
-                    WebkitBackdropFilter: 'blur(30px)',
-                    borderRadius: 'var(--radius-xl)',
+                <div style={{
+                    background: 'var(--modal-gradient)',
+                    borderRadius: '20px',
                     border: '1px solid var(--border)',
-                    padding: '1.8rem 2.8rem',
-                    boxShadow: 'var(--shadow-card)',
+                    padding: '1.3rem 2.2rem',
+                    boxShadow: 'var(--shadow-lg)',
                 }}>
                     {/* Back button */}
                     <button
@@ -116,29 +116,26 @@ const Register = () => {
                         style={{
                             background: 'none', border: 'none', cursor: 'pointer',
                             display: 'flex', alignItems: 'center', gap: '0.4rem',
-                            color: 'var(--text-muted)', fontSize: '0.75rem',
-                            fontWeight: 600, marginBottom: '1.2rem',
+                            color: 'var(--text-muted)', fontSize: '0.78rem',
+                            fontWeight: 600, marginBottom: '0.7rem',
                             padding: 0, transition: 'color 0.2s',
                         }}
-                        onMouseEnter={e => e.currentTarget.style.color = 'white'}
+                        onMouseEnter={e => e.currentTarget.style.color = 'var(--text)'}
                         onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
                     >
-                        <ArrowLeft size={13} /> Back to home
+                        <ArrowLeft size={13} /> Back
                     </button>
 
                     {/* Header */}
-                    <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-                        <div style={{ display: 'inline-flex', padding: '0.4rem', background: 'rgba(74,173,160,0.1)', borderRadius: '50%', marginBottom: '0.6rem' }}>
-                            <ShieldCheck size={20} color="#4AADA0" />
-                        </div>
+                    <div style={{ textAlign: 'center', marginBottom: '0.8rem' }}>
                         <h1 style={{
-                            fontSize: '1.5rem', fontWeight: 800,
-                            color: 'var(--text)', marginBottom: '0.2rem',
+                            fontSize: '1.4rem', fontWeight: 800,
+                            color: 'var(--text)', marginBottom: '0.1rem',
                             letterSpacing: '-0.02em',
                         }}>
                             Create Account
                         </h1>
-                        <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                        <p style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
                             Join Vithartha as a business partner
                         </p>
                     </div>
@@ -146,162 +143,160 @@ const Register = () => {
                     {/* Role Selector */}
                     <div style={{
                         display: 'flex',
-                        background: 'rgba(255,255,255,0.03)',
+                        background: 'var(--bg-card)',
                         padding: '0.2rem',
-                        borderRadius: 'var(--radius-full)',
+                        borderRadius: '10px',
                         border: '1px solid var(--border)',
-                        marginBottom: '1.2rem',
+                        marginBottom: '0.8rem',
                     }}>
-                        <button
-                            type="button"
-                            onClick={() => handleRoleChange('user')}
-                            style={{
-                                flex: 1, padding: '0.6rem', borderRadius: 'var(--radius-full)', border: 'none', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer', transition: '0.3s',
-                                background: regRole === 'user' ? 'var(--grad-blue)' : 'transparent',
-                                color: regRole === 'user' ? 'white' : 'rgba(255,255,255,0.5)',
-                            }}
-                        >
-                            <User size={13} style={{ marginRight: '6px', verticalAlign: 'middle' }} /> User Account
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => handleRoleChange('admin')}
-                            style={{
-                                flex: 1, padding: '0.6rem', borderRadius: 'var(--radius-full)', border: 'none', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer', transition: '0.3s',
-                                background: regRole === 'admin' ? 'var(--grad-blue)' : 'transparent',
-                                color: regRole === 'admin' ? 'white' : 'rgba(255,255,255,0.5)',
-                            }}
-                        >
-                            <ShieldCheck size={13} style={{ marginRight: '6px', verticalAlign: 'middle' }} /> Admin Account
-                        </button>
+                        {['user', 'admin'].map(role => (
+                            <button key={role}
+                                type="button"
+                                onClick={() => handleRoleChange(role)}
+                                style={{
+                                    flex: 1, padding: '0.6rem', borderRadius: '7px',
+                                    border: 'none', fontSize: '0.82rem', fontWeight: 700,
+                                    cursor: 'pointer', transition: 'all 0.25s ease',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem',
+                                    background: regRole === role ? 'linear-gradient(135deg, #16a34a, #22c55e)' : 'transparent',
+                                    color: regRole === role ? 'white' : 'var(--text-muted)',
+                                    boxShadow: regRole === role ? '0 4px 16px rgba(34,197,94,0.3)' : 'none',
+                                }}
+                            >
+                                {role === 'user' ? <User size={13} /> : <ShieldCheck size={13} />}
+                                {role === 'user' ? 'User Account' : 'Admin Account'}
+                            </button>
+                        ))}
                     </div>
 
-                    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
-                        <div className="reg-name-company-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                        {/* Name + Company Row */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem' }}>
                             <div>
-                                <label className="input-label" style={{ color: 'var(--text-secondary)', fontSize: '0.78rem', marginBottom: '0.3rem' }}>Full Name *</label>
-                                <div className="input-group" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '0.5rem 0.9rem' }}>
-                                    <User size={15} color="var(--text-muted)" />
+                                <label style={{ display: 'block', color: 'var(--text-muted)', fontSize: '0.68rem', fontWeight: 600, marginBottom: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                                    Full Name *
+                                </label>
+                                <div style={inputStyle}>
+                                    <User size={14} color="rgba(255,255,255,0.3)" />
                                     <input
-                                        id="reg-name"
-                                        type="text"
-                                        name="name"
-                                        placeholder="Full Name"
-                                        required
-                                        value={formData.name}
-                                        onChange={handleChange}
-                                        style={{ color: 'var(--text)', fontSize: '0.85rem' }}
+                                        id="reg-name" type="text" name="name"
+                                        placeholder="Full Name" required
+                                        value={formData.name} onChange={handleChange}
+                                        style={{ background: 'none', border: 'none', outline: 'none', color: 'var(--text)', fontSize: '0.85rem', width: '100%' }}
+                                        onFocus={e => e.currentTarget.parentElement.style.borderColor = '#22c55e'}
+                                        onBlur={e => e.currentTarget.parentElement.style.borderColor = 'var(--border)'}
                                     />
                                 </div>
                             </div>
                             <div>
-                                <label className="input-label" style={{ color: 'var(--text-secondary)', fontSize: '0.78rem', marginBottom: '0.3rem' }}>Company</label>
-                                <div className="input-group" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '0.5rem 0.9rem' }}>
-                                    <Building size={15} color="var(--text-muted)" />
+                                <label style={{ display: 'block', color: 'var(--text-muted)', fontSize: '0.68rem', fontWeight: 600, marginBottom: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                                    Company
+                                </label>
+                                <div style={inputStyle}>
+                                    <Building size={14} color="rgba(255,255,255,0.3)" />
                                     <input
-                                        id="reg-company"
-                                        type="text"
-                                        name="company"
+                                        id="reg-company" type="text" name="company"
                                         placeholder="Optional"
-                                        value={formData.company}
-                                        onChange={handleChange}
-                                        style={{ color: 'var(--text)', fontSize: '0.85rem' }}
+                                        value={formData.company} onChange={handleChange}
+                                        style={{ background: 'none', border: 'none', outline: 'none', color: 'var(--text)', fontSize: '0.85rem', width: '100%' }}
+                                        onFocus={e => e.currentTarget.parentElement.style.borderColor = '#22c55e'}
+                                        onBlur={e => e.currentTarget.parentElement.style.borderColor = 'var(--border)'}
                                     />
                                 </div>
                             </div>
                         </div>
 
+                        {/* Email */}
                         <div>
-                            <label className="input-label" style={{ color: 'var(--text-secondary)', fontSize: '0.78rem', marginBottom: '0.3rem' }}>Email Address *</label>
-                            <div className="input-group" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '0.5rem 0.9rem' }}>
-                                <Mail size={15} color="var(--text-muted)" />
+                            <label style={{ display: 'block', color: 'var(--text-muted)', fontSize: '0.68rem', fontWeight: 600, marginBottom: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                                Email Address *
+                            </label>
+                            <div style={inputStyle}>
+                                <Mail size={14} color="rgba(255,255,255,0.3)" />
                                 <input
-                                    id="reg-email"
-                                    type="email"
-                                    name="email"
-                                    placeholder="you@company.com"
-                                    required
-                                    value={formData.email}
-                                    onChange={handleChange}
-                                    style={{ color: 'var(--text)', fontSize: '0.85rem' }}
+                                    id="reg-email" type="email" name="email"
+                                    placeholder="you@company.com" required
+                                    value={formData.email} onChange={handleChange}
+                                    style={{ background: 'none', border: 'none', outline: 'none', color: 'var(--text)', fontSize: '0.85rem', width: '100%' }}
+                                    onFocus={e => e.currentTarget.parentElement.style.borderColor = '#22c55e'}
+                                    onBlur={e => e.currentTarget.parentElement.style.borderColor = 'var(--border)'}
                                 />
                             </div>
                         </div>
 
+                        {/* Password */}
                         <div>
-                            <label className="input-label" style={{ color: 'var(--text-secondary)', fontSize: '0.78rem', marginBottom: '0.3rem' }}>Password *</label>
-                            <div className="input-group" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '0.5rem 0.9rem' }}>
-                                <Lock size={15} color="var(--text-muted)" />
+                            <label style={{ display: 'block', color: 'var(--text-muted)', fontSize: '0.68rem', fontWeight: 600, marginBottom: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                                Password *
+                            </label>
+                            <div style={inputStyle}>
+                                <Lock size={14} color="rgba(255,255,255,0.3)" />
                                 <input
                                     id="reg-password"
                                     type={showPassword ? 'text' : 'password'}
                                     name="password"
-                                    placeholder="Min 8 characters"
-                                    required
-                                    value={formData.password}
-                                    onChange={handleChange}
-                                    style={{ color: 'var(--text)', fontSize: '0.85rem' }}
+                                    placeholder="Min 8 characters" required
+                                    value={formData.password} onChange={handleChange}
+                                    style={{ background: 'none', border: 'none', outline: 'none', color: 'var(--text)', fontSize: '0.85rem', flex: 1 }}
+                                    onFocus={e => e.currentTarget.parentElement.style.borderColor = '#22c55e'}
+                                    onBlur={e => e.currentTarget.parentElement.style.borderColor = 'var(--border)'}
                                 />
-                                <button
-                                    type="button"
-                                    onClick={() => setShowPassword(!showPassword)}
-                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 0 }}
-                                >
-                                    {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                                <button type="button" onClick={() => setShowPassword(!showPassword)}
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.35)', padding: 0, display: 'flex' }}>
+                                    {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
                                 </button>
                             </div>
                         </div>
 
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer', marginTop: '0.4rem' }}>
+                        {/* Agree checkbox */}
+                        <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', cursor: 'pointer', marginTop: '0.2rem' }}>
                             <input
-                                type="checkbox"
-                                id="reg-agree"
+                                type="checkbox" id="reg-agree"
                                 checked={agreed}
                                 onChange={e => setAgreed(e.target.checked)}
-                                style={{ accentColor: 'var(--v-blue)', cursor: 'pointer' }}
+                                style={{ accentColor: '#22c55e', cursor: 'pointer', marginTop: '2px', flexShrink: 0 }}
                             />
-                            <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-                                I agree to the <span style={{ color: 'var(--v-blue)', fontWeight: 600 }}>Agreement</span> and <span style={{ color: 'var(--v-blue)', fontWeight: 600 }}>Privacy Policy</span>.
+                            <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem', lineHeight: 1.5 }}>
+                                I agree to the{' '}
+                                <span style={{ color: '#22c55e', fontWeight: 600 }}>Terms of Service</span>
+                                {' '}and{' '}
+                                <span style={{ color: '#22c55e', fontWeight: 600 }}>Privacy Policy</span>.
                             </span>
                         </label>
 
+                        {/* Submit */}
                         <button
                             id="reg-submit-btn"
                             type="submit"
-                            className="btn"
                             disabled={loading || !agreed}
                             style={{
-                                width: '100%', padding: '0.9rem',
-                                fontSize: '0.9rem',
-                                borderRadius: 'var(--radius-full)',
-                                marginTop: '0.5rem',
-                                justifyContent: 'center',
-                                background: 'var(--grad-blue)',
-                                color: 'white',
-                                border: 'none',
-                                fontWeight: 800,
-                                boxShadow: 'var(--blue-glow)',
-                                textTransform: 'uppercase',
-                                letterSpacing: '0.04em',
-                                opacity: agreed ? 1 : 0.6,
+                                width: '100%', padding: '0.75rem',
+                                borderRadius: '8px',
+                                background: (!agreed || loading) ? 'rgba(34,197,94,0.3)' : 'linear-gradient(135deg, #16a34a 0%, #22c55e 100%)',
+                                color: 'white', fontWeight: 800, border: 'none',
+                                fontSize: '0.85rem',
+                                cursor: (!agreed || loading) ? 'not-allowed' : 'pointer',
+                                textTransform: 'uppercase', letterSpacing: '0.08em',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
+                                boxShadow: agreed ? '0 6px 20px rgba(34,197,94,0.3)' : 'none',
+                                transition: 'all 0.3s ease',
+                                marginTop: '0.1rem',
                             }}
+                            onMouseEnter={e => { if (agreed && !loading) e.currentTarget.style.boxShadow = '0 12px 32px rgba(34,197,94,0.45)'; }}
+                            onMouseLeave={e => e.currentTarget.style.boxShadow = agreed ? '0 8px 24px rgba(34,197,94,0.3)' : 'none'}
                         >
                             {loading ? (
                                 <div style={{ width: 18, height: 18, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
-                            ) : (
-                                <>Get Started Now</>
-                            )}
+                            ) : 'Get Started Now'}
                         </button>
                     </form>
 
-                    <div style={{ marginTop: '2rem', textAlign: 'center' }}>
-                        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                    {/* Sign in link */}
+                    <div style={{ marginTop: '0.9rem', textAlign: 'center' }}>
+                        <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
                             Already registered?{' '}
-                            <Link
-                                to="/login"
-                                id="reg-login-link"
-                                style={{ color: 'var(--v-blue)', fontWeight: 700, textDecoration: 'none' }}
-                            >
+                            <Link to="/login" id="reg-login-link"
+                                style={{ color: '#22c55e', fontWeight: 700, textDecoration: 'none' }}>
                                 Sign In
                             </Link>
                         </p>

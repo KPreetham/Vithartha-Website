@@ -8,7 +8,8 @@ const userSchema = new mongoose.Schema({
     role: { type: String, enum: ['user', 'admin'], default: 'user' },
     profile: {
         companyName: String,
-        businessStage: { type: String, enum: ['Startup', 'Growing', 'Established'] },
+        phone: String,
+        businessStage: { type: String, enum: ['Startup', 'Growth', 'Established', 'Growing', ''] },
         industry: String,
     },
     onboardingResponses: { type: mongoose.Schema.Types.Mixed },

@@ -123,9 +123,9 @@ const Navbar = () => {
     };
 
     const linkColor = isDarkMode ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.7)';
-    const hoverColor = '#FFA500';
+    const hoverColor = '#22c55e';
     const logoTextColor = isDarkMode ? 'white' : 'black';
-    const activeLinkColor = isDarkMode ? 'white' : 'black';
+    const activeLinkColor = '#22c55e';
 
 
     return (
@@ -167,19 +167,20 @@ const Navbar = () => {
                 </Link>
 
                 {/* Desktop Nav Links */}
-                <div style={{ display: 'flex', gap: '0.2rem', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: '1.2rem', alignItems: 'center' }}>
                     {navLinks.map(link => {
                         const isActive = location.pathname === link.path;
                         return (
                             <Link
                                 key={link.name}
+                                id={`nav-link-${link.name.replace(/\s+/g, '-')}`}
                                 to={link.path}
                                 style={{
                                     textDecoration: 'none',
                                     color: isActive ? activeLinkColor : linkColor,
-                                    fontSize: '0.88rem',
+                                    fontSize: '0.96rem',
                                     fontWeight: 700,
-                                    padding: '0.4rem 1.1rem',
+                                    padding: '0.5rem 0.8rem',
                                     borderRadius: 'var(--radius-full)',
                                     transition: 'all 0.2s ease',
                                     background: 'transparent',
@@ -458,14 +459,21 @@ const Navbar = () => {
                             id="navbar-login-btn"
                             className="btn"
                             style={{
-                                background: isDarkMode ? 'white' : 'black',
-                                color: isDarkMode ? 'black' : 'white',
-                                border: 'none',
+                                background: '#111114',
+                                color: 'white',
+                                border: '1px solid rgba(255, 255, 255, 0.1)',
                                 fontSize: '0.9rem',
-                                padding: '0.7rem 1.8rem',
-                                borderRadius: 'var(--radius-full)',
+                                padding: '0.6rem 2rem',
+                                borderRadius: '8px',
                                 fontWeight: 700,
-                                boxShadow: '0 4px 15px rgba(0,0,0,0.1)',
+                                transition: 'all 0.3s ease',
+                                cursor: 'pointer',
+                            }}
+                            onMouseEnter={e => {
+                                e.currentTarget.style.borderColor = '#22c55e';
+                            }}
+                            onMouseLeave={e => {
+                                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
                             }}
                             onClick={() => navigate('/login')}
                         >
@@ -606,6 +614,7 @@ const Navbar = () => {
                                         <User size={15} /> My Profile
                                     </Link>
                                     <Link
+                                        id="mobile-dashboard-link"
                                         to={user.role === 'admin' ? '/admin' : '/dashboard'}
                                         onClick={() => setMobileOpen(false)}
                                         style={{
@@ -714,6 +723,7 @@ const Navbar = () => {
                                 </button>
                             ) : (
                                 <button
+                                    id="navbar-mobile-signup-btn"
                                     className="btn"
                                     style={{
                                         flex: 1,

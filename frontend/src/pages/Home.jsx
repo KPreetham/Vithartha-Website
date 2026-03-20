@@ -2,13 +2,16 @@ import React, { useRef, useCallback, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     ArrowRight, CheckCircle, TrendingUp, ShieldCheck,
-    Users, Zap, BarChart3, FileCheck, Building2, Star, ArrowUpRight, ChevronLeft, ChevronRight,
+    Users, Zap, BarChart3, FileCheck, Star, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+
 
 const PremiumCard = ({ children, style = {}, className = '', glowColor = 'rgba(16, 185, 129, 0.15)' }) => {
     const cardRef = useRef(null);
     const glowRef = useRef(null);
+    const bgOverlayRef = useRef(null);
+    const borderRef = useRef(null);
     const borderGlowRef = useRef(null);
 
     const handleMouseMove = useCallback((e) => {
@@ -24,6 +27,21 @@ const PremiumCard = ({ children, style = {}, className = '', glowColor = 'rgba(1
         const rotY = ((x - cx) / cx) * 3;
 
         card.style.transform = `perspective(1000px) rotateX(${rotX}deg) rotateY(${rotY}deg) scale3d(1.02, 1.02, 1.02) translateY(-3px)`;
+        
+        if (bgOverlayRef.current) {
+            bgOverlayRef.current.style.opacity = '1';
+        }
+
+        if (borderRef.current) {
+            borderRef.current.style.opacity = '1';
+            
+            // Calculate angle for dynamic flowing border
+            const angle = Math.atan2(y - cy, x - cx) * (180 / Math.PI) + 90;
+            const mask = `conic-gradient(from ${angle}deg at 50% 50%, transparent 0deg, black 60deg, transparent 120deg)`;
+            
+            borderRef.current.style.webkitMaskImage = mask;
+            borderRef.current.style.maskImage = mask;
+        }
 
         if (glowRef.current) {
             glowRef.current.style.left = `${x}px`;
@@ -42,6 +60,9 @@ const PremiumCard = ({ children, style = {}, className = '', glowColor = 'rgba(1
         const card = cardRef.current;
         if (!card) return;
         card.style.transform = 'perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)';
+        
+        if (bgOverlayRef.current) bgOverlayRef.current.style.opacity = '0';
+        if (borderRef.current) borderRef.current.style.opacity = '0';
         if (glowRef.current) glowRef.current.style.opacity = '0';
         if (borderGlowRef.current) borderGlowRef.current.style.opacity = '0';
     }, []);
@@ -68,6 +89,18 @@ const PremiumCard = ({ children, style = {}, className = '', glowColor = 'rgba(1
                 borderRadius: '24px',
                 overflow: 'hidden',
             }}>
+                {/* Hover Darken Overlay */}
+                <div 
+                    ref={bgOverlayRef}
+                    style={{
+                        position: 'absolute', inset: 0,
+                        backgroundColor: 'rgba(0, 0, 0, 0.45)',
+                        opacity: 0,
+                        transition: 'opacity 0.3s ease',
+                        zIndex: 1
+                    }}
+                />
+                
                 <div
                     ref={glowRef}
                     style={{
@@ -85,26 +118,33 @@ const PremiumCard = ({ children, style = {}, className = '', glowColor = 'rgba(1
                 />
             </div>
 
-            <div style={{
-                position: 'absolute', inset: 0, borderRadius: '24px',
-                border: '1px solid var(--border)',
-                pointerEvents: 'none'
-            }} />
+            {/* Dynamic Edge Highlight — Follows Cursor */}
+            <div 
+                ref={borderRef}
+                style={{
+                    position: 'absolute', inset: 0, borderRadius: '24px',
+                    border: `2.5px solid ${glowColor.replace('0.15', '0.6').replace('0.2', '0.6')}`,
+                    opacity: 0,
+                    pointerEvents: 'none',
+                    transition: 'opacity 0.3s ease, mask-image 0.2s ease',
+                    zIndex: 2
+                }} 
+            />
 
             <div
                 ref={borderGlowRef}
                 style={{
                     position: 'absolute', inset: 0, borderRadius: '24px',
-                    padding: '1px', opacity: 0, pointerEvents: 'none',
+                    padding: '2.5px', opacity: 0, pointerEvents: 'none',
                     transition: 'opacity 0.3s ease',
                     WebkitMask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
                     WebkitMaskComposite: 'xor',
                     maskComposite: 'exclude',
-                    zIndex: 2,
+                    zIndex: 3,
                 }}
             />
 
-            <div style={{ position: 'relative', zIndex: 1, height: '100%' }}>{children}</div>
+            <div style={{ position: 'relative', zIndex: 3, height: '100%' }}>{children}</div>
         </div>
     );
 };
@@ -148,12 +188,6 @@ const services = [
     },
 ];
 
-const stats = [
-    { value: '500+', label: 'Businesses Served', icon: Building2, color: '#f43f5e' }, // rose
-    { value: '98%', label: 'Client Satisfaction', icon: Star, color: '#f59e0b' }, // amber
-    { value: '₹20Cr+', label: 'Tax Savings Delivered', icon: TrendingUp, color: '#14b8a6' }, // teal
-    { value: '8+', label: 'Years of Expertise', icon: CheckCircle, color: '#10b981' }, // green
-];
 
 const testimonials = [
     {
@@ -187,6 +221,16 @@ const Home = () => {
     const [activeTestimonial, setActiveTestimonial] = useState(0);
 
     useEffect(() => {
+        const previousScrollRestoration = window.history.scrollRestoration;
+        window.history.scrollRestoration = 'manual';
+        window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+
+        return () => {
+            window.history.scrollRestoration = previousScrollRestoration;
+        };
+    }, []);
+
+    useEffect(() => {
         const interval = setInterval(() => {
             setActiveTestimonial((prev) => (prev + 1) % testimonials.length);
         }, 5000); // Slide every 5 seconds
@@ -194,7 +238,9 @@ const Home = () => {
     }, []);
 
     return (
-        <div style={{ overflowX: 'hidden', background: 'var(--bg)', color: 'var(--text)', minHeight: '100vh' }}>
+        <div className="home-page-shell" style={{ background: 'var(--bg)', color: 'var(--text)', minHeight: '100vh' }}>
+            <div className="home-page-backdrop" aria-hidden="true" />
+
             {/* ===== HERO ===== */}
             <section style={{
                 position: 'relative',
@@ -205,27 +251,10 @@ const Home = () => {
                 background: 'transparent',
                 overflow: 'hidden',
             }}>
-                {/* Clean gradient background — no AI blobs */}
+                {/* Clean gradient background — refined via CSS */}
                 <div className="hero-bg">
                     <div className="hero-gradient-sweep" />
-                    <div className="grid-pattern" />
                 </div>
-
-                {/* Decorative logo-color diagonal accents */}
-                <div style={{
-                    position: 'absolute',
-                    top: 0, right: 0,
-                    width: '45%', height: '100%',
-                    background: 'linear-gradient(135deg, transparent 40%, rgba(74,173,160,0.06) 100%)',
-                    zIndex: 1, pointerEvents: 'none',
-                }} />
-                <div style={{
-                    position: 'absolute',
-                    bottom: 0, left: 0,
-                    width: '30%', height: '50%',
-                    background: 'linear-gradient(315deg, transparent 40%, rgba(139,26,45,0.08) 100%)',
-                    zIndex: 1, pointerEvents: 'none',
-                }} />
 
                 <div className="container hero-container" style={{ position: 'relative', zIndex: 2, textAlign: 'center', padding: '11rem 2rem 5rem' }}>
 
@@ -280,110 +309,20 @@ const Home = () => {
                     >
                         <button
                             id="hero-cta-btn"
-                            className="btn btn-primary btn-lg"
-                            style={{ fontSize: '0.97rem', padding: '0.9rem 2rem', borderRadius: 'var(--radius-full)' }}
+                            className="btn btn-hero-modern btn-lg"
+                            style={{ fontSize: '0.97rem', padding: '0.9rem 2.2rem' }}
                             onClick={() => navigate('/onboarding')}
                         >
                             Start Your Journey <ArrowRight size={19} />
                         </button>
                         <button
                             id="hero-services-btn"
-                            className="btn btn-ghost btn-lg"
-                            style={{ fontSize: '0.97rem', padding: '0.9rem 2rem', borderRadius: 'var(--radius-full)' }}
+                            className="btn btn-hero-modern btn-lg"
+                            style={{ fontSize: '0.97rem', padding: '0.9rem 2.2rem' }}
                             onClick={() => navigate('/recommendations')}
                         >
                             Explore Services
                         </button>
-                    </motion.div>
-
-                    {/* Trust indicators */}
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ duration: 0.8, delay: 0.6 }}
-                        style={{
-                            marginTop: '4rem',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '2rem',
-                            flexWrap: 'wrap',
-                        }}
-                    >
-                        {[
-                            { label: '₹20Cr+ Savings', color: '#EFA020' },
-                            { label: '500+ Clients', color: '#6DC5BA' },
-                            { label: '98% Satisfaction', color: '#F5B94A' },
-                            { label: 'GST Certified', color: '#4AADA0' },
-                        ].map((item) => (
-                            <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                <CheckCircle size={15} color={item.color} />
-                                <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', fontWeight: 500 }}>{item.label}</span>
-                            </div>
-                        ))}
-                    </motion.div>
-                </div>
-
-
-            </section>
-
-            {/* ===== STATS BAR ===== */}
-            <section style={{ background: 'transparent', borderBottom: '1px solid var(--border)', position: 'relative' }}>
-                <div className="container" style={{ padding: '4.5rem 2rem' }}>
-                    <motion.div
-                        initial={{ opacity: 0, y: 28 }}
-                        whileInView={{ opacity: 1, y: 0 }}
-                        viewport={{ once: true }}
-                    >
-                        <PremiumCard
-                            className="home-stats-card"
-                            glowColor="rgba(245, 158, 11, 0.2)"
-                            style={{ padding: '3.5rem', cursor: 'default' }}
-                        >
-                            <div className="grid-4" style={{ gap: '2rem' }}>
-                                {stats.map((stat, i) => {
-                                    const Icon = stat.icon;
-                                    return (
-                                        <div
-                                            key={stat.label}
-                                            style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', transition: 'transform 0.2s' }}
-                                            onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-5px)'; }}
-                                            onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}
-                                        >
-                                            <div style={{
-                                                width: 54, height: 54,
-                                                borderRadius: '16px',
-                                                background: `rgba(${parseInt(stat.color.slice(1, 3), 16)}, ${parseInt(stat.color.slice(3, 5), 16)}, ${parseInt(stat.color.slice(5, 7), 16)}, 0.05)`,
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                marginBottom: '1.2rem',
-                                                border: `1px solid ${stat.color}40`,
-                                                transition: 'box-shadow 0.2s',
-                                            }}
-                                                onMouseOver={(e) => { e.currentTarget.style.boxShadow = `0 0 10px ${stat.color}40`; }}
-                                                onMouseOut={(e) => { e.currentTarget.style.boxShadow = `none`; }}>
-                                                <Icon size={24} color={stat.color} />
-                                            </div>
-                                            <div style={{
-                                                fontFamily: 'var(--font-display)',
-                                                fontSize: '2.4rem',
-                                                fontWeight: 900,
-                                                color: '#fff',
-                                                letterSpacing: '-0.02em',
-                                                lineHeight: 1,
-                                                marginBottom: '0.5rem',
-                                            }}>
-                                                {stat.value}
-                                            </div>
-                                            <div style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.7)', fontWeight: 500 }}>
-                                                {stat.label}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </PremiumCard>
                     </motion.div>
                 </div>
             </section>
@@ -399,8 +338,8 @@ const Home = () => {
                             whileInView={{ opacity: 1, y: 0 }}
                             viewport={{ once: true }}
                         >
-                            <div className="section-tag">
-                                <Zap size={11} /> Our Services
+                            <div className="section-tag-vgreen">
+                                Our Services
                             </div>
                             <h2 className="section-title" style={{ fontWeight: 600, letterSpacing: '0.05em' }}>Comprehensive Business Solutions</h2>
                             <p className="section-sub" style={{ margin: '0 auto' }}>
@@ -481,8 +420,8 @@ const Home = () => {
                             }}>
                                 {/* Left: Text */}
                                 <div>
-                                    <div className="section-tag" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff' }}>
-                                        <CheckCircle size={11} color="#10b981" /> Why Choose Us
+                                    <div className="section-tag-vgreen">
+                                        Why Choose Us
                                     </div>
                                     <h2 className="section-title" style={{ fontSize: '2.4rem', fontWeight: 600, letterSpacing: '0.05em', color: '#fff' }}>
                                         Your Growth is Our
@@ -583,7 +522,7 @@ const Home = () => {
                             style={{ padding: 'clamp(1.75rem, 5vw, 4rem) clamp(1.25rem, 4vw, 3rem)' }}
                         >
                             <div style={{ textAlign: 'center', marginBottom: 'clamp(1.5rem, 4vw, 3.5rem)' }}>
-                                <div className="section-tag-teal" style={{ background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)', color: '#3b82f6' }}><Star size={11} color="#3b82f6" fill="#3b82f6" /> Testimonials</div>
+                                <div className="section-tag-vgreen">Testimonials</div>
                                 <h2 className="section-title" style={{ fontWeight: 600, letterSpacing: '0.05em', color: '#fff' }}>Trusted by Founders Across India</h2>
                             </div>
 
@@ -730,17 +669,7 @@ const Home = () => {
                         whileInView={{ opacity: 1, y: 0 }}
                         viewport={{ once: true }}
                     >
-                        <div style={{
-                            display: 'inline-flex', alignItems: 'center', gap: '0.5rem',
-                            background: 'var(--bg-card-alt)',
-                            border: '1px solid var(--border)',
-                            borderRadius: 'var(--radius-full)',
-                            padding: '0.4rem 1rem',
-                            fontSize: '0.75rem', fontWeight: 700,
-                            color: 'var(--text-muted)',
-                            letterSpacing: '0.07em', textTransform: 'uppercase',
-                            margin: '0 auto 1.5rem',
-                        }}>
+                        <div className="section-tag-whitesmoke">
                             Get Started Today
                         </div>
                         <h2 style={{
@@ -755,18 +684,18 @@ const Home = () => {
                         </h2>
                         <p style={{
                             color: 'var(--text-secondary)',
-                            fontSize: '1rem',
-                            maxWidth: '520px',
-                            margin: '0 auto 2.5rem',
-                            lineHeight: 1.75,
+                            fontSize: '1.05rem',
+                            maxWidth: '540px',
+                            margin: '0 auto 2.8rem',
+                            lineHeight: 1.8,
                         }}>
                             Take the first step. Answer a few quick questions and get a personalized consulting roadmap built for your business.
                         </p>
                         <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
                             <button
                                 id="cta-explore-dashboard-btn"
-                                className="btn btn-primary btn-lg"
-                                style={{ borderRadius: 'var(--radius-full)', padding: '0.9rem 2.2rem' }}
+                                className="btn-hero-modern"
+                                style={{ padding: '1rem 2.8rem' }}
                                 onClick={() => navigate('/dashboard')}
                             >
                                 Explore Dashboard <ArrowRight size={19} />

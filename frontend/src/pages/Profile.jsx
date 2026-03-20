@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { User, Mail, Shield, Building, Edit2, Save, X, Phone, Globe } from 'lucide-react';
+import { User, Mail, Shield, Building, Edit2, Save, X, Phone, Globe, Hash, Briefcase } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'react-hot-toast';
+import Loader from '../components/Loader';
 
 const Profile = () => {
     const [user, setUser] = useState(null);
@@ -16,6 +17,12 @@ const Profile = () => {
             businessStage: '',
             industry: ''
         }
+    });
+    const [isLightMode, setIsLightMode] = useState(() => {
+        if (typeof document !== 'undefined' && document.body) {
+            return document.body.classList.contains('light-mode');
+        }
+        return localStorage.getItem('theme') === 'light';
     });
 
     useEffect(() => {
@@ -45,6 +52,29 @@ const Profile = () => {
         fetchProfile();
     }, []);
 
+    useEffect(() => {
+        const syncThemeState = () => {
+            const fromBody = typeof document !== 'undefined' && document.body
+                ? document.body.classList.contains('light-mode')
+                : false;
+            const fromStorage = localStorage.getItem('theme') === 'light';
+            setIsLightMode(fromBody || fromStorage);
+        };
+
+        syncThemeState();
+
+        const observer = new MutationObserver(syncThemeState);
+        if (document.body) {
+            observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+        }
+
+        window.addEventListener('storage', syncThemeState);
+        return () => {
+            observer.disconnect();
+            window.removeEventListener('storage', syncThemeState);
+        };
+    }, []);
+
     const handleUpdate = async (e) => {
         e.preventDefault();
         try {
@@ -53,9 +83,13 @@ const Profile = () => {
                 headers: { Authorization: `Bearer ${storedUser.token}` }
             });
             if (response.data) {
-                const updatedUser = { ...storedUser, ...response.data };
-                localStorage.setItem('user', JSON.stringify(updatedUser));
-                setUser(response.data);
+                // Ensure we don't overwrite the token with undefined if it's not in the response
+                const userData = { ...response.data };
+                if (!userData.token) {
+                    userData.token = storedUser.token;
+                }
+                localStorage.setItem('user', JSON.stringify(userData));
+                setUser(userData);
                 setIsEditing(false);
                 toast.success("Profile updated successfully!");
                 // Dispatch storage event to update navbar
@@ -66,204 +100,369 @@ const Profile = () => {
         }
     };
 
-    if (!user) return <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text)' }}>Loading...</div>;
+    if (!user) return <Loader />;
+
+    const inputStyle = (editable) => ({
+        width: '100%',
+        padding: '12px 16px',
+        borderRadius: '12px',
+        border: editable
+            ? '1px solid #22c55e'
+            : isLightMode
+                ? '1px solid rgba(0, 0, 0, 0.15)'
+                : '1px solid rgba(255, 255, 255, 0.1)',
+        background: editable
+            ? isLightMode
+                ? '#ffffff'
+                : 'rgba(34, 197, 94, 0.03)'
+            : isLightMode
+                ? 'rgba(0, 0, 0, 0.02)'
+                : 'rgba(255, 255, 255, 0.02)',
+        color: editable
+            ? isLightMode
+                ? '#111111'
+                : '#ffffff'
+            : isLightMode
+                ? 'rgba(0, 0, 0, 0.6)'
+                : 'rgba(255, 255, 255, 0.5)',
+        fontSize: '0.9rem',
+        outline: 'none',
+        transition: 'all 0.2s ease',
+        cursor: editable ? 'text' : 'not-allowed',
+        marginTop: '6px'
+    });
+
+    const labelStyle = {
+        fontSize: '0.75rem',
+        fontWeight: 600,
+        color: isLightMode ? 'rgba(0, 0, 0, 0.5)' : 'rgba(255, 255, 255, 0.4)',
+        textTransform: 'uppercase',
+        letterSpacing: '0.05em',
+        marginLeft: '4px'
+    };
 
     return (
-        <div
-            className="profile-container"
-            style={{
-                minHeight: '100vh',
-                padding: '100px 20px 40px',
-                background: 'var(--bg)',
-                color: 'var(--text)',
-                display: 'flex',
-                justifyContent: 'center'
-            }}
-        >
+        <div style={{
+            minHeight: '100vh',
+            width: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: isLightMode ? '#f3f4f6' : '#070708',
+            padding: '100px 20px 40px',
+            position: 'relative',
+            overflow: 'hidden'
+        }}>
+            {/* Background Effect */}
+            <div style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                width: '600px',
+                height: '600px',
+                background: isLightMode
+                    ? 'radial-gradient(circle, rgba(34, 197, 94, 0.08) 0%, transparent 70%)'
+                    : 'radial-gradient(circle, rgba(34, 197, 94, 0.05) 0%, transparent 70%)',
+                pointerEvents: 'none',
+                zIndex: 0
+            }} />
+            
+            <style>{`
+                .profile-input {
+                    -webkit-appearance: none;
+                    appearance: none;
+                    background-clip: padding-box;
+                }
+
+                body:not(.light-mode) .profile-input {
+                    color-scheme: dark;
+                }
+
+                body.light-mode .profile-input {
+                    color-scheme: light;
+                }
+
+                body:not(.light-mode) .profile-input:-webkit-autofill,
+                body:not(.light-mode) .profile-input:-webkit-autofill:hover,
+                body:not(.light-mode) .profile-input:-webkit-autofill:focus,
+                body:not(.light-mode) .profile-input:-webkit-autofill:active {
+                    -webkit-text-fill-color: white !important;
+                    -webkit-box-shadow: 0 0 0 1000px rgba(34, 197, 94, 0.03) inset !important;
+                    box-shadow: 0 0 0 1000px rgba(34, 197, 94, 0.03) inset !important;
+                    border: 1px solid #22c55e !important;
+                    caret-color: white;
+                    transition: background-color 9999s ease-in-out 0s;
+                }
+
+                body:not(.light-mode) .profile-input:autofill {
+                    -webkit-text-fill-color: white !important;
+                    box-shadow: 0 0 0 1000px #111114 inset !important;
+                    caret-color: white;
+                }
+
+                body.light-mode .profile-input:-webkit-autofill,
+                body.light-mode .profile-input:-webkit-autofill:hover,
+                body.light-mode .profile-input:-webkit-autofill:focus,
+                body.light-mode .profile-input:-webkit-autofill:active {
+                    -webkit-text-fill-color: #111111 !important;
+                    -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important;
+                    box-shadow: 0 0 0 1000px #ffffff inset !important;
+                    border: 1px solid #22c55e !important;
+                    caret-color: #111111;
+                    transition: background-color 9999s ease-in-out 0s;
+                }
+
+                body.light-mode .profile-input:autofill {
+                    -webkit-text-fill-color: #111111 !important;
+                    box-shadow: 0 0 0 1000px #ffffff inset !important;
+                    caret-color: #111111;
+                }
+
+                @media (max-width: 768px) {
+                    .profile-card {
+                        padding: 1.5rem !important;
+                    }
+                    .profile-header {
+                        flex-direction: column !important;
+                        align-items: flex-start !important;
+                        gap: 1rem !important;
+                    }
+                    .profile-header-title {
+                        font-size: 1.6rem !important;
+                        flex-wrap: wrap !important;
+                    }
+                    .profile-edit-btn {
+                        margin-left: 0 !important;
+                        width: 100% !important;
+                        justify-content: center !important;
+                        margin-top: 1rem !important;
+                    }
+                    .profile-form-grid {
+                        grid-template-columns: 1fr !important;
+                        gap: 1.5rem !important;
+                    }
+                    .profile-industry-stage-grid {
+                        grid-template-columns: 1fr !important;
+                        gap: 1rem !important;
+                    }
+                    .profile-actions {
+                        flex-direction: column !important;
+                        gap: 1rem !important;
+                    }
+                    .profile-actions button {
+                        width: 100% !important;
+                        justify-content: center !important;
+                    }
+                }
+            `}</style>
+
             <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
                 className="profile-card"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
                 style={{
                     width: '100%',
-                    maxWidth: '800px',
-                    background: 'var(--card-bg)',
-                    borderRadius: '24px',
-                    border: '1px solid var(--border)',
-                    boxShadow: 'var(--shadow-xl)',
-                    overflow: 'hidden'
+                    maxWidth: '850px',
+                    background: isLightMode
+                        ? 'linear-gradient(165deg, #ffffff 0%, #f7f7fa 100%)'
+                        : 'linear-gradient(165deg, #111114 0%, #0a0a0c 100%)',
+                    borderRadius: '30px',
+                    border: isLightMode ? '1px solid rgba(0, 0, 0, 0.1)' : '1px solid rgba(255, 255, 255, 0.08)',
+                    boxShadow: isLightMode ? '0 20px 60px -20px rgba(0, 0, 0, 0.25)' : '0 40px 100px -20px rgba(0, 0, 0, 0.8)',
+                    padding: '3rem',
+                    position: 'relative',
+                    zIndex: 1
                 }}
             >
-                {/* Header Section */}
-                <div
-                    className="profile-header"
-                    style={{
-                        padding: 'clamp(1.5rem, 5vw, 2.5rem)',
-                        background: 'linear-gradient(135deg, rgba(67,97,238,0.1), rgba(124,58,237,0.1))',
-                        borderBottom: '1px solid var(--border)',
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        gap: '1.5rem',
+                {/* Header with Square Avatar and Email */}
+                <div className="profile-header" style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '1.5rem',
+                    marginBottom: '3rem',
+                    borderBottom: isLightMode ? '1px solid rgba(0, 0, 0, 0.08)' : '1px solid rgba(255, 255, 255, 0.06)',
+                    paddingBottom: '2.5rem'
+                }}>
+                    <div style={{
                         position: 'relative',
-                        flexWrap: 'wrap',
-                    }}
-                >
-                    <div
-                        className="profile-avatar"
-                        style={{
-                            width: '80px',
-                            height: '80px',
+                        width: '72px',
+                        height: '72px',
+                        background: isLightMode ? '#f3f4f6' : '#1a1a1e',
+                        borderRadius: '18px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        border: isLightMode ? '1px solid rgba(0, 0, 0, 0.1)' : '1px solid rgba(255, 255, 255, 0.1)',
+                        flexShrink: 0
+                    }}>
+                        <User size={36} color={isLightMode ? '#111111' : 'white'} strokeWidth={2.5} />
+                        {/* Green Dot */}
+                        <div style={{
+                            position: 'absolute',
+                            bottom: '-5px',
+                            right: '-5px',
+                            width: '16px',
+                            height: '16px',
+                            backgroundColor: '#22c55e',
                             borderRadius: '50%',
-                            background: 'linear-gradient(135deg, #4361ee, #7c3aed)',
+                            border: isLightMode ? '3px solid #ffffff' : '3px solid #111114',
+                            boxShadow: '0 0 15px rgba(34, 197, 94, 0.5)'
+                        }}></div>
+                    </div>
+                    <div>
+                        <h1 className="profile-header-title" style={{
+                            fontSize: '2.2rem',
+                            fontWeight: 800,
+                            margin: 0,
+                            color: isLightMode ? '#111111' : 'white',
+                            letterSpacing: '-0.02em',
+                            lineHeight: 1.1,
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: '28px',
-                            fontWeight: 800,
-                            color: 'white',
-                            boxShadow: '0 10px 25px rgba(67,97,238,0.3)',
-                            flexShrink: 0,
-                        }}
-                    >
-                        {user.name[0]}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                        <h1 style={{ fontSize: 'clamp(1.4rem, 4vw, 2rem)', fontWeight: 800, margin: 0, letterSpacing: '-0.02em', wordBreak: 'break-word' }}>{user.name}</h1>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
+                            gap: '12px'
+                        }}>
+                            {user.name}
                             <span style={{
-                                padding: '4px 12px',
-                                background: user.role === 'admin' ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)',
-                                color: user.role === 'admin' ? '#ef4444' : '#10b981',
-                                borderRadius: '100px',
-                                fontSize: '0.75rem',
-                                fontWeight: 800,
+                                fontSize: '0.7rem',
+                                padding: '4px 10px',
+                                background: user.role === 'admin' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(255, 255, 255, 0.05)',
+                                color: user.role === 'admin' ? '#22c55e' : (isLightMode ? 'rgba(0, 0, 0, 0.55)' : 'rgba(255, 255, 255, 0.6)'),
+                                borderRadius: '8px',
                                 textTransform: 'uppercase',
                                 letterSpacing: '0.05em',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '4px'
+                                fontWeight: 800,
+                                alignSelf: 'center'
                             }}>
-                                <Shield size={12} /> {user.role}
+                                {user.role === 'admin' ? 'Admin' : 'User'}
                             </span>
-                            <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Member since {new Date(user.createdAt || Date.now()).getFullYear()}</span>
-                        </div>
+                        </h1>
+                        <p style={{
+                            fontSize: '1rem',
+                            color: isLightMode ? 'rgba(0, 0, 0, 0.55)' : 'rgba(255, 255, 255, 0.4)',
+                            margin: '4px 0 0',
+                            fontWeight: 500
+                        }}>
+                            {user.email}
+                        </p>
                     </div>
 
                     {!isEditing && (
                         <button
-                            onClick={() => setIsEditing(true)}
                             className="profile-edit-btn"
+                            onClick={() => setIsEditing(true)}
                             style={{
+                                marginLeft: 'auto',
+                                background: isLightMode ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.05)',
+                                border: isLightMode ? '1px solid rgba(0, 0, 0, 0.12)' : '1px solid rgba(255, 255, 255, 0.1)',
+                                color: isLightMode ? '#111111' : 'white',
                                 padding: '10px 20px',
                                 borderRadius: '12px',
-                                background: 'var(--bg)',
-                                border: '1px solid var(--border)',
-                                color: 'var(--text)',
+                                fontSize: '0.85rem',
+                                fontWeight: 700,
                                 cursor: 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: '8px',
-                                fontWeight: 600,
-                                transition: 'all 0.2s',
-                                whiteSpace: 'nowrap',
+                                transition: 'all 0.2s'
                             }}
+                            onMouseEnter={e => e.currentTarget.style.background = isLightMode ? 'rgba(0, 0, 0, 0.09)' : 'rgba(255, 255, 255, 0.1)'}
+                            onMouseLeave={e => e.currentTarget.style.background = isLightMode ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.05)'}
                         >
                             <Edit2 size={16} /> Edit Profile
                         </button>
                     )}
                 </div>
 
-                {/* Form / Details Section */}
-                <form onSubmit={handleUpdate} className="profile-form" style={{ padding: '40px' }}>
-                    <div className="profile-form-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '32px' }}>
-
-                        {/* Personal Info */}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                            <h3 className="profile-section-title" style={{ fontSize: '1.2rem', fontWeight: 800, margin: '0 0 10px', color: '#4361ee', letterSpacing: '0.02em' }}>Personal Information</h3>
-
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>Full Name</label>
-                                <div style={{ position: 'relative' }}>
-                                    <User size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                                    <input
-                                        disabled={!isEditing}
-                                        value={formData.name}
-                                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                        style={inputStyle(isEditing)}
-                                        placeholder="Your Name"
-                                    />
-                                </div>
+                {/* Form Content */}
+                <form onSubmit={handleUpdate} autoComplete="off">
+                    <div className="profile-form-grid" style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+                        gap: '2.5rem'
+                    }}>
+                        {/* Left Column: Personal */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                                <User size={14} color="#22c55e" />
+                                <span style={{ color: '#22c55e', fontSize: '0.8rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Personal</span>
                             </div>
 
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>Email Address</label>
-                                <div style={{ position: 'relative' }}>
-                                    <Mail size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                                    <input
-                                        disabled={true} // Usually email is changed via special flow
-                                        value={formData.email}
-                                        style={{ ...inputStyle(false), opacity: 0.7 }}
-                                    />
-                                </div>
+                            <div>
+                                <label style={labelStyle}>Full Name</label>
+                                <input
+                                    className="profile-input"
+                                    autoComplete="off"
+                                    name="profile_full_name"
+                                    disabled={!isEditing}
+                                    value={formData.name}
+                                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                    style={inputStyle(isEditing)}
+                                    placeholder="John Doe"
+                                />
                             </div>
 
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>Phone Number</label>
-                                <div style={{ position: 'relative' }}>
-                                    <Phone size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                                    <input
-                                        disabled={!isEditing}
-                                        value={formData.profile.phone}
-                                        onChange={(e) => setFormData({ ...formData, profile: { ...formData.profile, phone: e.target.value } })}
-                                        style={inputStyle(isEditing)}
-                                        placeholder="+91 00000 00000"
-                                    />
-                                </div>
+                            <div>
+                                <label style={labelStyle}>Phone Number</label>
+                                <input
+                                    className="profile-input"
+                                    autoComplete="off"
+                                    name="profile_phone"
+                                    disabled={!isEditing}
+                                    value={formData.profile.phone}
+                                    onChange={(e) => setFormData({ ...formData, profile: { ...formData.profile, phone: e.target.value } })}
+                                    style={inputStyle(isEditing)}
+                                    placeholder="+91 00000 00000"
+                                />
                             </div>
                         </div>
 
-                        {/* Business Info */}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                            <h3 className="profile-section-title" style={{ fontSize: '1.2rem', fontWeight: 800, margin: '0 0 10px', color: '#4361ee', letterSpacing: '0.02em' }}>Business Details</h3>
-
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>Company Name</label>
-                                <div style={{ position: 'relative' }}>
-                                    <Building size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                                    <input
-                                        disabled={!isEditing}
-                                        value={formData.profile.companyName}
-                                        onChange={(e) => setFormData({ ...formData, profile: { ...formData.profile, companyName: e.target.value } })}
-                                        style={inputStyle(isEditing)}
-                                        placeholder="Your Company"
-                                    />
-                                </div>
+                        {/* Right Column: Business */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                                <Building size={14} color="#22c55e" />
+                                <span style={{ color: '#22c55e', fontSize: '0.8rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Business</span>
                             </div>
 
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>Industry</label>
-                                <div style={{ position: 'relative' }}>
-                                    <Globe size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                            <div>
+                                <label style={labelStyle}>Company Name</label>
+                                <input
+                                    className="profile-input"
+                                    autoComplete="off"
+                                    name="profile_company"
+                                    disabled={!isEditing}
+                                    value={formData.profile.companyName}
+                                    onChange={(e) => setFormData({ ...formData, profile: { ...formData.profile, companyName: e.target.value } })}
+                                    style={inputStyle(isEditing)}
+                                    placeholder="Company Ltd."
+                                />
+                            </div>
+
+                            <div className="profile-industry-stage-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                <div>
+                                    <label style={labelStyle}>Industry</label>
                                     <input
+                                        className="profile-input"
+                                        autoComplete="off"
+                                        name="profile_industry"
                                         disabled={!isEditing}
                                         value={formData.profile.industry}
                                         onChange={(e) => setFormData({ ...formData, profile: { ...formData.profile, industry: e.target.value } })}
                                         style={inputStyle(isEditing)}
-                                        placeholder="e.g. Fintech, Healthcare"
+                                        placeholder="Tech"
                                     />
                                 </div>
-                            </div>
-
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>Business Stage</label>
-                                <div style={{ position: 'relative' }}>
-                                    <Shield size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                                <div>
+                                    <label style={labelStyle}>Stage</label>
                                     <input
+                                        className="profile-input"
+                                        autoComplete="off"
+                                        name="profile_stage"
                                         disabled={!isEditing}
                                         value={formData.profile.businessStage}
                                         onChange={(e) => setFormData({ ...formData, profile: { ...formData.profile, businessStage: e.target.value } })}
                                         style={inputStyle(isEditing)}
-                                        placeholder="Startup, Growth, etc."
+                                        placeholder="Growth"
                                     />
                                 </div>
                             </div>
@@ -271,42 +470,48 @@ const Profile = () => {
                     </div>
 
                     {isEditing && (
-                        <div className="profile-actions" style={{ marginTop: '40px', display: 'flex', gap: '16px', justifyContent: 'flex-end' }}>
+                        <div className="profile-actions" style={{
+                            display: 'flex',
+                            justifyContent: 'flex-end',
+                            gap: '1rem',
+                            marginTop: '3.5rem',
+                            borderTop: isLightMode ? '1px solid rgba(0, 0, 0, 0.08)' : '1px solid rgba(255, 255, 255, 0.06)',
+                            paddingTop: '2rem'
+                        }}>
                             <button
                                 type="button"
                                 onClick={() => setIsEditing(false)}
                                 style={{
                                     padding: '12px 24px',
-                                    borderRadius: '12px',
+                                    borderRadius: '14px',
                                     background: 'transparent',
-                                    border: '1px solid var(--border)',
-                                    color: 'var(--text)',
+                                    border: isLightMode ? '1px solid rgba(0, 0, 0, 0.15)' : '1px solid rgba(255, 255, 255, 0.1)',
+                                    color: isLightMode ? '#111111' : 'white',
+                                    fontWeight: 700,
                                     cursor: 'pointer',
-                                    fontWeight: 600,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '8px'
+                                    fontSize: '0.9rem'
                                 }}
                             >
-                                <X size={18} /> Cancel
+                                Cancel
                             </button>
                             <button
                                 type="submit"
                                 style={{
-                                    padding: '12px 32px',
-                                    borderRadius: '12px',
-                                    background: 'var(--grad-primary)',
+                                    padding: '12px 36px',
+                                    borderRadius: '14px',
+                                    background: 'linear-gradient(135deg, #16a34a 0%, #22c55e 100%)',
                                     border: 'none',
                                     color: 'white',
+                                    fontWeight: 800,
                                     cursor: 'pointer',
-                                    fontWeight: 700,
+                                    fontSize: '0.9rem',
+                                    boxShadow: '0 10px 25px -5px rgba(34, 197, 94, 0.4)',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '8px',
-                                    boxShadow: '0 4px 15px rgba(67,97,238,0.3)'
+                                    gap: '10px'
                                 }}
                             >
-                                <Save size={18} /> Save Changes
+                                <Save size={18} /> Save Profile
                             </button>
                         </div>
                     )}
@@ -315,19 +520,5 @@ const Profile = () => {
         </div>
     );
 };
-
-const inputStyle = (editable) => ({
-    width: '100%',
-    padding: '12px 12px 12px 42px',
-    borderRadius: '12px',
-    border: editable ? '2px solid var(--primary)' : '1px solid var(--border)',
-    background: editable ? 'var(--bg)' : 'rgba(255,255,255,0.02)',
-    color: 'var(--text)',
-    fontSize: '0.95rem',
-    fontWeight: 500,
-    outline: 'none',
-    transition: 'all 0.2s',
-    cursor: editable ? 'text' : 'not-allowed'
-});
 
 export default Profile;
