@@ -37,7 +37,9 @@ const POST_LOGIN_STEPS = [
     }
 ];
 
-const GUEST_WALKTHROUGH_KEY = 'vithartha_guest_walkthrough_seen_v3';
+const GUEST_WALKTHROUGH_MOBILE_KEY = 'vithartha_guest_walkthrough_mobile_seen_v1';
+const GUEST_WALKTHROUGH_DESKTOP_KEY = 'vithartha_guest_walkthrough_desktop_seen_v1';
+const MOBILE_BREAKPOINT = 768;
 
 const Walkthrough = ({ isAppLoading }) => {
     const [isVisible, setIsVisible] = useState(false);
@@ -49,6 +51,23 @@ const Walkthrough = ({ isAppLoading }) => {
     
     const navigate = useNavigate();
     const location = useLocation();
+
+    const getStoredUser = useCallback(() => {
+        const userStr = localStorage.getItem('user');
+        if (!userStr) return null;
+        try {
+            return JSON.parse(userStr);
+        } catch {
+            localStorage.removeItem('user');
+            return null;
+        }
+    }, []);
+
+    const getGuestSeenKey = useCallback(() => {
+        return window.innerWidth <= MOBILE_BREAKPOINT
+            ? GUEST_WALKTHROUGH_MOBILE_KEY
+            : GUEST_WALKTHROUGH_DESKTOP_KEY;
+    }, []);
 
     const burstFlowers = useCallback((intense = false) => {
         confetti({
@@ -104,29 +123,18 @@ const Walkthrough = ({ isAppLoading }) => {
     }, [getVisibleTargetElement]);
 
     const getGuestSignUpButton = useCallback(() => {
-        // Order of preference: 
-        // 1. The actual mobile signup button (if menu is open)
-        // 2. The desktop login/signup button
-        // 3. The mobile toggle (hamburger)
-        const candidates = [
-            document.querySelector('#navbar-mobile-signup-btn'),
-            document.querySelector('#navbar-login-btn'),
-            document.querySelector('#navbar-mobile-toggle'),
-        ].filter(Boolean);
+        const btn = document.querySelector('#navbar-login-btn');
+        if (!btn) return null;
 
-        const visible = candidates.find((el) => {
-            const rect = el.getBoundingClientRect();
-            // Check visibility and also if it's within viewport roughly
-            return rect.width > 0 && rect.height > 0 && rect.top >= 0 && rect.top <= window.innerHeight;
-        });
-
-        // Fallback to whichever candidate exists
-        return visible || candidates[0] || null;
+        const rect = btn.getBoundingClientRect();
+        const isVisible = rect.width > 0 && rect.height > 0;
+        return isVisible ? btn : null;
     }, []);
 
     const checkVisibility = useCallback(() => {
-        const userStr = localStorage.getItem('user');
-        const user = userStr ? JSON.parse(userStr) : null;
+        if (isAppLoading) return;
+
+        const user = getStoredUser();
         const isAuthPage = location.pathname.includes('/login') || location.pathname.includes('/register');
         const isLandingPage = location.pathname === '/';
         
@@ -136,9 +144,14 @@ const Walkthrough = ({ isAppLoading }) => {
         }
 
         if (mode === 'guest' && isVisible) {
-            const hasSeenGuest = localStorage.getItem(GUEST_WALKTHROUGH_KEY) === 'true';
+            const hasSeenGuest = localStorage.getItem(getGuestSeenKey()) === 'true';
             if (hasSeenGuest || !isLandingPage || !!user) {
                 setIsVisible(false);
+                return;
+            }
+            const isMobile = window.innerWidth <= MOBILE_BREAKPOINT;
+            if (isMobile) {
+                setNavbarBtnRect(null);
                 return;
             }
             // Update the rect for positioning
@@ -161,20 +174,26 @@ const Walkthrough = ({ isAppLoading }) => {
         }
 
         if (!user) {
-            const hasSeenGuest = localStorage.getItem(GUEST_WALKTHROUGH_KEY) === 'true';
+            const hasSeenGuest = localStorage.getItem(getGuestSeenKey()) === 'true';
             if (hasSeenGuest || !isLandingPage) {
                 setIsVisible(false);
                 return;
             }
 
             setMode('guest');
-            const btn = getGuestSignUpButton();
-            if (btn) {
-                const rect = btn.getBoundingClientRect();
-                setNavbarBtnRect(rect);
+            const isMobile = window.innerWidth <= MOBILE_BREAKPOINT;
+            if (isMobile) {
+                setNavbarBtnRect(null);
                 setIsVisible(true);
             } else {
-                setIsVisible(false);
+                const btn = getGuestSignUpButton();
+                if (btn) {
+                    const rect = btn.getBoundingClientRect();
+                    setNavbarBtnRect(rect);
+                    setIsVisible(true);
+                } else {
+                    setIsVisible(false);
+                }
             }
         } else {
             const hasSeenPostLogin = hasSeenPostLoginWalkthrough(user);
@@ -196,11 +215,11 @@ const Walkthrough = ({ isAppLoading }) => {
                 setIsVisible(false);
             }
         }
-    }, [location.pathname, currentStep, updateTargetRect, isVisible, mode, getGuestSignUpButton]);
+    }, [location.pathname, currentStep, updateTargetRect, isVisible, mode, getGuestSignUpButton, getStoredUser, getGuestSeenKey, isAppLoading]);
 
     useEffect(() => {
         // Initial check with delay for page load
-        const timer = setTimeout(checkVisibility, 500);
+        const timer = setTimeout(checkVisibility, 150);
         
         // Listeners for dynamic updates
         window.addEventListener('storage', checkVisibility);
@@ -225,23 +244,27 @@ const Walkthrough = ({ isAppLoading }) => {
     }, [checkVisibility]);
 
     useEffect(() => {
+        if (isAppLoading) return;
+        checkVisibility();
+        const settleTimer = setTimeout(checkVisibility, 300);
+        return () => clearTimeout(settleTimer);
+    }, [isAppLoading, location.pathname, checkVisibility]);
+
+    useEffect(() => {
         if (!isVisible || mode !== 'guest') return;
+        if (window.innerWidth <= MOBILE_BREAKPOINT) return;
 
         const btn = getGuestSignUpButton();
         if (!btn) return;
 
         const handleGuestSignUpClick = (e) => {
-            // Do not dismiss if clicking the hamburger menu toggle; 
-            // we want to wait for the menu to open and point to the real button.
-            if (btn.id === 'navbar-mobile-toggle') return;
-            
-            localStorage.setItem(GUEST_WALKTHROUGH_KEY, 'true');
+            localStorage.setItem(getGuestSeenKey(), 'true');
             setIsVisible(false);
         };
 
         btn.addEventListener('click', handleGuestSignUpClick);
         return () => btn.removeEventListener('click', handleGuestSignUpClick);
-    }, [isVisible, mode, getGuestSignUpButton]);
+    }, [isVisible, mode, getGuestSignUpButton, getGuestSeenKey]);
 
     useEffect(() => () => clearPostLoginTimers(), [clearPostLoginTimers]);
 
@@ -278,15 +301,34 @@ const Walkthrough = ({ isAppLoading }) => {
         clearPostLoginTimers();
         setIsVisible(false);
         if (mode === 'post-login' || mode === 'user') {
-            const userStr = localStorage.getItem('user');
-            const user = userStr ? JSON.parse(userStr) : null;
+            const user = getStoredUser();
             if (user) markPostLoginWalkthroughSeen(user);
             burstFlowers(true);
         } else if (mode === 'guest') {
-            localStorage.setItem(GUEST_WALKTHROUGH_KEY, 'true');
+            localStorage.setItem(getGuestSeenKey(), 'true');
         }
         setCurrentStep(0);
     };
+
+    useEffect(() => {
+        if (!isVisible || mode !== 'guest' || window.innerWidth <= MOBILE_BREAKPOINT) return;
+        if (navbarBtnRect) return;
+
+        let frameId = null;
+        const resolveDesktopTarget = () => {
+            const btn = getGuestSignUpButton();
+            if (btn) {
+                setNavbarBtnRect(btn.getBoundingClientRect());
+                return;
+            }
+            frameId = window.requestAnimationFrame(resolveDesktopTarget);
+        };
+
+        frameId = window.requestAnimationFrame(resolveDesktopTarget);
+        return () => {
+            if (frameId) window.cancelAnimationFrame(frameId);
+        };
+    }, [isVisible, mode, navbarBtnRect, getGuestSignUpButton]);
 
     if (!isVisible || isAppLoading) return null;
 
@@ -435,9 +477,13 @@ const Walkthrough = ({ isAppLoading }) => {
         );
     };
 
-    if (mode === 'guest' && navbarBtnRect) {
+    const isMobile = window.innerWidth <= MOBILE_BREAKPOINT;
+    const desktopBtn = !isMobile ? getGuestSignUpButton() : null;
+    const effectiveGuestRect = isMobile ? null : (navbarBtnRect || (desktopBtn ? desktopBtn.getBoundingClientRect() : null));
+
+    if (mode === 'guest' && (effectiveGuestRect || isMobile)) {
         return (
-            <TooltipWrapper targetRect={navbarBtnRect} color="#ff3b30" isGuest={true}>
+            <TooltipWrapper targetRect={effectiveGuestRect} color="#ff3b30" isGuest={!isMobile}>
                 <div style={{
                     background: 'rgba(15, 15, 18, 0.98)',
                     backdropFilter: 'blur(20px)',
@@ -459,7 +505,6 @@ const Walkthrough = ({ isAppLoading }) => {
         );
     }
     // POST-LOGIN MODE
-    const isMobile = window.innerWidth <= 768;
     if (mode === 'post-login' && (targetRect || isMobile)) {
         const step = POST_LOGIN_STEPS[currentStep];
         const StepIcon = step.icon;
