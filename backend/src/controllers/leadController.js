@@ -52,6 +52,32 @@ export const updateLead = async (req, res) => {
         const { id } = req.params;
         const updateData = { ...req.body, updatedAt: Date.now() };
 
+        if (updateData.status === 'DraftSent' || updateData.status === 'Completed') {
+            const existingLead = await Lead.findById(id);
+            if (!existingLead) {
+                return res.status(404).json({ success: false, message: 'Lead not found' });
+            }
+
+            const pushedDocuments = req.body?.$push?.documents;
+            const currentDocuments = Array.isArray(existingLead.documents) ? existingLead.documents : [];
+            const incomingDocuments = pushedDocuments ? [pushedDocuments] : [];
+            const allDocuments = [...currentDocuments, ...incomingDocuments];
+
+            if (updateData.status === 'DraftSent') {
+                const hasDraft = allDocuments.some((doc) => doc?.type === 'Draft');
+                if (!hasDraft) {
+                    return res.status(400).json({ success: false, message: 'Draft must be uploaded before sending it to user.' });
+                }
+            }
+
+            if (updateData.status === 'Completed') {
+                const hasFinal = allDocuments.some((doc) => doc?.type === 'Final');
+                if (!hasFinal) {
+                    return res.status(400).json({ success: false, message: 'Final return must be uploaded before completing service.' });
+                }
+            }
+        }
+
         // If it's a $push operation (from frontend mock)
         let updatedLead;
         if (req.body.$push) {

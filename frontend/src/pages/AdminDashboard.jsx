@@ -187,7 +187,7 @@ const AdminDashboard = () => {
 
       if (!uploadRes.data.success) throw new Error("Upload failed");
 
-      // Add the draft/final to the documents array and update status if Final
+      // Add admin-uploaded draft/final document into lead documents
       const updatePayload = {
         $push: {
           documents: {
@@ -201,9 +201,8 @@ const AdminDashboard = () => {
       };
 
       if (type === "Final") {
-        updatePayload.status = "Completed";
         updatePayload.adminMessage =
-          "Final return uploaded. Please review/download your final document below.";
+          "Final return uploaded. Final document is ready for delivery.";
       }
 
       await axios.patch(`${apiUrl}/leads/${leadId}`, updatePayload);
@@ -221,6 +220,14 @@ const AdminDashboard = () => {
     if (e) e.stopPropagation();
     try {
       const apiUrl = import.meta.env.VITE_API_URL;
+      const lead = leads.find((item) => item._id === id);
+      const hasDraftDoc = lead?.documents?.some((doc) => doc.type === "Draft");
+
+      if (!hasDraftDoc) {
+        toast.error("Upload draft first before sending to user");
+        return;
+      }
+
       await axios.patch(`${apiUrl}/leads/${id}`, {
         status: "DraftSent",
         adminMessage:
@@ -238,6 +245,14 @@ const AdminDashboard = () => {
     if (e) e.stopPropagation();
     try {
       const apiUrl = import.meta.env.VITE_API_URL;
+      const lead = leads.find((item) => item._id === id);
+      const hasFinalDoc = lead?.documents?.some((doc) => doc.type === "Final");
+
+      if (!hasFinalDoc) {
+        toast.error("Upload final return first before completing service");
+        return;
+      }
+
       await axios.patch(`${apiUrl}/leads/${id}`, { status: "Completed" });
       toast.success("Service marked as completed!");
       fetchLeads();
@@ -1226,6 +1241,9 @@ const AdminDashboard = () => {
                                   </button>
                                 </>
                               ) : lead.status === "InProgress" ? (
+                                (() => {
+                                  const hasDraftDoc = lead.documents?.some((doc) => doc.type === "Draft");
+                                  return (
                                 <>
                                   <input
                                     type="file"
@@ -1266,23 +1284,30 @@ const AdminDashboard = () => {
                                     onClick={(e) =>
                                       handleSendDraft(lead._id, e)
                                     }
+                                    disabled={!hasDraftDoc}
                                     style={{
                                       padding: "0.8rem",
-                                      background: "#22c55e",
-                                      border: "none",
-                                      color: "white",
+                                      background: hasDraftDoc ? "#22c55e" : "rgba(255,255,255,0.03)",
+                                      border: hasDraftDoc ? "none" : "1px solid var(--dashboard-card-border)",
+                                      color: hasDraftDoc ? "white" : "var(--text-muted)",
                                       borderRadius: "12px",
                                       fontWeight: 800,
-                                      cursor: "pointer",
-                                      boxShadow:
-                                        "0 4px 15px rgba(34, 197, 94, 0.2)",
+                                      cursor: hasDraftDoc ? "pointer" : "not-allowed",
+                                      boxShadow: hasDraftDoc
+                                        ? "0 4px 15px rgba(34, 197, 94, 0.2)"
+                                        : "none",
                                       transition: "all 0.3s ease",
                                     }}
                                   >
                                     Send Draft
                                   </button>
                                 </>
+                                  );
+                                })()
                               ) : lead.status === "UserAccepted" ? (
+                                (() => {
+                                  const hasFinalDoc = lead.documents?.some((doc) => doc.type === "Final");
+                                  return (
                                 <>
                                   <input
                                     type="file"
@@ -1321,22 +1346,26 @@ const AdminDashboard = () => {
                                   </button>
                                   <button
                                     onClick={(e) => handleComplete(lead._id, e)}
+                                    disabled={!hasFinalDoc}
                                     style={{
                                       padding: "0.8rem",
-                                      background: "#22c55e",
-                                      border: "none",
-                                      color: "white",
+                                      background: hasFinalDoc ? "#22c55e" : "rgba(255,255,255,0.03)",
+                                      border: hasFinalDoc ? "none" : "1px solid var(--dashboard-card-border)",
+                                      color: hasFinalDoc ? "white" : "var(--text-muted)",
                                       borderRadius: "12px",
                                       fontWeight: 800,
-                                      cursor: "pointer",
-                                      boxShadow:
-                                        "0 4px 15px rgba(34, 197, 94, 0.2)",
+                                      cursor: hasFinalDoc ? "pointer" : "not-allowed",
+                                      boxShadow: hasFinalDoc
+                                        ? "0 4px 15px rgba(34, 197, 94, 0.2)"
+                                        : "none",
                                       transition: "all 0.3s ease",
                                     }}
                                   >
                                     Complete Service
                                   </button>
                                 </>
+                                  );
+                                })()
                               ) : (
                                 <div
                                   style={{
