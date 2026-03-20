@@ -37,8 +37,8 @@ const POST_LOGIN_STEPS = [
     }
 ];
 
-const GUEST_WALKTHROUGH_MOBILE_KEY = 'vithartha_guest_walkthrough_mobile_v3';
-const GUEST_WALKTHROUGH_DESKTOP_KEY = 'vithartha_guest_walkthrough_desktop_v3';
+const GUEST_WALKTHROUGH_MOBILE_KEY = 'vithartha_guest_walkthrough_mobile_v4';
+const GUEST_WALKTHROUGH_DESKTOP_KEY = 'vithartha_guest_walkthrough_desktop_v4';
 const MOBILE_BREAKPOINT = 768;
 
 const Walkthrough = ({ isAppLoading }) => {
@@ -65,6 +65,22 @@ const Walkthrough = ({ isAppLoading }) => {
     }, []);
 
     const getGuestSeenKey = useCallback(() => {
+        const mobileToggle = document.querySelector('#navbar-mobile-toggle');
+        if (mobileToggle) {
+            const mobileRect = mobileToggle.getBoundingClientRect();
+            if (mobileRect.width > 0 && mobileRect.height > 0) {
+                return GUEST_WALKTHROUGH_MOBILE_KEY;
+            }
+        }
+
+        const desktopBtn = document.querySelector('#navbar-login-btn');
+        if (desktopBtn) {
+            const desktopRect = desktopBtn.getBoundingClientRect();
+            if (desktopRect.width > 0 && desktopRect.height > 0) {
+                return GUEST_WALKTHROUGH_DESKTOP_KEY;
+            }
+        }
+
         return window.innerWidth <= MOBILE_BREAKPOINT
             ? GUEST_WALKTHROUGH_MOBILE_KEY
             : GUEST_WALKTHROUGH_DESKTOP_KEY;
@@ -142,8 +158,13 @@ const Walkthrough = ({ isAppLoading }) => {
     }, []);
 
     const getGuestWalkthroughTarget = useCallback(() => {
-        const isMobile = window.innerWidth <= MOBILE_BREAKPOINT;
-        return isMobile ? getGuestMobileEntryButton() : getGuestSignUpButton();
+        const mobileBtn = getGuestMobileEntryButton();
+        if (mobileBtn) return mobileBtn;
+
+        const desktopBtn = getGuestSignUpButton();
+        if (desktopBtn) return desktopBtn;
+
+        return null;
     }, [getGuestMobileEntryButton, getGuestSignUpButton]);
 
     const checkVisibility = useCallback(() => {
@@ -492,15 +513,17 @@ const Walkthrough = ({ isAppLoading }) => {
 
     const isMobile = window.innerWidth <= MOBILE_BREAKPOINT;
     const isSmallScreen = window.innerWidth <= 430;
+    const mobileEntryButton = getGuestMobileEntryButton();
+    const hasMobileNavEntry = !!mobileEntryButton;
     const guestTargetBtn = getGuestWalkthroughTarget();
     const effectiveGuestRect = navbarBtnRect || (guestTargetBtn ? guestTargetBtn.getBoundingClientRect() : null);
 
     if (mode === 'guest') {
-        // For mobile, we don't want to point to the button, just show the message centered
-        const guestTr = isMobile ? null : effectiveGuestRect;
+        // Keep guest message centered whenever mobile nav entry is active.
+        const guestTr = hasMobileNavEntry ? null : effectiveGuestRect;
 
         return (
-            <TooltipWrapper targetRect={guestTr} color="#ff3b30" isGuest={!isMobile}>
+            <TooltipWrapper targetRect={guestTr} color="#ff3b30" isGuest={!hasMobileNavEntry}>
                 <div style={{
                     background: 'rgba(15, 15, 18, 0.98)',
                     backdropFilter: 'blur(20px)',
@@ -512,8 +535,8 @@ const Walkthrough = ({ isAppLoading }) => {
                 }}>
                     <h1 style={{ color: '#ff3b30', fontSize: isSmallScreen ? '0.82rem' : (isMobile ? '0.9rem' : '0.98rem'), fontWeight: 900, marginBottom: '0.4rem', textTransform: 'uppercase', margin: 0 }}>Action Required</h1>
                     <p style={{ color: 'rgba(255,255,255,0.9)', fontSize: isSmallScreen ? '0.78rem' : (isMobile ? '0.83rem' : '0.9rem'), lineHeight: 1.5, margin: '0.45rem 0 0' }}>
-                        {isMobile
-                            ? <>Welcome to Vithartha! Sign up to create your account and unlock your personalized roadmap.</>
+                        {hasMobileNavEntry
+                            ? <>Welcome to Vithartha! Tap the menu icon, then choose <b>Sign Up</b> to create your account and unlock your personalized roadmap.</>
                             : <>New here? Click <b>Sign Up</b> to create your account and unlock your personalized roadmap.</>
                         }
                     </p>
