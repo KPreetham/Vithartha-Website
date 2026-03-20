@@ -721,6 +721,7 @@ const Recommendations = () => {
 
     const storedUser = JSON.parse(localStorage.getItem('user'));
     const isAdmin = storedUser?.role === 'admin';
+    const mobileNavbarOffset = 'calc(env(safe-area-inset-top, 0px) + 5.6rem)';
 
     useEffect(() => {
         const handleResize = () => setIsMobile(window.innerWidth <= 768);
@@ -1119,15 +1120,18 @@ const Recommendations = () => {
                 {selectedService && (
                     <div className="rec-detail-modal" style={{ 
                         position: 'fixed', inset: 0, zIndex: 2000, 
-                        display: 'flex', alignItems: isMobile ? 'center' : 'flex-start', justifyContent: 'center', 
-                        padding: isMobile ? '1rem' : 'clamp(5.8rem, 9vh, 6.5rem) 1.5rem 1.5rem', 
-                        background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)' 
+                        display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+                        padding: isMobile
+                            ? `${mobileNavbarOffset} 0.75rem max(0.75rem, env(safe-area-inset-bottom, 0px))`
+                            : 'clamp(5.8rem, 9vh, 6.5rem) 1.5rem 1.5rem',
+                        background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)',
+                        overflowY: 'auto'
                     }}>
                         <motion.div initial={{ opacity: 0, scale: 0.95, y: 30 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 30 }}
                             className="rec-modal-content"
                             style={{ 
                                 background: 'var(--modal-gradient)', width: '100%', maxWidth: '780px', 
-                                maxHeight: isMobile ? '85vh' : 'calc(100vh - clamp(7.4rem, 12vh, 8.5rem))', 
+                                maxHeight: isMobile ? `calc(100vh - ${mobileNavbarOffset} - max(0.75rem, env(safe-area-inset-bottom, 0px)))` : 'calc(100vh - clamp(7.4rem, 12vh, 8.5rem))', 
                                 borderRadius: isMobile ? '24px' : '32px', border: '1px solid var(--border)', 
                                 overflow: 'hidden', position: 'relative', boxShadow: '0 40px 100px -12px rgba(0, 0, 0, 0.4)', 
                                 display: 'flex', flexDirection: 'column' 

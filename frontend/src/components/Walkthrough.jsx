@@ -37,8 +37,8 @@ const POST_LOGIN_STEPS = [
     }
 ];
 
-const GUEST_WALKTHROUGH_MOBILE_KEY = 'vithartha_guest_walkthrough_mobile_v2';
-const GUEST_WALKTHROUGH_DESKTOP_KEY = 'vithartha_guest_walkthrough_desktop_v2';
+const GUEST_WALKTHROUGH_MOBILE_KEY = 'vithartha_guest_walkthrough_mobile_v3';
+const GUEST_WALKTHROUGH_DESKTOP_KEY = 'vithartha_guest_walkthrough_desktop_v3';
 const MOBILE_BREAKPOINT = 768;
 
 const Walkthrough = ({ isAppLoading }) => {
@@ -338,7 +338,9 @@ const Walkthrough = ({ isAppLoading }) => {
     const TooltipWrapper = ({ children, targetRect: tr, color = '#ff3b30', isGuest = false }) => {
         const vW = window.innerWidth;
         const vH = window.innerHeight;
-        const bW = Math.min(320, vW - 40);
+        const edgeGap = vW <= 480 ? 12 : 20;
+        const maxBubbleWidth = vW >= 1280 ? 420 : 360;
+        const bW = Math.min(maxBubbleWidth, vW - (edgeGap * 2));
 
         if (!tr) {
             return (
@@ -350,7 +352,8 @@ const Walkthrough = ({ isAppLoading }) => {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    background: 'rgba(0, 0, 0, 0.4)'
+                    background: 'rgba(0, 0, 0, 0.4)',
+                    padding: `${edgeGap}px`
                 }}>
                     <AnimatePresence mode="wait">
                         <motion.div
@@ -375,14 +378,22 @@ const Walkthrough = ({ isAppLoading }) => {
         const spaceBelow = vH - tr.bottom;
         const spaceAbove = tr.top;
         const shouldShowAbove = spaceBelow < 280 && spaceAbove > spaceBelow;
+        const estimatedTooltipHeight = vW <= 430 ? 250 : 300;
 
         // Calculate horizontal position
         const targetCenter = tr.left + (tr.width / 2);
-        const boxLeft = Math.min(vW - bW - 20, Math.max(20, targetCenter - (bW / 2)));
+        const boxLeft = Math.min(vW - bW - edgeGap, Math.max(edgeGap, targetCenter - (bW / 2)));
         
         // Calculate arrow center relative to the box
         // Clamp arrowX between 20px and (boxWidth - 20px) so it doesn't pop out of the bubble
         const arrowX = Math.min(bW - 20, Math.max(20, targetCenter - boxLeft));
+        const preferredTop = shouldShowAbove
+            ? tr.top - estimatedTooltipHeight - 20
+            : tr.bottom + 20;
+        const clampedTop = Math.max(
+            edgeGap,
+            Math.min(vH - estimatedTooltipHeight - edgeGap, preferredTop)
+        );
 
         return (
             <div style={{ position: 'fixed', inset: 0, zIndex: 100000, pointerEvents: 'none' }}>
@@ -421,10 +432,10 @@ const Walkthrough = ({ isAppLoading }) => {
                         exit={{ opacity: 0, scale: 0.9, y: shouldShowAbove ? 10 : -10 }}
                         style={{
                             position: 'fixed',
-                            top: shouldShowAbove ? 'auto' : tr.bottom + 20,
-                            bottom: shouldShowAbove ? (vH - tr.top) + 20 : 'auto',
+                            top: clampedTop,
                             left: boxLeft,
                             width: bW,
+                            maxHeight: `calc(100vh - ${edgeGap * 2}px)`,
                             zIndex: 100002,
                             pointerEvents: 'auto',
                             display: 'flex',
@@ -480,6 +491,7 @@ const Walkthrough = ({ isAppLoading }) => {
     };
 
     const isMobile = window.innerWidth <= MOBILE_BREAKPOINT;
+    const isSmallScreen = window.innerWidth <= 430;
     const guestTargetBtn = getGuestWalkthroughTarget();
     const effectiveGuestRect = navbarBtnRect || (guestTargetBtn ? guestTargetBtn.getBoundingClientRect() : null);
 
@@ -494,18 +506,18 @@ const Walkthrough = ({ isAppLoading }) => {
                     backdropFilter: 'blur(20px)',
                     border: '1px solid rgba(255, 59, 48, 0.5)',
                     borderRadius: '24px',
-                    padding: window.innerWidth < 380 ? '1rem 1.25rem' : '1.2rem 1.5rem',
+                    padding: isSmallScreen ? '1rem 1rem' : (isMobile ? '1.15rem 1.25rem' : '1.25rem 1.5rem'),
                     boxShadow: '0 25px 50px rgba(0,0,0,0.6)',
                     textAlign: 'center',
                 }}>
-                    <h1 style={{ color: '#ff3b30', fontSize: window.innerWidth < 380 ? '0.85rem' : '0.95rem', fontWeight: 900, marginBottom: '0.4rem', textTransform: 'uppercase', margin: 0 }}>Action Required</h1>
-                    <p style={{ color: 'rgba(255,255,255,0.9)', fontSize: window.innerWidth < 380 ? '0.8rem' : '0.85rem', lineHeight: 1.5, margin: '0.4rem 0 0' }}>
+                    <h1 style={{ color: '#ff3b30', fontSize: isSmallScreen ? '0.82rem' : (isMobile ? '0.9rem' : '0.98rem'), fontWeight: 900, marginBottom: '0.4rem', textTransform: 'uppercase', margin: 0 }}>Action Required</h1>
+                    <p style={{ color: 'rgba(255,255,255,0.9)', fontSize: isSmallScreen ? '0.78rem' : (isMobile ? '0.83rem' : '0.9rem'), lineHeight: 1.5, margin: '0.45rem 0 0' }}>
                         {isMobile
                             ? <>Welcome to Vithartha! Sign up to create your account and unlock your personalized roadmap.</>
                             : <>New here? Click <b>Sign Up</b> to create your account and unlock your personalized roadmap.</>
                         }
                     </p>
-                    <button onClick={handleComplete} style={{ marginTop: '1.2rem', background: 'linear-gradient(135deg, #ff3b30 0%, #d72323 100%)', border: 'none', color: '#fff', fontSize: '0.75rem', fontWeight: 800, padding: '0.5rem 1.5rem', borderRadius: '100px', cursor: 'pointer' }}>
+                    <button onClick={handleComplete} style={{ marginTop: '1.2rem', background: 'linear-gradient(135deg, #ff3b30 0%, #d72323 100%)', border: 'none', color: '#fff', fontSize: isSmallScreen ? '0.72rem' : '0.78rem', fontWeight: 800, padding: isSmallScreen ? '0.5rem 1.15rem' : '0.55rem 1.5rem', borderRadius: '100px', cursor: 'pointer' }}>
                         Got it
                     </button>
                 </div>
@@ -525,28 +537,28 @@ const Walkthrough = ({ isAppLoading }) => {
                     backdropFilter: 'blur(20px)',
                     border: '1px solid rgba(255, 59, 48, 0.4)',
                     borderRadius: '24px',
-                    padding: '1.5rem',
+                    padding: isSmallScreen ? '1rem' : (isMobile ? '1.2rem' : '1.5rem'),
                     boxShadow: '0 30px 60px rgba(0,0,0,0.5)',
                 }}>
-                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1rem' }}>
-                        <div style={{ width: '40px', height: '40px', background: 'rgba(255, 59, 48, 0.1)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ff3b30' }}>
-                            <StepIcon size={20} />
+                    <div style={{ display: 'flex', gap: isSmallScreen ? '0.7rem' : '1rem', alignItems: 'center', marginBottom: '1rem' }}>
+                        <div style={{ width: isSmallScreen ? '34px' : '40px', height: isSmallScreen ? '34px' : '40px', background: 'rgba(255, 59, 48, 0.1)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ff3b30', flexShrink: 0 }}>
+                            <StepIcon size={isSmallScreen ? 18 : 20} />
                         </div>
-                        <div>
-                            <h1 style={{ color: 'white', fontSize: '1rem', fontWeight: 800, margin: 0 }}>{step.title}</h1>
-                            <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tour: {currentStep + 1} of {POST_LOGIN_STEPS.length}</div>
+                        <div style={{ minWidth: 0 }}>
+                            <h1 style={{ color: 'white', fontSize: isSmallScreen ? '0.9rem' : '1rem', fontWeight: 800, margin: 0, lineHeight: 1.25 }}>{step.title}</h1>
+                            <div style={{ fontSize: isSmallScreen ? '0.65rem' : '0.7rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tour: {currentStep + 1} of {POST_LOGIN_STEPS.length}</div>
                         </div>
                     </div>
-                    <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.85rem', lineHeight: 1.6, margin: '0 0 1.5rem' }}>
+                    <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: isSmallScreen ? '0.8rem' : '0.88rem', lineHeight: 1.6, margin: '0 0 1.4rem' }}>
                         {step.description}
                     </p>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <button onClick={handleSkip} style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.3)', fontSize: '0.8rem', cursor: 'pointer' }}>Skip</button>
+                        <button onClick={handleSkip} style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.3)', fontSize: isSmallScreen ? '0.75rem' : '0.8rem', cursor: 'pointer' }}>Skip</button>
                         <button 
                             onClick={handleNext} 
                             style={{ 
                                 background: 'linear-gradient(135deg, #ff3b30 0%, #d72323 100%)', color: 'white', border: 'none', borderRadius: '12px', 
-                                padding: '0.6rem 1.4rem', fontSize: '0.8rem', fontWeight: 800, cursor: 'pointer',
+                                padding: isSmallScreen ? '0.55rem 1rem' : '0.6rem 1.4rem', fontSize: isSmallScreen ? '0.76rem' : '0.8rem', fontWeight: 800, cursor: 'pointer',
                                 display: 'flex', alignItems: 'center', gap: '6px',
                                 boxShadow: '0 10px 20px rgba(255, 59, 48, 0.2)'
                             }}
