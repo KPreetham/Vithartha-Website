@@ -119,6 +119,10 @@ const UserDashboard = () => {
 
   const handleUploadDocument = async (leadId, file) => {
     if (!file) return;
+    if (file.type !== "application/pdf") {
+      toast.error("Please upload only PDF documents");
+      return;
+    }
     setUploadingId(leadId);
     const loadingToast = toast.loading("Uploading document...");
     try {
@@ -917,6 +921,33 @@ const UserDashboard = () => {
                                     No documents uploaded yet.
                                   </p>
                                 )}
+
+                                {/* PDF-only notice */}
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "8px",
+                                    padding: "0.55rem 0.9rem",
+                                    background: "rgba(245, 158, 11, 0.06)",
+                                    border: "1px solid rgba(245, 158, 11, 0.15)",
+                                    borderRadius: "10px",
+                                    marginTop: "0.4rem",
+                                  }}
+                                >
+                                  <FileText size={13} color="#f59e0b" style={{ flexShrink: 0 }} />
+                                  <span
+                                    style={{
+                                      fontSize: "0.7rem",
+                                      fontWeight: 600,
+                                      color: "#f59e0b",
+                                      lineHeight: 1.4,
+                                    }}
+                                  >
+                                    Only PDF documents are accepted
+                                  </span>
+                                </div>
+
                                 <label
                                   style={{
                                     background: "var(--bg-card)",
@@ -966,6 +997,7 @@ const UserDashboard = () => {
                                     : "Add Document"}
                                   <input
                                     type="file"
+                                    accept=".pdf,application/pdf"
                                     hidden
                                     disabled={!!uploadingId}
                                     onChange={(e) => {

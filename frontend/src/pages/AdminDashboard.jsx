@@ -1242,6 +1242,32 @@ const AdminDashboard = () => {
                               )}
                             </div>
 
+                            {/* PDF-only notice */}
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "8px",
+                                padding: "0.6rem 0.9rem",
+                                background: "rgba(245, 158, 11, 0.06)",
+                                border: "1px solid rgba(245, 158, 11, 0.15)",
+                                borderRadius: "10px",
+                                marginBottom: "0.5rem",
+                              }}
+                            >
+                              <FileText size={14} color="#f59e0b" style={{ flexShrink: 0 }} />
+                              <span
+                                style={{
+                                  fontSize: "0.72rem",
+                                  fontWeight: 600,
+                                  color: "#f59e0b",
+                                  lineHeight: 1.4,
+                                }}
+                              >
+                                Only PDF documents are accepted for upload
+                              </span>
+                            </div>
+
                             <h5
                               style={{
                                 fontSize: "0.9rem",
