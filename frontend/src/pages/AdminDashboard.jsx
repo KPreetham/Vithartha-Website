@@ -20,6 +20,8 @@ import {
   Clock,
   ChevronDown,
   ChevronUp,
+  Loader2,
+  Upload,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import axios from "axios";
@@ -61,6 +63,7 @@ const AdminDashboard = () => {
     status: "",
     adminMessage: "",
   });
+  const [uploadingId, setUploadingId] = useState(null);
 
   useEffect(() => {
     const lead = leads.find((l) => l._id === expandedLeadId);
@@ -80,9 +83,11 @@ const AdminDashboard = () => {
     e.preventDefault();
     try {
       const apiUrl = import.meta.env.VITE_API_URL;
+      const user = JSON.parse(localStorage.getItem("user"));
       const response = await axios.patch(
         `${apiUrl}/leads/${expandedLeadId}`,
         editForm,
+        { headers: { Authorization: `Bearer ${user.token}` } },
       );
       if (response.data) {
         toast.success("Message sent to user");
@@ -97,11 +102,16 @@ const AdminDashboard = () => {
   const fetchLeads = async () => {
     try {
       const apiUrl = import.meta.env.VITE_API_URL;
-      const response = await axios.get(`${apiUrl}/leads`);
+      const user = JSON.parse(localStorage.getItem("user"));
+      const response = await axios.get(`${apiUrl}/leads`, {
+        headers: { Authorization: `Bearer ${user.token}` },
+      });
       setLeads(response.data);
     } catch (error) {
       console.error("Error fetching leads:", error);
-      toast.error("Failed to load platform data");
+      if (error.response?.status !== 401 && error.response?.status !== 404) {
+        // Toast removed as per user request to avoid showing error when no services entered
+      }
     } finally {
       setTimeout(() => setLoading(false), 500);
     }
@@ -110,7 +120,10 @@ const AdminDashboard = () => {
   const fetchLeadDetails = async (id) => {
     try {
       const apiUrl = import.meta.env.VITE_API_URL;
-      const response = await axios.get(`${apiUrl}/leads/${id}`);
+      const user = JSON.parse(localStorage.getItem("user"));
+      const response = await axios.get(`${apiUrl}/leads/${id}`, {
+        headers: { Authorization: `Bearer ${user.token}` },
+      });
       if (response.data) {
         setLeads((prev) => prev.map((l) => (l._id === id ? response.data : l)));
       }
@@ -128,9 +141,16 @@ const AdminDashboard = () => {
     if (e) e.stopPropagation();
     try {
       const apiUrl = import.meta.env.VITE_API_URL;
-      await axios.patch(`${apiUrl}/leads/${id}`, {
-        status: "InProgress",
-      });
+      const user = JSON.parse(localStorage.getItem("user"));
+      await axios.patch(
+        `${apiUrl}/leads/${id}`,
+        {
+          status: "InProgress",
+        },
+        {
+          headers: { Authorization: `Bearer ${user.token}` },
+        },
+      );
       toast.success("Service request accepted and moved to In-Progress");
       fetchLeads();
       if (selectedLead?._id === id) setSelectedLead(null);
@@ -143,10 +163,17 @@ const AdminDashboard = () => {
     if (e) e.stopPropagation();
     try {
       const apiUrl = import.meta.env.VITE_API_URL;
-      const response = await axios.patch(`${apiUrl}/leads/${id}`, {
-        status: "Rejected",
-        adminMessage: "Request rejected by administrator.",
-      });
+      const user = JSON.parse(localStorage.getItem("user"));
+      const response = await axios.patch(
+        `${apiUrl}/leads/${id}`,
+        {
+          status: "Rejected",
+          adminMessage: "Request rejected by administrator.",
+        },
+        {
+          headers: { Authorization: `Bearer ${user.token}` },
+        },
+      );
       if (response.data) {
         toast.success("Service request rejected");
         fetchLeads();
@@ -159,13 +186,14 @@ const AdminDashboard = () => {
 
   const handleUploadDraft = async (leadId, file, type = "Draft") => {
     if (!file) return;
-    if (file.type !== 'application/pdf') {
+    if (file.type !== "application/pdf") {
       toast.error("Please upload only PDF documents");
       return;
     }
     const loadingToast = toast.loading(
       `Uploading ${type.toLowerCase()} document...`,
     );
+    setUploadingId(`${leadId}-${type}`);
     try {
       const apiUrl = import.meta.env.VITE_API_URL;
       const formData = new FormData();
@@ -175,7 +203,9 @@ const AdminDashboard = () => {
       const token = user?.token;
 
       if (!token) {
-        toast.error("Administrator session expired. Please re-login.", { id: loadingToast });
+        toast.error("Administrator session expired. Please re-login.", {
+          id: loadingToast,
+        });
         return;
       }
 
@@ -205,14 +235,15 @@ const AdminDashboard = () => {
           "Final return uploaded. Final document is ready for delivery.";
       }
 
-      await axios.patch(`${apiUrl}/leads/${leadId}`, updatePayload);
+      await axios.patch(`${apiUrl}/leads/${leadId}`, updatePayload, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
       toast.success(`${type} uploaded!`, { id: loadingToast });
       fetchLeads();
       if (selectedLead?._id === leadId) fetchLeadDetails(leadId);
-    } catch (error) {
-      console.error(error);
-      toast.error(`${type} upload failed`, { id: loadingToast });
+    } finally {
+      setUploadingId(null);
     }
   };
 
@@ -228,11 +259,18 @@ const AdminDashboard = () => {
         return;
       }
 
-      await axios.patch(`${apiUrl}/leads/${id}`, {
-        status: "DraftSent",
-        adminMessage:
-          "Draft is ready. Please click Review Draft in your dashboard and accept or reject it.",
-      });
+      const user = JSON.parse(localStorage.getItem("user"));
+      await axios.patch(
+        `${apiUrl}/leads/${id}`,
+        {
+          status: "DraftSent",
+          adminMessage:
+            "Draft is ready. Please click Review Draft in your dashboard and accept or reject it.",
+        },
+        {
+          headers: { Authorization: `Bearer ${user.token}` },
+        },
+      );
       toast.success("Draft sent to user for approval!");
       fetchLeads();
       if (selectedLead?._id === id) setSelectedLead(null);
@@ -253,7 +291,14 @@ const AdminDashboard = () => {
         return;
       }
 
-      await axios.patch(`${apiUrl}/leads/${id}`, { status: "Completed" });
+      const user = JSON.parse(localStorage.getItem("user"));
+      await axios.patch(
+        `${apiUrl}/leads/${id}`,
+        { status: "Completed" },
+        {
+          headers: { Authorization: `Bearer ${user.token}` },
+        },
+      );
       toast.success("Service marked as completed!");
       fetchLeads();
       if (selectedLead?._id === id) setSelectedLead(null);
@@ -266,7 +311,14 @@ const AdminDashboard = () => {
     if (e) e.stopPropagation();
     try {
       const apiUrl = import.meta.env.VITE_API_URL;
-      await axios.patch(`${apiUrl}/leads/${leadId}`, { userMessage: "" });
+      const user = JSON.parse(localStorage.getItem("user"));
+      await axios.patch(
+        `${apiUrl}/leads/${leadId}`,
+        { userMessage: "" },
+        {
+          headers: { Authorization: `Bearer ${user.token}` },
+        },
+      );
       toast.success("User message removed");
       fetchLeads();
       if (expandedLeadId === leadId) {
@@ -600,7 +652,10 @@ const AdminDashboard = () => {
                   <motion.div
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.14, delay: Math.min(i * 0.01, 0.06) }}
+                    transition={{
+                      duration: 0.14,
+                      delay: Math.min(i * 0.01, 0.06),
+                    }}
                     onClick={() => {
                       const isExpanding = expandedLeadId !== lead._id;
                       setExpandedLeadId(isExpanding ? lead._id : null);
@@ -1242,128 +1297,174 @@ const AdminDashboard = () => {
                                 </>
                               ) : lead.status === "InProgress" ? (
                                 (() => {
-                                  const hasDraftDoc = lead.documents?.some((doc) => doc.type === "Draft");
+                                  const hasDraftDoc = lead.documents?.some(
+                                    (doc) => doc.type === "Draft",
+                                  );
                                   return (
-                                <>
-                                  <input
-                                    type="file"
-                                    id={`draft-upload-${lead._id}`}
-                                    accept=".pdf"
-                                    hidden
-                                    onChange={(e) =>
-                                      handleUploadDraft(
-                                        lead._id,
-                                        e.target.files[0],
-                                        "Draft",
-                                      )
-                                    }
-                                  />
-                                  <button
-                                    onClick={() =>
-                                      document
-                                        .getElementById(
-                                          `draft-upload-${lead._id}`,
-                                        )
-                                        .click()
-                                    }
-                                    style={{
-                                      padding: "0.8rem",
-                                      background: "var(--dashboard-row-bg)",
-                                      border:
-                                        "1px solid var(--dashboard-card-border)",
-                                      color: "var(--text)",
-                                      borderRadius: "12px",
-                                      fontWeight: 800,
-                                      cursor: "pointer",
-                                      transition: "all 0.3s ease",
-                                    }}
-                                  >
-                                    Upload Draft
-                                  </button>
-                                  <button
-                                    onClick={(e) =>
-                                      handleSendDraft(lead._id, e)
-                                    }
-                                    disabled={!hasDraftDoc}
-                                    style={{
-                                      padding: "0.8rem",
-                                      background: hasDraftDoc ? "#22c55e" : "rgba(255,255,255,0.03)",
-                                      border: hasDraftDoc ? "none" : "1px solid var(--dashboard-card-border)",
-                                      color: hasDraftDoc ? "white" : "var(--text-muted)",
-                                      borderRadius: "12px",
-                                      fontWeight: 800,
-                                      cursor: hasDraftDoc ? "pointer" : "not-allowed",
-                                      boxShadow: hasDraftDoc
-                                        ? "0 4px 15px rgba(34, 197, 94, 0.2)"
-                                        : "none",
-                                      transition: "all 0.3s ease",
-                                    }}
-                                  >
-                                    Send Draft
-                                  </button>
-                                </>
+                                    <>
+                                      <input
+                                        type="file"
+                                        id={`draft-upload-${lead._id}`}
+                                        accept=".pdf"
+                                        hidden
+                                        onChange={(e) =>
+                                          handleUploadDraft(
+                                            lead._id,
+                                            e.target.files[0],
+                                            "Draft",
+                                          )
+                                        }
+                                      />
+                                      <button
+                                        onClick={() =>
+                                          document
+                                            .getElementById(
+                                              `draft-upload-${lead._id}`,
+                                            )
+                                            .click()
+                                        }
+                                        disabled={!!uploadingId}
+                                        style={{
+                                          padding: "0.8rem",
+                                          background: "var(--dashboard-row-bg)",
+                                          border:
+                                            "1px solid var(--dashboard-card-border)",
+                                          color: "var(--text)",
+                                          borderRadius: "12px",
+                                          fontWeight: 800,
+                                          cursor: uploadingId ? "not-allowed" : "pointer",
+                                          transition: "all 0.3s ease",
+                                          display: "flex",
+                                          alignItems: "center",
+                                          justifyContent: "center",
+                                          gap: "8px",
+                                          opacity: (uploadingId && uploadingId !== `${lead._id}-Draft`) ? 0.5 : 1,
+                                          pointerEvents: uploadingId ? "none" : "auto",
+                                        }}
+                                      >
+                                        {uploadingId === `${lead._id}-Draft` ? (
+                                          <Loader2 size={16} className="animate-spin" />
+                                        ) : (
+                                          <Upload size={16} />
+                                        )}
+                                        {uploadingId === `${lead._id}-Draft` ? "Uploading..." : "Upload Draft"}
+                                      </button>
+                                      <button
+                                        onClick={(e) =>
+                                          handleSendDraft(lead._id, e)
+                                        }
+                                        disabled={!hasDraftDoc || !!uploadingId}
+                                        style={{
+                                          padding: "0.8rem",
+                                          background: hasDraftDoc
+                                            ? "#22c55e"
+                                            : "rgba(255,255,255,0.03)",
+                                          border: hasDraftDoc
+                                            ? "none"
+                                            : "1px solid var(--dashboard-card-border)",
+                                          color: hasDraftDoc
+                                            ? "white"
+                                            : "var(--text-muted)",
+                                          borderRadius: "12px",
+                                          fontWeight: 800,
+                                          cursor: hasDraftDoc
+                                            ? "pointer"
+                                            : "not-allowed",
+                                          boxShadow: hasDraftDoc
+                                            ? "0 4px 15px rgba(34, 197, 94, 0.2)"
+                                            : "none",
+                                          transition: "all 0.3s ease",
+                                        }}
+                                      >
+                                        Send Draft
+                                      </button>
+                                    </>
                                   );
                                 })()
                               ) : lead.status === "UserAccepted" ? (
                                 (() => {
-                                  const hasFinalDoc = lead.documents?.some((doc) => doc.type === "Final");
+                                  const hasFinalDoc = lead.documents?.some(
+                                    (doc) => doc.type === "Final",
+                                  );
                                   return (
-                                <>
-                                  <input
-                                    type="file"
-                                    id={`final-upload-${lead._id}`}
-                                    accept=".pdf"
-                                    hidden
-                                    onChange={(e) =>
-                                      handleUploadDraft(
-                                        lead._id,
-                                        e.target.files[0],
-                                        "Final",
-                                      )
-                                    }
-                                  />
-                                  <button
-                                    onClick={() =>
-                                      document
-                                        .getElementById(
-                                          `final-upload-${lead._id}`,
-                                        )
-                                        .click()
-                                    }
-                                    style={{
-                                      padding: "0.8rem",
-                                      background: "rgba(34, 197, 94, 0.12)",
-                                      border:
-                                        "1px solid rgba(34, 197, 94, 0.25)",
-                                      color: "#22c55e",
-                                      borderRadius: "12px",
-                                      fontWeight: 800,
-                                      cursor: "pointer",
-                                      transition: "all 0.3s ease",
-                                    }}
-                                  >
-                                    Upload Final
-                                  </button>
-                                  <button
-                                    onClick={(e) => handleComplete(lead._id, e)}
-                                    disabled={!hasFinalDoc}
-                                    style={{
-                                      padding: "0.8rem",
-                                      background: hasFinalDoc ? "#22c55e" : "rgba(255,255,255,0.03)",
-                                      border: hasFinalDoc ? "none" : "1px solid var(--dashboard-card-border)",
-                                      color: hasFinalDoc ? "white" : "var(--text-muted)",
-                                      borderRadius: "12px",
-                                      fontWeight: 800,
-                                      cursor: hasFinalDoc ? "pointer" : "not-allowed",
-                                      boxShadow: hasFinalDoc
-                                        ? "0 4px 15px rgba(34, 197, 94, 0.2)"
-                                        : "none",
-                                      transition: "all 0.3s ease",
-                                    }}
-                                  >
-                                    Complete Service
-                                  </button>
-                                </>
+                                    <>
+                                      <input
+                                        type="file"
+                                        id={`final-upload-${lead._id}`}
+                                        accept=".pdf"
+                                        hidden
+                                        onChange={(e) =>
+                                          handleUploadDraft(
+                                            lead._id,
+                                            e.target.files[0],
+                                            "Final",
+                                          )
+                                        }
+                                      />
+                                      <button
+                                        onClick={() =>
+                                          document
+                                            .getElementById(
+                                              `final-upload-${lead._id}`,
+                                            )
+                                            .click()
+                                        }
+                                        disabled={!!uploadingId}
+                                        style={{
+                                          padding: "0.8rem",
+                                          background: "rgba(34, 197, 94, 0.12)",
+                                          border:
+                                            "1px solid rgba(34, 197, 94, 0.25)",
+                                          color: "#22c55e",
+                                          borderRadius: "12px",
+                                          fontWeight: 800,
+                                          cursor: uploadingId ? "not-allowed" : "pointer",
+                                          transition: "all 0.3s ease",
+                                          display: "flex",
+                                          alignItems: "center",
+                                          justifyContent: "center",
+                                          gap: "8px",
+                                          opacity: (uploadingId && uploadingId !== `${lead._id}-Final`) ? 0.5 : 1,
+                                          pointerEvents: uploadingId ? "none" : "auto",
+                                        }}
+                                      >
+                                        {uploadingId === `${lead._id}-Final` ? (
+                                          <Loader2 size={16} className="animate-spin" />
+                                        ) : (
+                                          <Upload size={16} />
+                                        )}
+                                        {uploadingId === `${lead._id}-Final` ? "Uploading..." : "Upload Final"}
+                                      </button>
+                                      <button
+                                        onClick={(e) =>
+                                          handleComplete(lead._id, e)
+                                        }
+                                        disabled={!hasFinalDoc || !!uploadingId}
+                                        style={{
+                                          padding: "0.8rem",
+                                          background: hasFinalDoc
+                                            ? "#22c55e"
+                                            : "rgba(255,255,255,0.03)",
+                                          border: hasFinalDoc
+                                            ? "none"
+                                            : "1px solid var(--dashboard-card-border)",
+                                          color: hasFinalDoc
+                                            ? "white"
+                                            : "var(--text-muted)",
+                                          borderRadius: "12px",
+                                          fontWeight: 800,
+                                          cursor: hasFinalDoc
+                                            ? "pointer"
+                                            : "not-allowed",
+                                          boxShadow: hasFinalDoc
+                                            ? "0 4px 15px rgba(34, 197, 94, 0.2)"
+                                            : "none",
+                                          transition: "all 0.3s ease",
+                                        }}
+                                      >
+                                        Complete Service
+                                      </button>
+                                    </>
                                   );
                                 })()
                               ) : (

@@ -1,147 +1,201 @@
-import React, { useState, useEffect } from 'react';
-import { Routes, Route, useLocation } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { GoogleOAuthProvider } from '@react-oauth/google';
-import Navbar from './components/Navbar';
-import Footer from './components/Footer';
-import Home from './pages/Home';
-import Onboarding from './pages/Onboarding';
-import Recommendations from './pages/Recommendations';
-import Login from './pages/Login';
-import Register from './pages/Register';
-import UserDashboard from './pages/UserDashboard';
-import AdminDashboard from './pages/AdminDashboard';
-import DocumentReview from './pages/DocumentReview';
-import DraftReview from './pages/DraftReview';
-import ProtectedRoute from './components/ProtectedRoute';
-import Profile from './pages/Profile';
-import About from './pages/About';
-import Walkthrough from './components/Walkthrough';
-import AIAssistant from './components/AIAssistant';
-import Loader from './components/Loader';
-import { Toaster } from 'react-hot-toast';
-import './App.css';
-
+import React, { useState, useEffect } from "react";
+import { Routes, Route, useLocation } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
+import { GoogleOAuthProvider } from "@react-oauth/google";
+import Navbar from "./components/Navbar";
+import Footer from "./components/Footer";
+import Home from "./pages/Home";
+import Onboarding from "./pages/Onboarding";
+import Recommendations from "./pages/Recommendations";
+import Login from "./pages/Login";
+import Register from "./pages/Register";
+import UserDashboard from "./pages/UserDashboard";
+import AdminDashboard from "./pages/AdminDashboard";
+import DocumentReview from "./pages/DocumentReview";
+import DraftReview from "./pages/DraftReview";
+import ProtectedRoute from "./components/ProtectedRoute";
+import Profile from "./pages/Profile";
+import About from "./pages/About";
+import Walkthrough from "./components/Walkthrough";
+import AIAssistant from "./components/AIAssistant";
+import Loader from "./components/Loader";
+import { Toaster } from "react-hot-toast";
+import "./App.css";
 
 // Routes that hide the Footer
-const HIDE_FOOTER_ROUTES = ['/login', '/register', '/services', '/onboarding'];
+const HIDE_FOOTER_ROUTES = ["/login", "/register", "/services", "/onboarding"];
 // Routes that hide the Navbar — only auth pages (login/register) since dashboard now uses the shared navbar
-const HIDE_NAVBAR_ROUTES = ['/login', '/register', '/onboarding'];
+const HIDE_NAVBAR_ROUTES = ["/login", "/register", "/onboarding"];
 
 function App() {
-    const location = useLocation();
-    const [isLoading, setIsLoading] = useState(true);
-    const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const location = useLocation();
+  const [isLoading, setIsLoading] = useState(true);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
-    const shouldHideNavbar = HIDE_NAVBAR_ROUTES.some(r => location.pathname === r);
-    const shouldHideFooter = HIDE_FOOTER_ROUTES.some(r => location.pathname === r);
-    const isDarkMode = localStorage.getItem('theme') !== 'light';
+  const shouldHideNavbar = HIDE_NAVBAR_ROUTES.some(
+    (r) => location.pathname === r,
+  );
+  const shouldHideFooter = HIDE_FOOTER_ROUTES.some(
+    (r) => location.pathname === r,
+  );
+  const isDarkMode = localStorage.getItem("theme") !== "light";
 
-    // Handle Initial Site Load
-    useEffect(() => {
-        const hasLoadedBefore = sessionStorage.getItem('vithartha_loaded');
-        const delay = hasLoadedBefore ? 2200 : 4500; // 4.5s for first visit, 2.2s for refresh/return
+  // Handle Initial Site Load
+  useEffect(() => {
+    const hasLoadedBefore = sessionStorage.getItem("vithartha_loaded");
+    const delay = hasLoadedBefore ? 2200 : 4500; // 4.5s for first visit, 2.2s for refresh/return
 
-        const timer = setTimeout(() => {
-            setIsLoading(false);
-            setIsInitialLoad(false);
-            sessionStorage.setItem('vithartha_loaded', 'true');
-        }, delay);
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+      setIsInitialLoad(false);
+      sessionStorage.setItem("vithartha_loaded", "true");
+    }, delay);
 
-        return () => clearTimeout(timer);
-    }, []);
+    return () => clearTimeout(timer);
+  }, []);
 
-    // Handle Route Transitions
-    useEffect(() => {
-        window.scrollTo(0, 0);
-        if (!isInitialLoad) {
-            setIsLoading(true);
-            const timer = setTimeout(() => {
-                setIsLoading(false);
-            }, 250); // Snappy route transition delay
-            return () => clearTimeout(timer);
-        }
-    }, [location.pathname]);
+  // Handle Route Transitions
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    if (!isInitialLoad) {
+      setIsLoading(true);
+      const timer = setTimeout(() => {
+        setIsLoading(false);
+      }, 250); // Snappy route transition delay
+      return () => clearTimeout(timer);
+    }
+  }, [location.pathname]);
 
-    // Global Refresh Trigger
-    useEffect(() => {
-        window.triggerVitharthaRefresh = () => {
-            setIsInitialLoad(true); // Switch back to premium mode for manuals
-            setIsLoading(true);
-            setTimeout(() => {
-                setIsLoading(false);
-                setIsInitialLoad(false);
-            }, 2500);
-        };
-    }, []);
+  
+  useEffect(() => {
+    window.triggerVitharthaRefresh = () => {
+      setIsInitialLoad(true);
+      setIsLoading(true);
+      setTimeout(() => {
+        setIsLoading(false);
+        setIsInitialLoad(false);
+      }, 2500);
+    };
+  }, []);
 
-    return (
-        <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}>
-            <AnimatePresence mode="wait">
-                {isLoading && <Loader key="loader" minimal={!isInitialLoad} />}
-            </AnimatePresence>
+  return (
+    <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}>
+      <AnimatePresence mode="wait">
+        {isLoading && <Loader key="loader" minimal={!isInitialLoad} />}
+      </AnimatePresence>
 
-            <motion.div
-                className="app-container"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.5 }}
-            >
-                {!shouldHideNavbar && <Navbar />}
-                <Walkthrough isAppLoading={isLoading} />
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                    <Routes>
-                        <Route path="/" element={<Home />} />
-                        <Route path="/onboarding" element={<Onboarding />} />
-                        <Route path="/recommendations" element={<Recommendations />} />
-                        <Route path="/services" element={<Recommendations />} />
-                        <Route path="/login" element={<Login />} />
-                        <Route path="/register" element={<Register />} />
-                        <Route path="/dashboard" element={<ProtectedRoute><UserDashboard /></ProtectedRoute>} />
-                        <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
-                        <Route path="/admin/review/:leadId" element={<ProtectedRoute><DocumentReview /></ProtectedRoute>} />
-                        <Route path="/dashboard/review-draft/:leadId" element={<ProtectedRoute><DraftReview /></ProtectedRoute>} />
-                        <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-                        <Route path="/about" element={<About />} />
-                    </Routes>
-                </div>
-                {!shouldHideFooter && <Footer />}
-                <AIAssistant />
-                <Toaster
-                    position="top-center"
-                    toastOptions={{
-                        duration: 3000,
-                        style: {
-                            fontFamily: 'var(--font-body)',
-                            borderRadius: '50px',
-                            background: isDarkMode ? 'rgba(20, 20, 20, 0.95)' : 'rgba(255, 255, 255, 0.95)',
-                            backdropFilter: 'blur(10px)',
-                            WebkitBackdropFilter: 'blur(10px)',
-                            color: isDarkMode ? '#fff' : '#000',
-                            border: '1px solid rgba(255, 255, 255, 0.1)',
-                            boxShadow: '0 10px 30px rgba(0,0,0,0.2)',
-                            padding: '12px 24px',
-                            fontWeight: 600,
-                            fontSize: '0.9rem',
-                            letterSpacing: '0.01em'
-                        },
-                        success: {
-                            iconTheme: {
-                                primary: '#10b981',
-                                secondary: '#fff',
-                            },
-                        },
-                        error: {
-                            iconTheme: {
-                                primary: '#ef4444',
-                                secondary: '#fff',
-                            },
-                        }
-                    }}
-                />
-            </motion.div>
-        </GoogleOAuthProvider>
-    );
+      <motion.div
+        className="app-container"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.5 }}
+      >
+        {!shouldHideNavbar && <Navbar />}
+        <Walkthrough isAppLoading={isLoading} />
+        <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/onboarding" element={<Onboarding />} />
+            <Route 
+              path="/recommendations" 
+              element={
+                <ProtectedRoute>
+                  <Recommendations />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/services" 
+              element={
+                <ProtectedRoute>
+                  <Recommendations />
+                </ProtectedRoute>
+              } 
+            />
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedRoute>
+                  <UserDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin"
+              element={
+                <ProtectedRoute adminOnly={true}>
+                  <AdminDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/review/:leadId"
+              element={
+                <ProtectedRoute adminOnly={true}>
+                  <DocumentReview />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/dashboard/review-draft/:leadId"
+              element={
+                <ProtectedRoute>
+                  <DraftReview />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/profile"
+              element={
+                <ProtectedRoute>
+                  <Profile />
+                </ProtectedRoute>
+              }
+            />
+            <Route path="/about" element={<About />} />
+          </Routes>
+        </div>
+        {!shouldHideFooter && <Footer />}
+        <AIAssistant />
+        <Toaster
+          position="top-center"
+          toastOptions={{
+            duration: 3000,
+            style: {
+              fontFamily: "var(--font-body)",
+              borderRadius: "50px",
+              background: isDarkMode
+                ? "rgba(20, 20, 20, 0.95)"
+                : "rgba(255, 255, 255, 0.95)",
+              backdropFilter: "blur(10px)",
+              WebkitBackdropFilter: "blur(10px)",
+              color: isDarkMode ? "#fff" : "#000",
+              border: "1px solid rgba(255, 255, 255, 0.1)",
+              boxShadow: "0 10px 30px rgba(0,0,0,0.2)",
+              padding: "12px 24px",
+              fontWeight: 600,
+              fontSize: "0.9rem",
+              letterSpacing: "0.01em",
+            },
+            success: {
+              iconTheme: {
+                primary: "#10b981",
+                secondary: "#fff",
+              },
+            },
+            error: {
+              iconTheme: {
+                primary: "#ef4444",
+                secondary: "#fff",
+              },
+            },
+          }}
+        />
+      </motion.div>
+    </GoogleOAuthProvider>
+  );
 }
 
 export default App;

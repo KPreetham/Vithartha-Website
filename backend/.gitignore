@@ -16,3 +16,6 @@ npm-debug.log*
 # Editor directories
 .vscode/
 .idea/
+
+#Uploads
+uploads/
