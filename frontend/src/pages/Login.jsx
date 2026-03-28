@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import {
   Mail,
@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { toast } from "react-hot-toast";
+import { useGoogleLogin } from "@react-oauth/google";
 import {
   hasCompletedOnboarding,
   markOnboardingCompleted,
@@ -24,93 +25,86 @@ const Login = () => {
   const [loginRole, setLoginRole] = useState("user");
   const [googleLoading, setGoogleLoading] = useState(false);
 
-  // ── Handle Google OAuth redirect callback ──────────────────────────
-  useEffect(() => {
-    const hash = window.location.hash;
-    if (!hash.includes("access_token")) return;
-
-    const params = new URLSearchParams(hash.replace("#", "?"));
-    const accessToken = params.get("access_token");
-    if (!accessToken) return;
-
-    // Clean up URL immediately so a refresh doesn't re-trigger
-    window.history.replaceState(null, "", window.location.pathname);
-
-    setGoogleLoading(true);
-    (async () => {
-      try {
-        const userInfoRes = await fetch(
-          "https://www.googleapis.com/oauth2/v3/userinfo",
-          {
-            headers: { Authorization: `Bearer ${accessToken}` },
-          },
-        );
-        const userInfo = await userInfoRes.json();
-
-        const response = await fetch(
-          `${import.meta.env.VITE_API_URL}/auth/google-login`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ idToken: accessToken, userInfo }),
-          },
-        );
-        const data = await response.json();
-
-        if (data.needsRegistration) {
-          toast.success("Welcome! Please complete your registration.");
-          navigate("/register", { state: { initialData: data.user } });
-        } else if (response.ok) {
-          toast.success("Login Successful");
-          localStorage.setItem("user", JSON.stringify(data));
-          window.dispatchEvent(new Event("storage"));
-          if (data.role === "admin") {
-            navigate("/admin");
-          } else {
-            const onboardingDone = hasCompletedOnboarding(data);
-            const userId = data._id || data.id;
-            const leadsRes = await fetch(
-              `${import.meta.env.VITE_API_URL}/leads?userId=${userId}`,
-              {
-                headers: { Authorization: `Bearer ${data.token}` },
-              },
-            );
-            const leads = await leadsRes.json();
-            if (leads && leads.length > 0) {
-              markOnboardingCompleted(data);
-              navigate("/dashboard");
-            } else if (!onboardingDone) {
-              navigate("/onboarding");
-            } else {
-              navigate("/services");
-            }
-          }
-        } else {
-          toast.error(data.message || "Google Login failed");
-        }
-      } catch (err) {
-        console.error("Google Auth Error:", err);
-        toast.error("Authentication failed");
-      } finally {
-        setGoogleLoading(false);
+  // ── Process Google OAuth token (shared logic) ─────────────────────
+  const processGoogleToken = async (accessToken) => {
+    try {
+      // 1. Fetch user info from Google
+      const userInfoRes = await fetch(
+        "https://www.googleapis.com/oauth2/v3/userinfo",
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+      );
+      if (!userInfoRes.ok) {
+        throw new Error("Failed to fetch Google user info");
       }
-    })();
-  }, []);
+      const userInfo = await userInfoRes.json();
 
-  // ── Trigger full-page Google OAuth redirect ────────────────────────
-  const handleGoogleLogin = () => {
-    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-    const redirectUri = encodeURIComponent(window.location.origin + "/login");
-    const scope = encodeURIComponent("openid email profile");
-    const url =
-      `https://accounts.google.com/o/oauth2/v2/auth` +
-      `?client_id=${clientId}` +
-      `&redirect_uri=${redirectUri}` +
-      `&response_type=token` +
-      `&scope=${scope}` +
-      `&prompt=select_account`;
-    window.location.href = url;
+      // 2. Send to our backend for login/registration
+      const response = await fetch(
+        `${import.meta.env.VITE_API_URL}/auth/google-login`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ idToken: accessToken, userInfo }),
+        },
+      );
+      const data = await response.json();
+
+      if (data.needsRegistration) {
+        toast.success("Welcome! Please complete your registration.");
+        navigate("/register", { state: { initialData: data.user } });
+      } else if (response.ok) {
+        toast.success("Login Successful");
+        localStorage.setItem("user", JSON.stringify(data));
+        window.dispatchEvent(new Event("storage"));
+        if (data.role === "admin") {
+          navigate("/admin");
+        } else {
+          const onboardingDone = hasCompletedOnboarding(data);
+          const userId = data._id || data.id;
+          const leadsRes = await fetch(
+            `${import.meta.env.VITE_API_URL}/leads?userId=${userId}`,
+            {
+              headers: { Authorization: `Bearer ${data.token}` },
+            },
+          );
+          const leads = await leadsRes.json();
+          if (leads && leads.length > 0) {
+            markOnboardingCompleted(data);
+            navigate("/dashboard");
+          } else if (!onboardingDone) {
+            navigate("/onboarding");
+          } else {
+            navigate("/services");
+          }
+        }
+      } else {
+        toast.error(data.message || "Google Login failed");
+      }
+    } catch (err) {
+      console.error("Google Auth Error:", err);
+      toast.error("Authentication failed. Please try again.");
+    } finally {
+      setGoogleLoading(false);
+    }
   };
+
+  // ── Google OAuth via popup (using Google Identity Services) ────────
+  const googleLogin = useGoogleLogin({
+    onSuccess: (tokenResponse) => {
+      setGoogleLoading(true);
+      processGoogleToken(tokenResponse.access_token);
+    },
+    onError: (error) => {
+      console.error("Google Login Error:", error);
+      toast.error("Google sign-in failed. Please try again.");
+      setGoogleLoading(false);
+    },
+    onNonOAuthError: (error) => {
+      // Popup closed or blocked
+      console.warn("Google popup closed:", error);
+      setGoogleLoading(false);
+    },
+  });
 
   const handleChange = (e) =>
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -426,7 +420,7 @@ const Login = () => {
           </div>
 
           <button
-            onClick={() => handleGoogleLogin()}
+            onClick={() => googleLogin()}
             disabled={googleLoading}
             style={{
               width: "100%",
