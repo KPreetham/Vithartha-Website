@@ -77,6 +77,7 @@ const About = () => {
                 @media (max-width: 768px) {
                     .about-grid-mission, .about-grid-services, .about-grid-contact {
                         grid-template-columns: 1fr !important;
+                        gap: 1.5rem !important;
                     }
                     .about-grid-stats {
                         grid-template-columns: 1fr 1fr !important;
@@ -101,6 +102,52 @@ const About = () => {
                     }
                     .about-section-margin {
                         margin-bottom: 2.5rem !important;
+                    }
+                    .about-story-card {
+                        padding: 1.5rem !important;
+                    }
+                    .about-story-card h2 {
+                        font-size: 1.5rem !important;
+                    }
+                    .about-story-card p {
+                        font-size: 0.95rem !important;
+                    }
+                    .about-contact-form {
+                        padding: 1.5rem !important;
+                    }
+                    .about-contact-form h2 {
+                        font-size: 1.25rem !important;
+                    }
+                    .about-form-name-email {
+                        grid-template-columns: 1fr !important;
+                    }
+                    .about-sidebar-card {
+                        padding: 1.5rem !important;
+                    }
+                    .about-social-icons {
+                        justify-content: center !important;
+                        flex-wrap: wrap !important;
+                    }
+                }
+                @media (max-width: 480px) {
+                    .about-grid-stats {
+                        grid-template-columns: 1fr 1fr !important;
+                        gap: 0.7rem !important;
+                    }
+                    .about-pad-top {
+                        padding-top: 90px !important;
+                    }
+                    .about-hero-title {
+                        font-size: 1.6rem !important;
+                    }
+                    .about-hero-subtitle {
+                        font-size: 1.2rem !important;
+                    }
+                    .about-story-card {
+                        padding: 1.2rem !important;
+                    }
+                    .about-contact-form {
+                        padding: 1.2rem !important;
                     }
                 }
             `}</style>
@@ -348,7 +395,7 @@ const About = () => {
         style={{ marginBottom: "6rem" }}
       >
         <div className="about-container" style={containerStyle}>
-          <div style={{ ...cardStyle, padding: "3rem", position: "relative" }}>
+          <div className="about-story-card" style={{ ...cardStyle, padding: "3rem", position: "relative" }}>
             <div
               style={{
                 position: "absolute",
@@ -413,6 +460,7 @@ const About = () => {
               whileInView={{ opacity: 1, x: 0 }}
               viewport={{ once: true }}
               style={{ ...cardStyle, padding: "2.5rem" }}
+              className="about-contact-form"
             >
               <div style={{ marginBottom: "2rem" }}>
                 <h2 style={{ fontSize: "1.5rem", fontWeight: 800, marginBottom: "0.5rem" }}>
@@ -431,7 +479,7 @@ const About = () => {
                 }}
                 style={{ display: "flex", flexDirection: "column", gap: "1.2rem" }}
               >
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+                <div className="about-form-name-email" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
                   <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                     <label style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>Full Name</label>
                     <input 
@@ -529,6 +577,7 @@ const About = () => {
                 initial={{ opacity: 0, x: 20 }}
                 whileInView={{ opacity: 1, x: 0 }}
                 viewport={{ once: true }}
+                className="about-sidebar-card"
                 style={{ ...cardStyle, padding: "2rem" }}
               >
                 <h3 style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: "1.5rem" }}>Connect with Us</h3>
@@ -556,10 +605,11 @@ const About = () => {
                 whileInView={{ opacity: 1, x: 0 }}
                 viewport={{ once: true }}
                 transition={{ delay: 0.1 }}
+                className="about-sidebar-card"
                 style={{ ...cardStyle, padding: "2rem" }}
               >
                 <h3 style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: "1.5rem" }}>Follow Our Insights</h3>
-                <div style={{ display: "flex", gap: "0.8rem" }}>
+                <div className="about-social-icons" style={{ display: "flex", gap: "0.8rem" }}>
                   {[
                     { icon: Linkedin, color: "#0077b5", link: "https://linkedin.com/company/vithartha" },
                     { icon: Twitter, color: "#1da1f2", link: "https://twitter.com/vithartha" },
