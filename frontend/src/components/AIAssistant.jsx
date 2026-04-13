@@ -42,17 +42,53 @@ const AIAssistant = () => {
     }
   }, [messages, isOpen]);
 
+  const getAuthToken = () => {
+    try {
+      const userRaw = localStorage.getItem("user");
+      if (!userRaw) return null;
+
+      const parsedUser = JSON.parse(userRaw);
+      const token =
+        parsedUser?.token ||
+        parsedUser?.accessToken ||
+        parsedUser?.authToken ||
+        null;
+
+      if (!token || token === "undefined" || token === "null") {
+        return null;
+      }
+
+      return token;
+    } catch (error) {
+      console.warn("Unable to read auth token from localStorage:", error);
+      return null;
+    }
+  };
+
   const handleSend = async () => {
     if (!input.trim()) return;
 
     const userMessage = { role: "user", content: input };
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
+
+    const token = getAuthToken();
+    if (!token) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content:
+            "Please log in to use the AI Assistant. Your session appears to be missing or expired.",
+        },
+      ]);
+      return;
+    }
+
     setIsLoading(true);
 
     try {
       const apiUrl = import.meta.env.VITE_API_URL;
-      const user = JSON.parse(localStorage.getItem("user"));
       const response = await axios.post(
         `${apiUrl}/ai/chat`,
         {
@@ -63,7 +99,7 @@ const AIAssistant = () => {
           ],
         },
         {
-          headers: { Authorization: `Bearer ${user?.token}` },
+          headers: { Authorization: `Bearer ${token}` },
         },
       );
 
