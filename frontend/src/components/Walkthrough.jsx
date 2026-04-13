@@ -44,15 +44,15 @@ const POST_LOGIN_STEPS = [
   },
   {
     id: "guide-about",
-    title: "About Vithartha",
+    title: "About Fin2Line",
     description:
-      "Discover the vision behind Vithartha and how we are revolutionizing business management for entrepreneurs.",
+      "Discover the vision behind Fin2Line and how we are revolutionizing business management for entrepreneurs.",
     target: "#nav-link-About",
     icon: Globe,
   },
 ];
 
-const GUEST_WALKTHROUGH_SEEN_KEY = "vithartha_guest_walkthrough_seen_v5";
+const GUEST_WALKTHROUGH_SEEN_KEY = "fin2line_guest_walkthrough_seen_v5";
 const MOBILE_BREAKPOINT = 768;
 
 const Walkthrough = ({ isAppLoading }) => {
@@ -455,7 +455,7 @@ const Walkthrough = ({ isAppLoading }) => {
           pointerEvents: "none",
         }}
       >
-        <AnimatePresence mode="wait">
+        <AnimatePresence mode="sync">
           {/* Highlight Outline */}
           <motion.div
             key={`highlight-${tr.top}-${tr.left}`} // Force re-render on move
@@ -623,7 +623,7 @@ const Walkthrough = ({ isAppLoading }) => {
           >
             {hasMobileNavEntry ? (
               <>
-                Welcome to Vithartha! Tap the menu icon, then choose{" "}
+                Welcome to Fin2Line! Tap the menu icon, then choose{" "}
                 <b>Sign Up</b> to create your account and unlock your
                 personalized roadmap.
               </>

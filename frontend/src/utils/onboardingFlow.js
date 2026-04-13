@@ -1,8 +1,8 @@
 export const getUserId = (user) => user?._id || user?.id || null;
 
-const onboardingDoneKey = (userId) => `vithartha_onboarding_done_${userId}`;
+const onboardingDoneKey = (userId) => `fin2line_onboarding_done_${userId}`;
 const walkthroughSeenKey = (userId) =>
-  `vithartha_post_login_guide_seen_${userId}`;
+  `fin2line_post_login_guide_seen_${userId}`;
 
 export const hasCompletedOnboarding = (user) => {
   const userId = getUserId(user);

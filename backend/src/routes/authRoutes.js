@@ -7,7 +7,7 @@ import {
   updateUserProfile,
   getAllUsers,
 } from "../controllers/authController.js";
-import { protect, admin } from "../middleware/authMiddleware.js";
+import { protect, admin, authorize } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
@@ -16,6 +16,6 @@ router.post("/login", loginUser);
 router.post("/google-login", googleLogin);
 router.get("/profile", protect, getUserProfile);
 router.put("/profile", protect, updateUserProfile);
-router.get("/users", protect, admin, getAllUsers);
+router.get("/users", protect, authorize("admin", "PR"), getAllUsers);
 
 export default router;

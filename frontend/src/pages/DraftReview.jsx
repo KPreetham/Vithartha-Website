@@ -27,6 +27,8 @@ const DraftReview = () => {
   const [selectedDoc, setSelectedDoc] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+  const [showRejectForm, setShowRejectForm] = useState(false);
+  const [rejectMessage, setRejectMessage] = useState("");
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 768);
@@ -76,7 +78,7 @@ const DraftReview = () => {
       await axios.patch(
         `${apiUrl}/leads/${leadId}`,
         {
-          status: "UserAccepted",
+          status: "DraftAccepted",
           userMessage:
             "Draft accepted by user. Please upload final return document.",
         },
@@ -94,6 +96,12 @@ const DraftReview = () => {
   };
 
   const handleRejectDraft = async () => {
+    const reason = String(rejectMessage || "").trim();
+    if (!reason) {
+      toast.error("Please enter a rejection message for PR");
+      return;
+    }
+
     setActionLoading(true);
     try {
       const user = JSON.parse(localStorage.getItem("user"));
@@ -101,15 +109,16 @@ const DraftReview = () => {
       await axios.patch(
         `${apiUrl}/leads/${leadId}`,
         {
-          status: "InProgress",
-          userMessage:
-            "Draft rejected by user. Please revise and re-upload draft.",
+          status: "DraftRejected",
+          userMessage: `Draft rejected by user: ${reason}`,
         },
         {
           headers: { Authorization: `Bearer ${user.token}` },
         },
       );
-      toast.success("Draft rejected. Admin will be notified.");
+      toast.success("Draft rejected and message sent to PR.");
+      setShowRejectForm(false);
+      setRejectMessage("");
       navigate("/dashboard");
     } catch (error) {
       toast.error("Failed to reject draft");
@@ -249,7 +258,7 @@ const DraftReview = () => {
             }}
           >
             <button
-              onClick={handleRejectDraft}
+              onClick={() => setShowRejectForm(true)}
               disabled={actionLoading}
               style={{
                 background: "rgba(239, 68, 68, 0.05)",
@@ -585,6 +594,84 @@ const DraftReview = () => {
             </div>
           </div>
         </div>
+
+        {showRejectForm && (
+          <div
+            style={{
+              marginBottom: isMobile ? "1.2rem" : "1.8rem",
+              padding: "1rem",
+              borderRadius: "14px",
+              background: "rgba(239, 68, 68, 0.06)",
+              border: "1px solid rgba(239, 68, 68, 0.2)",
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.65rem",
+            }}
+          >
+            <div
+              style={{
+                fontSize: "0.72rem",
+                fontWeight: 800,
+                color: "#ef4444",
+                textTransform: "uppercase",
+                letterSpacing: "0.08em",
+              }}
+            >
+              Send Rejection Message to PR
+            </div>
+            <textarea
+              value={rejectMessage}
+              onChange={(e) => setRejectMessage(e.target.value)}
+              rows={3}
+              placeholder="Describe what needs to be changed in this draft..."
+              style={{
+                width: "100%",
+                resize: "vertical",
+                borderRadius: "10px",
+                border: "1px solid rgba(255,255,255,0.12)",
+                background: "rgba(0,0,0,0.25)",
+                color: "white",
+                padding: "0.8rem",
+                outline: "none",
+                fontSize: "0.85rem",
+              }}
+            />
+            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+              <button
+                onClick={handleRejectDraft}
+                disabled={actionLoading}
+                style={{
+                  padding: "0.68rem 0.95rem",
+                  borderRadius: "10px",
+                  border: "none",
+                  background: "#ef4444",
+                  color: "white",
+                  fontSize: "0.78rem",
+                  fontWeight: 800,
+                  cursor: actionLoading ? "not-allowed" : "pointer",
+                  opacity: actionLoading ? 0.7 : 1,
+                }}
+              >
+                {actionLoading ? "Sending..." : "Send to PR and Reject Draft"}
+              </button>
+              <button
+                onClick={() => setShowRejectForm(false)}
+                style={{
+                  padding: "0.68rem 0.95rem",
+                  borderRadius: "10px",
+                  border: "1px solid rgba(255,255,255,0.2)",
+                  background: "transparent",
+                  color: "var(--text-secondary)",
+                  fontSize: "0.78rem",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

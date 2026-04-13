@@ -20,10 +20,10 @@ import {
   X,
   ChevronDown,
   Send,
-  IndianRupee,
   Loader2,
   Upload,
 } from "lucide-react";
+import ConfirmationModal from "../components/ConfirmationModal";
 
 
 const PremiumCard = ({
@@ -69,6 +69,10 @@ const PremiumCard = ({
 };
 
 import Loader from "../components/Loader";
+import {
+  formatInr,
+  getLeadRevenueAmount,
+} from "../utils/servicePricing";
 
 const UserDashboard = () => {
   const [leads, setLeads] = useState([]);
@@ -78,6 +82,10 @@ const UserDashboard = () => {
   const [statsHighlight, setStatsHighlight] = useState(false);
   const [portfolioHighlight, setPortfolioHighlight] = useState(false);
   const [uploadingId, setUploadingId] = useState(null);
+  const [draftRejectDrafts, setDraftRejectDrafts] = useState({});
+  const [draftRejectingLeadId, setDraftRejectingLeadId] = useState(null);
+  const [dismissedDetailsMissingSignatureByLead, setDismissedDetailsMissingSignatureByLead] = useState({});
+  const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, lead: null, isLoading: false });
   const navigate = useNavigate();
 
   const storedUser = JSON.parse(localStorage.getItem("user"));
@@ -117,52 +125,70 @@ const UserDashboard = () => {
     }
   }, []);
 
-  const handleUploadDocument = async (leadId, file) => {
-    if (!file) return;
-    if (file.type !== "application/pdf") {
+  const handleUploadDocuments = async (leadId, files) => {
+    if (!files || files.length === 0) return;
+    
+    const fileArray = Array.from(files);
+    if (fileArray.some((file) => file.type !== "application/pdf")) {
       toast.error("Please upload only PDF documents");
       return;
     }
+
     setUploadingId(leadId);
-    const loadingToast = toast.loading("Uploading document...");
+    const loadingToast = toast.loading(`Uploading document${fileArray.length > 1 ? 's' : ''}...`);
     try {
       const apiUrl = import.meta.env.VITE_API_URL;
       const formData = new FormData();
-      formData.append("file", file);
 
-      // We use the same /leads/upload endpoint as in Recommendations (if it exists)
-      // or similar logic. Let's assume the user wants real upload here too.
+      fileArray.forEach((file) => {
+        formData.append("files", file);
+      });
+
       const uploadRes = await axios.post(`${apiUrl}/leads/upload`, formData, {
         headers: { Authorization: `Bearer ${storedUser.token}` },
       });
 
-      if (uploadRes.data.success) {
-        // Now update the lead document array
-        const response = await axios.patch(
-          `${apiUrl}/leads/${leadId}`,
-          {
-            $push: {
-              documents: {
-                name: file.name,
-                url: uploadRes.data.url,
-                status: "Pending",
-                uploadedAt: new Date(),
-              },
+      const uploadedFiles = Array.isArray(uploadRes.data.files)
+        ? uploadRes.data.files
+        : uploadRes.data.url
+          ? [{ url: uploadRes.data.url, filename: uploadRes.data.filename }]
+          : [];
+
+      if (uploadedFiles.length !== fileArray.length) {
+        throw new Error("Upload response mismatch");
+      }
+
+      const newDocuments = fileArray.map((file, index) => ({
+        name: file.name,
+        url: uploadedFiles[index]?.url || uploadedFiles[index]?.secure_url,
+        type: "Client",
+        status: "Pending",
+        uploadedAt: new Date(),
+      }));
+
+      const response = await axios.patch(
+        `${apiUrl}/leads/${leadId}`,
+        {
+          status: "PendingReview",
+          reuploadedDocumentNames: fileArray.map((file) => file.name),
+          $push: {
+            documents: {
+              $each: newDocuments,
             },
           },
-          {
-            headers: { Authorization: `Bearer ${storedUser.token}` },
-          },
-        );
+        },
+        {
+          headers: { Authorization: `Bearer ${storedUser.token}` },
+        },
+      );
 
-        if (response.data) {
-          toast.success("Document uploaded successfully!", { id: loadingToast });
-          const userId = storedUser?._id || storedUser?.id;
-          const leadsRes = await axios.get(`${apiUrl}/leads?userId=${userId}`, {
-            headers: { Authorization: `Bearer ${storedUser.token}` },
-          });
-          setLeads(leadsRes.data);
-        }
+      if (response.data) {
+        toast.success("Document uploaded successfully!", { id: loadingToast });
+        const userId = storedUser?._id || storedUser?.id;
+        const leadsRes = await axios.get(`${apiUrl}/leads?userId=${userId}`, {
+          headers: { Authorization: `Bearer ${storedUser.token}` },
+        });
+        setLeads(leadsRes.data);
       }
     } catch (error) {
       console.error("Upload error:", error);
@@ -176,7 +202,7 @@ const UserDashboard = () => {
     setMessageByLead((prev) => ({ ...prev, [leadId]: value }));
   };
 
-  const handleSendMessageToAdmin = async (leadId) => {
+  const handleSendMessageToPR = async (leadId) => {
     const message = (messageByLead[leadId] || "").trim();
     if (!message) {
       toast.error("Please enter a message");
@@ -194,7 +220,7 @@ const UserDashboard = () => {
           headers: { Authorization: `Bearer ${storedUser.token}` },
         },
       );
-      toast.success("Message sent to admin!");
+      toast.success("Message sent to PR!");
       setMessageByLead((prev) => ({ ...prev, [leadId]: "" }));
 
       // Refresh leads
@@ -235,36 +261,257 @@ const UserDashboard = () => {
     }
   };
 
+  const handleDeleteService = (lead, e) => {
+    if (e) e.stopPropagation();
+    setDeleteConfirm({ isOpen: true, lead, isLoading: false });
+  };
+
+  const handleConfirmDelete = async () => {
+    const lead = deleteConfirm.lead;
+    const serviceName = lead?.serviceName || "this service";
+    
+    setDeleteConfirm((prev) => ({ ...prev, isLoading: true }));
+    
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL;
+      await axios.delete(`${apiUrl}/leads/${lead._id}`, {
+        headers: { Authorization: `Bearer ${storedUser.token}` },
+      });
+
+      toast.success(`${serviceName} removed`);
+      setExpandedId((prev) => (prev === lead._id ? null : prev));
+      setLeads((prev) => prev.filter((item) => item._id !== lead._id));
+      setDeleteConfirm({ isOpen: false, lead: null, isLoading: false });
+    } catch (error) {
+      console.error("Delete service error:", error);
+      toast.error("Failed to remove service");
+      setDeleteConfirm((prev) => ({ ...prev, isLoading: false }));
+    }
+  };
+
+  const handleDeleteRejectionMessage = async (leadId, e) => {
+    if (e) e.stopPropagation();
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL;
+      await axios.patch(
+        `${apiUrl}/leads/${leadId}`,
+        {
+          prFeedback: "",
+        },
+        {
+          headers: { Authorization: `Bearer ${storedUser.token}` },
+        },
+      );
+      toast.success("PR message removed");
+
+      const userId = storedUser?._id || storedUser?.id;
+      const leadsRes = await axios.get(`${apiUrl}/leads?userId=${userId}`, {
+        headers: { Authorization: `Bearer ${storedUser.token}` },
+      });
+      setLeads(leadsRes.data);
+    } catch (error) {
+      console.error("Delete rejection message error:", error);
+      toast.error("Failed to remove rejection message");
+    }
+  };
+
+  const isAdminRejectedState = (lead) =>
+    lead?.status === "Rejected" &&
+    String(lead?.adminMessage || "")
+      .toLowerCase()
+      .includes("administrator");
+
+  const isExecutorRejectedState = (lead) =>
+    lead?.status === "Rejected" &&
+    !isAdminRejectedState(lead) &&
+    (
+      String(lead?.executorMessage || "")
+        .toLowerCase()
+        .includes("rejected by executor") ||
+      String(lead?.executorMessage || "")
+        .toLowerCase()
+        .includes("assignment rejected") ||
+      !hasPrFeedbackMessage(lead)
+    );
+
+  const isDetailsMissingState = (lead) =>
+    !isExecutorRejectedState(lead) &&
+    (lead?.status === "Rejected" || hasRejectedDocuments(lead));
+
+  const hasDraftReviewInstruction = (lead) => {
+    const message = String(lead?.adminMessage || "").toLowerCase();
+    return (
+      message.includes("draft") &&
+      (message.includes("review") ||
+        message.includes("approve") ||
+        message.includes("check"))
+    );
+  };
+
+  const hasDraftDocument = (lead) =>
+    Array.isArray(lead?.documents) &&
+    lead.documents.some((doc) => doc?.type === "Draft");
+
+  const isReviewDraftState = (lead) => {
+    if (isDetailsMissingState(lead)) return false;
+    if (lead?.status === "DraftSent") return true;
+    return hasDraftDocument(lead) && hasDraftReviewInstruction(lead);
+  };
+
+  const getDetailsMissingMessage = (lead) => {
+    const rejectedDoc = Array.isArray(lead?.documents)
+      ? lead.documents.find((doc) => doc?.status === "Rejected")
+      : null;
+    if (rejectedDoc) return getDocumentRejectionText(rejectedDoc);
+
+    const rejectionNote = String(lead?.prFeedback || "").trim();
+    if (rejectionNote) return rejectionNote;
+
+    return "Please review your documents and upload the missing details.";
+  };
+
+  const getDetailsMissingSignature = (lead) => {
+    const rejectionNote = String(lead?.prFeedback || "").trim();
+    if (rejectionNote) return `pr:${rejectionNote}`;
+
+    const rejectedDoc = Array.isArray(lead?.documents)
+      ? lead.documents.find((doc) => doc?.status === "Rejected")
+      : null;
+
+    if (rejectedDoc) {
+      const rejectedDocId = String(rejectedDoc._id || rejectedDoc.name || "unknown");
+      const rejectedDocMessage = getDocumentRejectionText(rejectedDoc);
+      return `doc:${rejectedDocId}:${rejectedDocMessage}`;
+    }
+
+    return "";
+  };
+
+  const handleDismissDetailsMissingMessage = (lead, e) => {
+    if (e) e.stopPropagation();
+    const leadId = lead?._id;
+    if (!leadId) return;
+    const signature = getDetailsMissingSignature(lead);
+    setDismissedDetailsMissingSignatureByLead((prev) => ({
+      ...prev,
+      [leadId]: signature,
+    }));
+  };
+
   const stats = {
     pending: leads.filter((l) => l.status === "Open").length,
     inProgress: leads.filter((l) =>
       ["InProgress", "DraftSent", "UserAccepted"].includes(l.status),
     ).length,
     completed: leads.filter((l) => l.status === "Completed").length,
+    totalCommitment: leads.reduce(
+      (sum, lead) =>
+        sum + (lead.status === "Rejected" ? 0 : getLeadRevenueAmount(lead)),
+      0,
+    ),
   };
 
-  const getDisplayStatus = (status) => {
-    if (status === "DraftSent") return "Awaiting Draft Review";
-    if (status === "UserAccepted") return "Awaiting Final Upload";
-    if (status === "Completed") return "Final Uploaded";
-    if (status === "Open") return "Pending Approval";
+  const getDisplayStatus = (lead) => {
+    const status = lead?.status;
+    if (isExecutorRejectedState(lead)) return "Rejected by Executor";
+    if (isDetailsMissingState(lead)) return "Action Required: Details Missing";
+    if (isReviewDraftState(lead)) return "Review Draft";
+    if (status === "PendingReview") return "PR Reviewing Documents";
+    if (status === "PR_Accepted") return "Documents Verified";
+    if (status === "AssignedToExecutor") return "Awaiting Executor Coordination";
+    if (status === "InProgress") return "Execution in Progress";
+    if (status === "ExecutionFinished") return "PR Performing Quality Review";
+    if (status === "DraftSent") return "Draft Awaiting Your Approval";
+    if (status === "DraftAccepted" || status === "UserAccepted") return "Waiting for Final Return Upload by PR";
+    if (status === "DraftRejected") return "Rejected by User";
+    if (status === "Rejected") return "Service Rejected";
+    if (status === "Completed") return "Service Completed";
+    if (status === "Open") return "Pending Verification";
     return status;
   };
 
-  const getStatusTheme = (status) => {
+  const getStatusTheme = (lead) => {
+    const status = lead?.status;
+    if (isExecutorRejectedState(lead)) {
+      return { color: "#ef4444", bg: "rgba(239,68,68,0.12)" };
+    }
+    if (isDetailsMissingState(lead)) {
+      return { color: "#ef4444", bg: "rgba(239,68,68,0.12)" };
+    }
+    if (isReviewDraftState(lead)) {
+      return { color: "#8b5cf6", bg: "rgba(139,92,246,0.12)" };
+    }
     if (status === "Completed") {
       return { color: "#10b981", bg: "rgba(16,185,129,0.1)" };
     }
-    if (status === "InProgress") {
+    if (["InProgress", "AssignedToExecutor"].includes(status)) {
       return { color: "#4361ee", bg: "rgba(67,97,238,0.1)" };
     }
-    if (status === "DraftSent") {
-      return { color: "#f59e0b", bg: "rgba(245,158,11,0.12)" };
+    if (
+      status === "InformationRequired" ||
+      status === "DraftRejected" ||
+      status === "Rejected"
+    ) {
+      return { color: "#ef4444", bg: "rgba(239,68,68,0.12)" };
     }
-    if (status === "UserAccepted") {
+    if (status === "DraftSent") {
       return { color: "#8b5cf6", bg: "rgba(139,92,246,0.12)" };
     }
+    if (status === "PR_Accepted" || status === "DraftAccepted") {
+      return { color: "#10b981", bg: "rgba(16,185,129,0.1)" };
+    }
     return { color: "#f59e0b", bg: "rgba(245,158,11,0.1)" };
+  };
+
+  const handleDraftAction = async (leadId, action, feedbackText = "") => {
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL;
+      const status = action === 'accept' ? 'DraftAccepted' : 'DraftRejected';
+      const feedback =
+        action === "reject" ? String(feedbackText || "").trim() : "";
+      
+      if (action === 'reject' && !feedback) return;
+
+      await axios.patch(
+        `${apiUrl}/leads/${leadId}`,
+        { status, userMessage: feedback },
+        { headers: { Authorization: `Bearer ${storedUser.token}` } }
+      );
+      
+      toast.success(action === 'accept' ? "Draft Approved!" : "Feedback Sent");
+      
+      // Refresh
+      const userId = storedUser?._id || storedUser?.id;
+      const leadsRes = await axios.get(`${apiUrl}/leads?userId=${userId}`, {
+        headers: { Authorization: `Bearer ${storedUser.token}` },
+      });
+      setLeads(leadsRes.data);
+
+      if (action === "reject") {
+        setDraftRejectDrafts((prev) => ({ ...prev, [leadId]: "" }));
+        setDraftRejectingLeadId(null);
+      }
+    } catch (error) {
+       toast.error("Failed to process selection");
+    }
+  };
+
+  const openDraftRejectForm = (leadId) => {
+    setDraftRejectingLeadId(leadId);
+  };
+
+  const submitDraftReject = async (leadId) => {
+    const reason = String(draftRejectDrafts[leadId] || "").trim();
+    if (!reason) {
+      toast.error("Please enter a rejection message for PR");
+      return;
+    }
+
+    await handleDraftAction(
+      leadId,
+      "reject",
+      `Draft rejected by user: ${reason}`,
+    );
   };
 
   if (loading) return <Loader minimal={true} />;
@@ -388,7 +635,7 @@ const UserDashboard = () => {
             className="dash-user-stats"
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(3, 1fr)",
+              gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
               gap: "1.5rem",
               width: "100%",
             }}
@@ -401,6 +648,11 @@ const UserDashboard = () => {
                 color: "#4361ee",
               },
               { label: "Completed", count: stats.completed, color: "#10b981" },
+              {
+                label: "Commitment",
+                count: formatInr(stats.totalCommitment),
+                color: "#22c55e",
+              },
             ].map((item, idx) => (
               <div
                 key={idx}
@@ -598,7 +850,7 @@ const UserDashboard = () => {
                       style={{
                         display: "flex",
                         alignItems: "center",
-                        gap: "2rem",
+                        gap: "1rem",
                       }}
                     >
                       {lead.status === "InProgress" && (
@@ -639,45 +891,72 @@ const UserDashboard = () => {
                             letterSpacing: "0.02em",
                             padding: "6px 10px",
                             borderRadius: "999px",
-                            color: getStatusTheme(lead.status).color,
-                            background: getStatusTheme(lead.status).bg,
-                            border: `1px solid ${getStatusTheme(lead.status).color}33`,
+                            color: getStatusTheme(lead).color,
+                            background: getStatusTheme(lead).bg,
+                            border: `1px solid ${getStatusTheme(lead).color}33`,
                             whiteSpace: "nowrap",
                           }}
                         >
-                          {getDisplayStatus(lead.status)}
+                          {getDisplayStatus(lead)}
                         </span>
                       )}
 
-                      <motion.div
-                        animate={{
-                          rotate: expandedId === lead._id ? 180 : 0,
-                          background:
-                            expandedId === lead._id
-                              ? "rgba(16, 185, 129, 0.15)"
-                              : "var(--bg-card-alt)",
-                        }}
-                        transition={{ duration: 0.14, ease: "easeOut" }}
-                        style={{
-                          width: "40px",
-                          height: "40px",
-                          borderRadius: "50%",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          color:
-                            expandedId === lead._id
-                              ? "#10b981"
-                              : "var(--card-content-muted)",
-                          border:
-                            expandedId === lead._id
-                              ? "1px solid rgba(16, 185, 129, 0.3)"
-                              : "1px solid var(--border)",
-                          transition: "all 0.3s ease",
-                        }}
-                      >
-                        <ChevronDown size={20} />
-                      </motion.div>
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "4px" }}>
+                        <button
+                          type="button"
+                          onClick={(e) => handleDeleteService(lead, e)}
+                          title="Remove service"
+                          aria-label={`Remove ${lead.serviceName}`}
+                          style={{
+                            width: "24px",
+                            height: "24px",
+                            border: "none",
+                            background: "transparent",
+                            color: "#9ca3af",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            cursor: "pointer",
+                            flexShrink: 0,
+                            transition: "color 0.2s ease",
+                            padding: 0,
+                            transform: "translateY(-25px)",
+                          }}
+                          onMouseOver={(e) => {
+                            e.currentTarget.style.color = "#d1d5db";
+                          }}
+                          onMouseOut={(e) => {
+                            e.currentTarget.style.color = "#9ca3af";
+                          }}
+                        >
+                          <X size={18} strokeWidth={2.6} />
+                        </button>
+
+                        <motion.div
+                          animate={{
+                            rotate: expandedId === lead._id ? 180 : 0,
+                            background:
+                              expandedId === lead._id
+                                ? "rgba(16, 185, 129, 0.15)"
+                                : "transparent",
+                          }}
+                          transition={{ duration: 0.14, ease: "easeOut" }}
+                          style={{
+                            width: "22px",
+                            height: "22px",
+                            borderRadius: "50%",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            color:
+                              expandedId === lead._id
+                                ? "#10b981"
+                                : "#9ca3af",
+                          }}
+                        >
+                          <ChevronDown size={20} />
+                        </motion.div>
+                      </div>
                     </div>
                   </motion.div>
 
@@ -733,8 +1012,8 @@ const UserDashboard = () => {
                                   style={{
                                     fontSize: "0.8rem",
                                     fontWeight: 700,
-                                    color: getStatusTheme(lead.status).color,
-                                    background: getStatusTheme(lead.status).bg,
+                                    color: getStatusTheme(lead).color,
+                                    background: getStatusTheme(lead).bg,
                                     padding: "6px 12px",
                                     borderRadius: "8px",
                                     display: "inline-flex",
@@ -750,7 +1029,7 @@ const UserDashboard = () => {
                                       background: "currentColor",
                                     }}
                                   />
-                                  {getDisplayStatus(lead.status)}
+                                  {getDisplayStatus(lead)}
                                 </span>
                               </div>
                             </div>
@@ -814,16 +1093,282 @@ const UserDashboard = () => {
                                   gap: "2px",
                                 }}
                               >
-                                <IndianRupee size={18} /> {lead.cost || 1000}
+                                {formatInr(getLeadRevenueAmount(lead))}
                               </div>
                             </div>
                           </div>
 
+                          {isDetailsMissingState(lead) &&
+                            dismissedDetailsMissingSignatureByLead[lead._id] !==
+                              getDetailsMissingSignature(lead) && (
+                            <div 
+                              style={{ 
+                                background: "rgba(239, 68, 68, 0.05)", 
+                                border: "1px solid rgba(239, 68, 68, 0.2)", 
+                                padding: "1.5rem", 
+                                borderRadius: "16px",
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: "0.5rem"
+                              }}
+                            >
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", color: "#ef4444" }}>
+                                <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                  <AlertCircle size={18} />
+                                  <span style={{ fontWeight: 700, fontSize: "0.85rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>Action Required</span>
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    if (String(lead.prFeedback || "").trim()) {
+                                      handleDeleteRejectionMessage(lead._id, e);
+                                      return;
+                                    }
+                                    handleDismissDetailsMissingMessage(lead, e);
+                                  }}
+                                  title="Close message"
+                                  style={{
+                                    border: "1px solid rgba(239, 68, 68, 0.35)",
+                                    background: "rgba(239, 68, 68, 0.18)",
+                                    color: "#ffffff",
+                                    width: "24px",
+                                    height: "24px",
+                                    borderRadius: "999px",
+                                    cursor: "pointer",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                  }}
+                                >
+                                  <X size={14} strokeWidth={2.8} />
+                                </button>
+                              </div>
+                              <p style={{ color: "var(--text)", fontSize: "0.95rem", margin: 0, fontWeight: 500 }}>
+                                {getDetailsMissingMessage(lead)}
+                              </p>
+                            </div>
+                          )}
+
+                          {!isDetailsMissingState(lead) &&
+                            !isExecutorRejectedState(lead) &&
+                            String(lead.prFeedback || "").trim() && (
+                            <div
+                              style={{
+                                background: "rgba(67, 97, 238, 0.07)",
+                                border: "1px solid rgba(67, 97, 238, 0.22)",
+                                padding: "1.5rem",
+                                borderRadius: "16px",
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: "0.5rem",
+                              }}
+                            >
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", color: "#4361ee" }}>
+                                <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                  <AlertCircle size={18} />
+                                  <span style={{ fontWeight: 700, fontSize: "0.85rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                                    Message from PR
+                                  </span>
+                                </span>
+                                <button
+                                  onClick={(e) => handleDeleteRejectionMessage(lead._id, e)}
+                                  title="Remove PR message"
+                                  style={{
+                                    border: "1px solid rgba(67, 97, 238, 0.3)",
+                                    background: "rgba(67, 97, 238, 0.15)",
+                                    color: "#ffffff",
+                                    width: "24px",
+                                    height: "24px",
+                                    borderRadius: "999px",
+                                    cursor: "pointer",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                  }}
+                                >
+                                  <X size={14} strokeWidth={2.8} />
+                                </button>
+                              </div>
+                              <p style={{ color: "var(--text)", fontSize: "0.95rem", margin: 0, fontWeight: 500 }}>
+                                {lead.prFeedback}
+                              </p>
+                            </div>
+                          )}
+
+                          {isReviewDraftState(lead) && (
+                            <div 
+                              style={{ 
+                                background: "rgba(139, 92, 246, 0.05)", 
+                                border: "1px solid rgba(139, 92, 246, 0.2)", 
+                                padding: "1.5rem", 
+                                borderRadius: "16px",
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: "1rem",
+                                marginBottom: "2rem"
+                              }}
+                            >
+                              <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#8b5cf6" }}>
+                                <Sparkles size={18} />
+                                <span style={{ fontWeight: 700, fontSize: "0.85rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>Review Your Draft</span>
+                              </div>
+                              <p style={{ color: "var(--text)", fontSize: "0.95rem", margin: 0, fontWeight: 500 }}>
+                                Your service draft is ready for review. Please check the document below and approve it if everything is correct.
+                              </p>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate(`/dashboard/review-draft/${lead._id}`);
+                                }}
+                                style={{
+                                  background: "rgba(139, 92, 246, 0.1)",
+                                  color: "#8b5cf6",
+                                  border: "1px solid rgba(139, 92, 246, 0.3)",
+                                  padding: "0.85rem",
+                                  borderRadius: "12px",
+                                  fontSize: "0.85rem",
+                                  fontWeight: 700,
+                                  cursor: "pointer",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  gap: "8px"
+                                }}
+                              >
+                                <FileText size={16} /> View Draft
+                              </button>
+
+                              <div style={{ display: "flex", gap: "12px" }}>
+                                <button 
+                                  onClick={() => handleDraftAction(lead._id, 'accept')}
+                                  style={{
+                                    flex: 1,
+                                    padding: "0.8rem",
+                                    background: "#10b981",
+                                    color: "white",
+                                    border: "none",
+                                    borderRadius: "12px",
+                                    fontWeight: 700,
+                                    cursor: "pointer",
+                                    fontSize: "0.85rem",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    gap: "8px"
+                                  }}
+                                >
+                                  <CheckCircle size={16} /> Approve Draft
+                                </button>
+                                <button 
+                                  onClick={() => openDraftRejectForm(lead._id)}
+                                  style={{
+                                    flex: 1,
+                                    padding: "0.8rem",
+                                    background: "rgba(239, 68, 68, 0.08)",
+                                    color: "#ef4444",
+                                    border: "1px solid rgba(239, 68, 68, 0.2)",
+                                    borderRadius: "12px",
+                                    fontWeight: 700,
+                                    cursor: "pointer",
+                                    fontSize: "0.85rem",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    gap: "8px"
+                                  }}
+                                >
+                                  <AlertCircle size={16} /> Reject Draft
+                                </button>
+                              </div>
+
+                              {draftRejectingLeadId === lead._id && (
+                                <div
+                                  style={{
+                                    marginTop: "0.9rem",
+                                    padding: "0.95rem",
+                                    borderRadius: "12px",
+                                    background: "rgba(239, 68, 68, 0.06)",
+                                    border: "1px solid rgba(239, 68, 68, 0.2)",
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    gap: "0.65rem",
+                                  }}
+                                >
+                                  <div
+                                    style={{
+                                      fontSize: "0.72rem",
+                                      fontWeight: 800,
+                                      color: "#ef4444",
+                                      textTransform: "uppercase",
+                                      letterSpacing: "0.08em",
+                                    }}
+                                  >
+                                    Send Rejection Message to PR
+                                  </div>
+                                  <textarea
+                                    value={draftRejectDrafts[lead._id] || ""}
+                                    onChange={(e) =>
+                                      setDraftRejectDrafts((prev) => ({
+                                        ...prev,
+                                        [lead._id]: e.target.value,
+                                      }))
+                                    }
+                                    rows={3}
+                                    placeholder="Describe what needs to be changed in this draft..."
+                                    style={{
+                                      width: "100%",
+                                      resize: "vertical",
+                                      borderRadius: "10px",
+                                      border: "1px solid rgba(255,255,255,0.12)",
+                                      background: "rgba(0,0,0,0.25)",
+                                      color: "white",
+                                      padding: "0.8rem",
+                                      outline: "none",
+                                      fontSize: "0.85rem",
+                                    }}
+                                  />
+                                  <div style={{ display: "flex", gap: "10px" }}>
+                                    <button
+                                      onClick={() => submitDraftReject(lead._id)}
+                                      style={{
+                                        padding: "0.68rem 0.95rem",
+                                        borderRadius: "10px",
+                                        border: "none",
+                                        background: "#ef4444",
+                                        color: "white",
+                                        fontSize: "0.78rem",
+                                        fontWeight: 800,
+                                        cursor: "pointer",
+                                      }}
+                                    >
+                                      Send to PR and Reject Draft
+                                    </button>
+                                    <button
+                                      onClick={() => setDraftRejectingLeadId(null)}
+                                      style={{
+                                        padding: "0.68rem 0.95rem",
+                                        borderRadius: "10px",
+                                        border: "1px solid rgba(255,255,255,0.2)",
+                                        background: "transparent",
+                                        color: "var(--text-secondary)",
+                                        fontSize: "0.78rem",
+                                        fontWeight: 700,
+                                        cursor: "pointer",
+                                      }}
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
                           <div
                             className="dash-detail-grid"
                             style={{
-                              display: "grid",
-                              gridTemplateColumns: "1fr 1.2fr",
+                              display: "flex",
+                              flexDirection: "column",
                               gap: "2.5rem",
                               borderTop: "1px solid var(--border)",
                               paddingTop: "2rem",
@@ -852,61 +1397,77 @@ const UserDashboard = () => {
                               >
                                 {lead.documents && lead.documents.length > 0 ? (
                                   lead.documents.map((doc, idx) => (
-                                    <div
-                                      key={idx}
-                                      style={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        justifyContent: "space-between",
-                                        background: "var(--bg-card)",
-                                        padding: "0.8rem 1.2rem",
-                                        borderRadius: "12px",
-                                        border: "1px solid var(--border)",
-                                      }}
-                                    >
+                                    <div key={idx} style={{ display: "flex", flexDirection: "column", gap: "0.45rem" }}>
                                       <div
                                         style={{
                                           display: "flex",
                                           alignItems: "center",
+                                          justifyContent: "space-between",
                                           gap: "12px",
-                                          fontSize: "0.85rem",
-                                          color: "var(--card-content-text)",
+                                          background: "var(--bg-card)",
+                                          padding: "0.8rem 1.2rem",
+                                          borderRadius: "12px",
+                                          border: "1px solid var(--border)",
                                         }}
                                       >
-                                        <FileText
-                                          size={16}
-                                          style={{ color: "#10b981" }}
-                                        />{" "}
-                                        {doc.name}
+                                        <div
+                                          style={{
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: "12px",
+                                            fontSize: "0.85rem",
+                                            color: "var(--card-content-text)",
+                                          }}
+                                        >
+                                          <FileText
+                                            size={16}
+                                            style={{ color: "#10b981" }}
+                                          />{" "}
+                                          <span>{doc.name}</span>
+                                          {doc.status === "Rejected" && (
+                                            <span
+                                              style={{
+                                                padding: "4px 10px",
+                                                borderRadius: "999px",
+                                                background: "rgba(239, 68, 68, 0.12)",
+                                                color: "#ef4444",
+                                                fontSize: "0.7rem",
+                                                fontWeight: 800,
+                                              }}
+                                            >
+                                              Reupload Required
+                                            </span>
+                                          )}
+                                        </div>
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            window.open(doc.url, "_blank");
+                                          }}
+                                          style={{
+                                            background: "rgba(16, 185, 129, 0.1)",
+                                            border:
+                                              "1px solid rgba(16, 185, 129, 0.2)",
+                                            color: "#10b981",
+                                            padding: "5px 12px",
+                                            borderRadius: "8px",
+                                            fontSize: "0.75rem",
+                                            fontWeight: 700,
+                                            cursor: "pointer",
+                                            transition: "all 0.2s ease",
+                                          }}
+                                          onMouseOver={(e) =>
+                                            (e.currentTarget.style.background =
+                                              "rgba(16, 185, 129, 0.2)")
+                                          }
+                                          onMouseOut={(e) =>
+                                            (e.currentTarget.style.background =
+                                              "rgba(16, 185, 129, 0.1)")
+                                          }
+                                        >
+                                          View
+                                        </button>
                                       </div>
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          window.open(doc.url, "_blank");
-                                        }}
-                                        style={{
-                                          background: "rgba(16, 185, 129, 0.1)",
-                                          border:
-                                            "1px solid rgba(16, 185, 129, 0.2)",
-                                          color: "#10b981",
-                                          padding: "5px 12px",
-                                          borderRadius: "8px",
-                                          fontSize: "0.75rem",
-                                          fontWeight: 700,
-                                          cursor: "pointer",
-                                          transition: "all 0.2s ease",
-                                        }}
-                                        onMouseOver={(e) =>
-                                          (e.currentTarget.style.background =
-                                            "rgba(16, 185, 129, 0.2)")
-                                        }
-                                        onMouseOut={(e) =>
-                                          (e.currentTarget.style.background =
-                                            "rgba(16, 185, 129, 0.1)")
-                                        }
-                                      >
-                                        View
-                                      </button>
                                     </div>
                                   ))
                                 ) : (
@@ -994,61 +1555,24 @@ const UserDashboard = () => {
                                   )}
                                   {uploadingId === lead._id
                                     ? "Uploading..."
-                                    : "Add Document"}
+                                    : "Add Documents"}
                                   <input
                                     type="file"
+                                    multiple
                                     accept=".pdf,application/pdf"
                                     hidden
                                     disabled={!!uploadingId}
                                     onChange={(e) => {
-                                      if (e.target.files?.[0]) {
-                                        handleUploadDocument(
+                                      if (e.target.files && e.target.files.length > 0) {
+                                        handleUploadDocuments(
                                           lead._id,
-                                          e.target.files[0],
+                                          e.target.files,
                                         );
                                       }
                                     }}
                                   />
                                 </label>
 
-                                {lead.status === "DraftSent" && (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      navigate(
-                                        `/dashboard/review-draft/${lead._id}`,
-                                      );
-                                    }}
-                                    style={{
-                                      background: "#10b981",
-                                      border: "none",
-                                      color: "white",
-                                      padding: "0.85rem",
-                                      borderRadius: "12px",
-                                      fontSize: "0.82rem",
-                                      fontWeight: 700,
-                                      cursor: "pointer",
-                                      display: "flex",
-                                      alignItems: "center",
-                                      justifyContent: "center",
-                                      gap: "8px",
-                                      marginTop: "0.35rem",
-                                      boxShadow:
-                                        "0 8px 18px rgba(16, 185, 129, 0.28)",
-                                      transition: "all 0.2s ease",
-                                    }}
-                                    onMouseOver={(e) =>
-                                      (e.currentTarget.style.transform =
-                                        "translateY(-1px)")
-                                    }
-                                    onMouseOut={(e) =>
-                                      (e.currentTarget.style.transform =
-                                        "translateY(0)")
-                                    }
-                                  >
-                                    <FileText size={15} /> Review Draft
-                                  </button>
-                                )}
                               </div>
                             </div>
 
@@ -1064,7 +1588,7 @@ const UserDashboard = () => {
                                   marginBottom: "1rem",
                                 }}
                               >
-                                Message to Admin
+                                Message to PR
                               </label>
                               {lead.adminMessage?.trim() && (
                                 <div
@@ -1156,7 +1680,7 @@ const UserDashboard = () => {
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    handleSendMessageToAdmin(lead._id);
+                                    handleSendMessageToPR(lead._id);
                                   }}
                                   style={{
                                     position: "absolute",
@@ -1197,7 +1721,7 @@ const UserDashboard = () => {
                                   fontStyle: "italic",
                                 }}
                               >
-                                Our admin team typically responds within 4-6
+                                Our PR team typically responds within 4-6
                                 business hours.
                               </p>
                             </div>
@@ -1262,6 +1786,15 @@ const UserDashboard = () => {
             )}
           </div>
         </PremiumCard>
+        
+        <ConfirmationModal
+          isOpen={deleteConfirm.isOpen}
+          title="Delete Service"
+          message={`Are you sure you want to delete ${deleteConfirm.lead?.serviceName || "this service"}? This action cannot be undone.`}
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setDeleteConfirm({ isOpen: false, lead: null, isLoading: false })}
+          isLoading={deleteConfirm.isLoading}
+        />
       </div>
     </div>
   );

@@ -23,6 +23,7 @@ const ALL_SERVICES = [
     trigger: "GST Compliance",
     tags: ["gst", "compliance"],
   },
+  /* 
   {
     id: "gst-recon",
     title: "GST 2B Reconciliation",
@@ -59,6 +60,7 @@ const ALL_SERVICES = [
     trigger: "GST Compliance",
     tags: ["gst", "compliance", "audit"],
   },
+  */
   {
     id: "itr-filing",
     title: "ITR Filing (Individuals)",
@@ -68,6 +70,7 @@ const ALL_SERVICES = [
     trigger: "Income Tax",
     tags: ["income-tax", "tax", "compliance"],
   },
+  /*
   {
     id: "capital-gains-filing",
     title: "Capital Gains Tax Filing",
@@ -140,6 +143,7 @@ const ALL_SERVICES = [
     trigger: "Virtual CFO",
     tags: ["accounting", "finance", "growing"],
   },
+  */
   {
     id: "company-incorporation",
     title: "Company Incorporation",
@@ -149,6 +153,7 @@ const ALL_SERVICES = [
     trigger: "Registration",
     tags: ["startup", "incorporation", "registration", "legal"],
   },
+  /*
   {
     id: "startup-consulting",
     title: "Startup Consulting",
@@ -167,6 +172,7 @@ const ALL_SERVICES = [
     trigger: "Registration",
     tags: ["registration", "iec", "import-export"],
   },
+  */
   {
     id: "mca-annual-filings",
     title: "MCA Annual Filings",
@@ -176,6 +182,7 @@ const ALL_SERVICES = [
     trigger: "Legal Advisory",
     tags: ["compliance", "legal", "mca"],
   },
+  /*
   {
     id: "legal-secretarial",
     title: "Legal & Secretarial Service",
@@ -230,6 +237,7 @@ const ALL_SERVICES = [
     trigger: "Payroll",
     tags: ["advisory", "technical", "cloud"],
   },
+  */
 ];
 
 const seedDB = async () => {

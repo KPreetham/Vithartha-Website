@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+﻿import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import axios from "axios";
@@ -28,6 +28,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
+import { getServicePricing } from "../utils/servicePricing";
 
 const iconMap = {
   Finance: BarChart3,
@@ -52,7 +53,7 @@ const DOCUMENTS_REGISTRY = {
     {
       name: "Bank Statements",
       required: true,
-      desc: "All bank account statements for the financial year (April – March)",
+      desc: "All bank account statements for the financial year (April - March)",
     },
     {
       name: "Form 26AS / AIS / TIS",
@@ -64,7 +65,7 @@ const DOCUMENTS_REGISTRY = {
     {
       name: "Form 16 (Part A & B)",
       required: true,
-      desc: "Issued by employer – mandatory for salaried individuals",
+      desc: "Issued by employer - mandatory for salaried individuals",
     },
     {
       name: "Salary Slips",
@@ -79,7 +80,7 @@ const DOCUMENTS_REGISTRY = {
     {
       name: "Rent Receipts / HRA",
       required: false,
-      desc: "Needed if HRA exemption claimed (landlord PAN required if rent > ₹1L/year)",
+      desc: "Needed if HRA exemption claimed (landlord PAN required if rent > Rs. 1L/year)",
     },
     {
       name: "Section 80C Investment Proofs",
@@ -190,7 +191,7 @@ const DOCUMENTS_REGISTRY = {
     {
       name: "Lottery / Prize Winnings Proof",
       required: false,
-      desc: "Form 16A for winnings above ₹10,000",
+      desc: "Form 16A for winnings above Rs. 10,000",
     },
     {
       name: "Family Pension Certificate",
@@ -225,14 +226,6 @@ const FALLBACK_SERVICES = [
     trigger: "Income Tax",
   },
   {
-    id: "virtual-cfo",
-    title: "Virtual CFO Service",
-    description:
-      "Digitally manage your financial reporting task. Designed to support fundamental decision making.",
-    category: "Finance",
-    trigger: "Virtual CFO",
-  },
-  {
     id: "company-incorporation",
     title: "Company Incorporation",
     description:
@@ -240,11 +233,19 @@ const FALLBACK_SERVICES = [
     category: "Legal",
     trigger: "Registration",
   },
+  {
+    id: "mca-annual-filings",
+    title: "MCA Annual Filings",
+    description:
+      "Annual filings compliance and management, including returns and necessary legal forms.",
+    category: "Compliance",
+    trigger: "Legal Advisory",
+  },
 ];
 
-/* ══════════════════════════════════════════════════
-   PREMIUM CARD  – 3D tilt + glow (reused from Admin)
-══════════════════════════════════════════════════ */
+/* 
+   PREMIUM CARD 3D tilt + glow (reused from Admin)
+*/
 const PremiumCard = ({ children, style = {}, className = "", onClick }) => {
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   useEffect(() => {
@@ -274,9 +275,9 @@ const PremiumCard = ({ children, style = {}, className = "", onClick }) => {
   );
 };
 
-/* ══════════════════════════════════════════════════
-   ADMIN SERVICES VIEW
-══════════════════════════════════════════════════ */
+/*
+  ADMIN SERVICES VIEW
+*/
 const AdminServicesView = () => {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -290,9 +291,14 @@ const AdminServicesView = () => {
     try {
       const apiUrl = import.meta.env.VITE_API_URL;
       const response = await axios.get(`${apiUrl}/leads`);
+      console.log("[AdminServicesView] Fetched leads:", response.data);
       setLeads(response.data);
     } catch (error) {
-      console.error("Error fetching leads:", error);
+      console.error("[AdminServicesView] Error fetching leads:", error);
+      if (error.response) {
+        console.error("[AdminServicesView] Response status:", error.response.status);
+        console.error("[AdminServicesView] Response data:", error.response.data);
+      }
       if (error.response?.status !== 404) {
         // toast.error("Failed to load service data"); // Removed as per user request
       }
@@ -1553,12 +1559,12 @@ const AdminServicesView = () => {
   );
 };
 
-/* ══════════════════════════════════════════════════
+/* --------------------------------------------------
    MAIN RECOMMENDATIONS COMPONENT
-══════════════════════════════════════════════════ */
-/* ══════════════════════════════════════════════════
+-------------------------------------------------- */
+/* --------------------------------------------------
    HELPER COMPONENTS
-   ══════════════════════════════════════════════════ */
+   -------------------------------------------------- */
 const ServiceCard = ({
   service,
   idx,
@@ -1795,6 +1801,9 @@ const Recommendations = () => {
     return localStorage.getItem("theme") === "light";
   });
   const mobileNavbarOffset = "calc(env(safe-area-inset-top, 0px) + 5.6rem)";
+  const selectedServicePricing = selectedService
+    ? getServicePricing(selectedService.title)
+    : null;
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 768);
@@ -1923,8 +1932,16 @@ const Recommendations = () => {
     fetchAllServices();
   }, []);
 
-  const ALL_SERVICES =
-    allDbServices.length > 0 ? allDbServices : FALLBACK_SERVICES;
+  const ALLOWED_SERVICE_TITLES = [
+    "GST Registration",
+    "GSTR 1 & 3B Filing",
+    "ITR Filing (Individuals)",
+    "Company Incorporation",
+    "MCA Annual Filings"
+  ];
+
+  const ALL_SERVICES = (allDbServices.length > 0 ? allDbServices : FALLBACK_SERVICES)
+    .filter(s => ALLOWED_SERVICE_TITLES.includes(s.title));
 
   useEffect(() => {
     const fetchUserLeads = async () => {
@@ -1932,24 +1949,100 @@ const Recommendations = () => {
       if (isLoggedIn && userId) {
         try {
           const apiUrl = import.meta.env.VITE_API_URL;
-          const response = await axios.get(`${apiUrl}/leads?userId=${userId}`, {
+          
+          // For admin/PR/executor - fetch ALL leads without userId filter
+          // For regular users - fetch only their own leads
+          let url = `${apiUrl}/leads`;
+          if (storedUser?.role === "user") {
+            url += `?userId=${userId}`;
+          }
+          
+          const response = await axios.get(url, {
             headers: { Authorization: `Bearer ${storedUser.token}` },
           });
           setUserLeads(response.data);
+          console.log("[Recommendations] Fetched userLeads:", response.data);
         } catch (error) {
           console.error("Error fetching user leads:", error);
         }
       }
     };
     fetchUserLeads();
-  }, [isLoggedIn, storedUser?._id, storedUser?.id]);
+  }, [isLoggedIn, storedUser?._id, storedUser?.id, storedUser?.role]);
 
-  // If admin → render admin services view
-  if (isAdmin) {
-    return <AdminServicesView />;
-  }
+  const getLatestLeadForService = useCallback(
+    (serviceTitle) => {
+      const normalizedTarget = String(serviceTitle || "").trim().toLowerCase();
+      if (!normalizedTarget) return null;
 
-  // ── Section separator — clean, rule-based personalised service engine ───
+      const sorted = [...userLeads].sort((a, b) => {
+        const aTime = new Date(a?.updatedAt || a?.createdAt || 0).getTime();
+        const bTime = new Date(b?.updatedAt || b?.createdAt || 0).getTime();
+        return bTime - aTime;
+      });
+
+      return (
+        sorted.find(
+          (lead) =>
+            String(lead?.serviceName || "").trim().toLowerCase() ===
+            normalizedTarget,
+        ) || null
+      );
+    },
+    [userLeads],
+  );
+
+  const getDocumentState = useCallback(
+    (serviceTitle, docName) => {
+      const lead = getLatestLeadForService(serviceTitle);
+      const serverDoc = Array.isArray(lead?.documents)
+        ? lead.documents.find(
+            (doc) => String(doc?.name || "").trim() === String(docName || "").trim(),
+          )
+        : null;
+      const localDoc = uploadedDocs?.[serviceTitle]?.[docName];
+
+      // If user already uploaded a replacement locally, treat it as the latest state.
+      if (localDoc) {
+        return {
+          uploaded: true,
+          reuploadRequired: false,
+          message: "",
+          uploadedName: localDoc.name || docName,
+          uploadedUrl: localDoc.url || serverDoc?.url || "",
+        };
+      }
+
+      if (serverDoc) {
+        return {
+          uploaded: true,
+          reuploadRequired: serverDoc.status === "Rejected",
+          message:
+            String(serverDoc.rejectionMessage || "").trim() ||
+            "This document was rejected. Please reupload the corrected file.",
+          uploadedName: serverDoc.name || docName,
+          uploadedUrl: serverDoc.url || "",
+        };
+      }
+
+      return {
+        uploaded: false,
+        reuploadRequired: false,
+        message: "",
+        uploadedName: docName,
+        uploadedUrl: "",
+      };
+    },
+    [getLatestLeadForService, uploadedDocs],
+  );
+
+  // If admin - don't return early, let them see the same User Services and Other Services view
+  // Admin will have a view-only mode with no upload buttons
+  // if (isAdmin) {
+  //   return <AdminServicesView />;
+  // }
+
+  // -- Section separator - clean, rule-based personalised service engine ---
   // Maps each need/flag from the user's onboarding profile to exact service titles.
   // This is the single source of truth for what goes under "Your Personalised Services".
 
@@ -1965,7 +2058,7 @@ const Recommendations = () => {
     activeProfile.businessStage
   );
 
-  // ── TRIGGER → exact service title lookup ─────────────────────────────────
+  // -- TRIGGER - exact service title lookup ---------------------------------
   // Broad category triggers (used when user picks from Have a Business checkboxes)
   const BROAD_TRIGGER_MAP = {
     "GST Compliance": [
@@ -1999,7 +2092,7 @@ const Recommendations = () => {
       "TDS (Payroll) Compliance",
       "Technical Service",
     ],
-    // Focused startup flag — shows only the 3 most essential startup services
+    // Focused startup flag - shows only the 3 most essential startup services
     startingBusiness: [
       "Company Incorporation",
       "Startup Consulting",
@@ -2007,7 +2100,7 @@ const Recommendations = () => {
     ],
   };
 
-  // Granular flags set by specific Yes/No answers — these override the broad Income Tax mapping
+  // Granular flags set by specific Yes/No answers - these override the broad Income Tax mapping
   const GRANULAR_FLAG_MAP = {
     salaried: ["ITR Filing (Individuals)"],
     capitalGains: ["Capital Gains Tax Filing"],
@@ -2157,14 +2250,67 @@ const Recommendations = () => {
     );
   }
 
-  const myServiceTitles = new Set(myServices.map((s) => s.title));
+  const submittedServiceLeads = (() => {
+    const sorted = [...userLeads].sort((a, b) => {
+      const aTime = new Date(a?.updatedAt || a?.createdAt || 0).getTime();
+      const bTime = new Date(b?.updatedAt || b?.createdAt || 0).getTime();
+      return bTime - aTime;
+    });
+
+    const map = new Map();
+    sorted.forEach((lead) => {
+      const key = String(lead?.serviceName || "").trim().toLowerCase();
+      if (key && !map.has(key)) {
+        map.set(key, lead);
+      }
+    });
+
+    return Array.from(map.values());
+  })();
+
+  const submittedServices = submittedServiceLeads
+    .map((lead) => {
+      const serviceName = String(lead?.serviceName || "").trim();
+      const matchedService = ALL_SERVICES.find(
+        (service) =>
+          String(service?.title || "").trim().toLowerCase() ===
+          serviceName.toLowerCase(),
+      );
+
+      if (matchedService) return matchedService;
+
+      return {
+        title: serviceName,
+        description:
+          "This service was already submitted by you and is being tracked in your workflow.",
+        category: "Advisory",
+        trigger: "Submitted",
+      };
+    })
+    .filter((service) => !!service?.title);
+
+  const hasSubmittedServices = isLoggedIn && submittedServices.length > 0;
 
   const isSearching = searchQuery.trim() !== "";
+
+  if (hasSubmittedServices) {
+    const submittedFilterFn = (s) =>
+      searchQuery.trim() === "" ||
+      s.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      String(s.description || "")
+        .toLowerCase()
+        .includes(searchQuery.toLowerCase()) ||
+      String(s.category || "").toLowerCase().includes(searchQuery.toLowerCase());
+
+    myServices = submittedServices.filter(submittedFilterFn);
+  }
+
+  const displayedMyServiceTitles = new Set(myServices.map((s) => s.title));
 
   // Everything else goes to "Other Services"
   const otherServices = isSearching
     ? ALL_SERVICES.filter((s) => !filterFn(s))
-    : ALL_SERVICES.filter((s) => !myServiceTitles.has(s.title));
+    : ALL_SERVICES.filter((s) => !displayedMyServiceTitles.has(s.title));
 
   const handleSearch = () => {
     // Searching is now handled dynamically as user types
@@ -2216,6 +2362,10 @@ const Recommendations = () => {
             >
               {searchQuery.trim() !== "" ? (
                 "Search Results"
+              ) : hasSubmittedServices ? (
+                <>
+                  Your <span style={{ color: "#10b981" }}>Services</span>
+                </>
               ) : userNeeds.length > 0 ? (
                 <>
                   Your <span style={{ color: "#10b981" }}>Personalised</span>{" "}
@@ -2240,6 +2390,8 @@ const Recommendations = () => {
             >
               {searchQuery.trim() !== ""
                 ? `Showing services matching "${searchQuery}"`
+                : hasSubmittedServices
+                  ? "These are the services you already submitted. Open any service to track and update documents."
                 : "Based on your business profile, we've curated the most impactful services to accelerate your growth and ensure compliance."}
             </p>
 
@@ -2332,106 +2484,104 @@ const Recommendations = () => {
             style={{ display: "flex", flexDirection: "column", gap: "4rem" }}
           >
             {/* Your Personalized Services Section */}
-            {myServices.length > 0 && (
-              <div>
-                <div
+            <div>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "1rem",
+                  marginBottom: isMobile ? "1.5rem" : "2rem",
+                }}
+              >
+                <h2
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "1rem",
-                    marginBottom: isMobile ? "1.5rem" : "2rem",
+                    fontSize: isMobile ? "1.4rem" : "1.75rem",
+                    fontWeight: 600,
+                    color: "var(--text)",
+                    margin: 0,
+                    letterSpacing: "-0.01em",
                   }}
                 >
-                  <h2
-                    style={{
-                      fontSize: isMobile ? "1.4rem" : "1.75rem",
-                      fontWeight: 600,
-                      color: "var(--text)",
-                      margin: 0,
-                      letterSpacing: "-0.01em",
-                    }}
-                  >
-                    {isSearching
-                      ? "Matched Services"
-                      : userNeeds.length > 0 || recommendations?.length > 0
-                        ? "Your Personalised Services"
-                        : "Recommended Services"}
-                  </h2>
-                </div>
-                <div
-                  className="recommendations-grid"
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: isMobile
-                      ? "1fr"
-                      : "repeat(auto-fill, minmax(320px, 1fr))",
-                    gap: isMobile ? "1.25rem" : "2rem",
-                    justifyContent: "center",
-                  }}
-                >
-                  {myServices.map((service, idx) => (
-                    <ServiceCard
-                      key={`my-${idx}`}
-                      service={service}
-                      idx={idx}
-                      onClick={setSelectedService}
-                      isLightMode={isLightMode}
-                      isMobile={isMobile}
-                    />
-                  ))}
-                </div>
+                  {isSearching
+                    ? "Matched Services"
+                    : hasSubmittedServices
+                      ? "User Services"
+                    : userNeeds.length > 0 || recommendations?.length > 0
+                      ? "Your Personalised Services"
+                      : "Recommended Services"}
+                </h2>
               </div>
-            )}
+              <div
+                className="recommendations-grid"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: isMobile
+                    ? "1fr"
+                    : "repeat(auto-fill, minmax(320px, 1fr))",
+                  gap: isMobile ? "1.25rem" : "2rem",
+                  justifyContent: "center",
+                }}
+              >
+                {myServices.map((service, idx) => (
+                  <ServiceCard
+                    key={`my-${idx}`}
+                    service={service}
+                    idx={idx}
+                    onClick={setSelectedService}
+                    isLightMode={isLightMode}
+                    isMobile={isMobile}
+                  />
+                ))}
+              </div>
+            </div>
 
             {/* Other Services Section */}
-            {otherServices.length > 0 && (
-              <div>
-                <div
+            <div>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "1rem",
+                  marginBottom: isMobile ? "1.5rem" : "2rem",
+                }}
+              >
+                <h2
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "1rem",
-                    marginBottom: isMobile ? "1.5rem" : "2rem",
+                    fontSize: isMobile ? "1.4rem" : "1.75rem",
+                    fontWeight: 600,
+                    color: "var(--text)",
+                    margin: 0,
+                    letterSpacing: "-0.01em",
                   }}
                 >
-                  <h2
-                    style={{
-                      fontSize: isMobile ? "1.4rem" : "1.75rem",
-                      fontWeight: 600,
-                      color: "var(--text)",
-                      margin: 0,
-                      letterSpacing: "-0.01em",
-                    }}
-                  >
-                    {isSearching
-                      ? "Other Services (Not Matching)"
-                      : "Other Services"}
-                  </h2>
-                </div>
-                <div
-                  className="recommendations-grid"
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: isMobile
-                      ? "1fr"
-                      : "repeat(auto-fill, minmax(320px, 1fr))",
-                    gap: isMobile ? "1.25rem" : "2rem",
-                    justifyContent: "center",
-                  }}
-                >
-                  {otherServices.map((service, idx) => (
-                    <ServiceCard
-                      key={`other-${idx}`}
-                      service={service}
-                      idx={idx}
-                      onClick={setSelectedService}
-                      isLightMode={isLightMode}
-                      isMobile={isMobile}
-                    />
-                  ))}
-                </div>
+                  {isSearching
+                    ? "Other Services (Not Matching)"
+                    : "Other Services"}
+                </h2>
               </div>
-            )}
+              <div
+                className="recommendations-grid"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: isMobile
+                    ? "1fr"
+                    : "repeat(auto-fill, minmax(320px, 1fr))",
+                  gap: isMobile ? "1.25rem" : "2rem",
+                  justifyContent: "center",
+                }}
+              >
+                {otherServices.map((service, idx) => (
+                  <ServiceCard
+                    key={`other-${idx}`}
+                    service={service}
+                    idx={idx}
+                    onClick={setSelectedService}
+                    isLightMode={isLightMode}
+                    isMobile={isMobile}
+                  />
+                ))}
+              </div>
+            </div>
 
             {myServices.length === 0 && otherServices.length === 0 && (
               <NoServicesFound onClear={() => setSearchQuery("")} />
@@ -2444,241 +2594,259 @@ const Recommendations = () => {
 
       {/* Service Detail Modal/Form */}
       <AnimatePresence>
-        {selectedService && (
-          <div
-            className="rec-detail-modal"
-            style={{
-              position: "fixed",
-              inset: 0,
-              zIndex: 2000,
-              display: "flex",
-              alignItems: "flex-start",
-              justifyContent: "center",
-              padding: isMobile
-                ? `${mobileNavbarOffset} 0.75rem max(0.75rem, env(safe-area-inset-bottom, 0px))`
-                : "clamp(5.8rem, 9vh, 6.5rem) 1.5rem 1.5rem",
-              background: "rgba(0,0,0,0.85)",
-              backdropFilter: "blur(12px)",
-              overflowY: "auto",
-            }}
-          >
+        {selectedService && (() => {
+          const cat = selectedService.category || "Advisory";
+          const catConfig = categoryColors[cat] || categoryColors["Advisory"];
+          const CatIcon = iconMap[cat] || Zap;
+          const docs = getActiveDocs(selectedService);
+          const required = docs.filter((d) => d.required);
+          const uploadedCount = required.filter(
+            (d) => getDocumentState(selectedService.title, d.name).uploaded
+          ).length;
+          const isComplete = required.every((d) => {
+            const state = getDocumentState(selectedService.title, d.name);
+            return state.uploaded && !state.reuploadRequired;
+          });
+          const progressPct = required.length > 0
+            ? Math.round((uploadedCount / required.length) * 100)
+            : 100;
+
+          return (
             <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 30 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 30 }}
-              className="rec-modal-content"
+              key="modal-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="rec-detail-modal"
               style={{
-                background: "var(--modal-gradient)",
-                width: "100%",
-                maxWidth: "780px",
-                maxHeight: isMobile
-                  ? `calc(100vh - ${mobileNavbarOffset} - max(0.75rem, env(safe-area-inset-bottom, 0px)))`
-                  : "calc(100vh - clamp(7.4rem, 12vh, 8.5rem))",
-                borderRadius: isMobile ? "24px" : "32px",
-                border: "1px solid var(--border)",
-                overflow: "hidden",
-                position: "relative",
-                boxShadow: "0 40px 100px -12px rgba(0, 0, 0, 0.4)",
+                position: "fixed",
+                inset: 0,
+                zIndex: 2000,
                 display: "flex",
-                flexDirection: "column",
+                alignItems: "flex-start",
+                justifyContent: "center",
+                padding: isMobile
+                  ? `${mobileNavbarOffset} 0 0`
+                  : "clamp(5.5rem, 9vh, 6.5rem) 1.5rem 1.5rem",
+                background: "rgba(0,0,0,0.75)",
+                backdropFilter: "blur(16px)",
+                WebkitBackdropFilter: "blur(16px)",
+                overflowY: "auto",
               }}
+              onClick={(e) => { if (e.target === e.currentTarget) setSelectedService(null); }}
             >
-              {/* Modal Header */}
-              <div
+              <motion.div
+                initial={{ opacity: 0, y: 24, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 24, scale: 0.97 }}
+                transition={{ duration: 0.28, ease: [0.23, 1, 0.32, 1] }}
+                className="rec-modal-content"
                 style={{
-                  padding: isMobile ? "1.2rem 1.5rem" : "1.8rem 2.5rem",
-                  borderBottom: "1px solid rgba(255,255,255,0.05)",
+                  width: "100%",
+                  maxWidth: "720px",
+                  maxHeight: isMobile
+                    ? `calc(100dvh - ${mobileNavbarOffset})`
+                    : "calc(100vh - clamp(7rem, 12vh, 8.5rem))",
+                  borderRadius: isMobile ? "24px 24px 0 0" : "28px",
+                  border: `1px solid ${isLightMode ? "rgba(0,0,0,0.1)" : "rgba(255,255,255,0.08)"}`,
+                  overflow: "hidden",
                   display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  background: "rgba(255,255,255,0.01)",
+                  flexDirection: "column",
+                  boxShadow: isLightMode
+                    ? "0 32px 80px rgba(0,0,0,0.18)"
+                    : "0 32px 80px rgba(0,0,0,0.7)",
+                  background: isLightMode
+                    ? "#ffffff"
+                    : "linear-gradient(160deg, #111318 0%, #0d0f13 100%)",
                 }}
               >
+                {/* -- HEADER -- */}
                 <div
                   style={{
+                    padding: isMobile ? "1.25rem 1.25rem 1rem" : "1.6rem 2rem 1.25rem",
+                    borderBottom: `1px solid ${isLightMode ? "rgba(0,0,0,0.08)" : "rgba(255,255,255,0.06)"}`,
                     display: "flex",
-                    alignItems: "center",
-                    gap: isMobile ? "0.7rem" : "1rem",
-                    flex: 1,
-                    minWidth: 0,
-                  }}
-                >
-                  <div
-                    style={{
-                      padding: isMobile ? "4px 10px" : "8px 16px",
-                      background: (
-                        categoryColors[selectedService.category] ||
-                        categoryColors["Advisory"]
-                      ).bg,
-                      color: (
-                        categoryColors[selectedService.category] ||
-                        categoryColors["Advisory"]
-                      ).color,
-                      borderRadius: "100px",
-                      fontSize: isMobile ? "0.6rem" : "0.7rem",
-                      fontWeight: 800,
-                      textTransform: "uppercase",
-                      letterSpacing: "0.05em",
-                    }}
-                  >
-                    {selectedService.category}
-                  </div>
-                  <h2
-                    style={{
-                      fontSize: isMobile ? "1.1rem" : "1.4rem",
-                      fontWeight: 750,
-                      color: "var(--text)",
-                      margin: 0,
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {selectedService.title}
-                  </h2>
-                </div>
-                <button
-                  onClick={() => setSelectedService(null)}
-                  style={{
-                    background: isLightMode
-                      ? "rgba(0,0,0,0.08)"
-                      : "rgba(255,255,255,0.05)",
-                    border: "none",
-                    color: isLightMode ? "#111111" : "#fff",
-                    cursor: "pointer",
-                    width: "32px",
-                    height: "32px",
-                    borderRadius: "50%",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    transition: "0.2s",
+                    alignItems: "flex-start",
+                    justifyContent: "space-between",
+                    gap: "1rem",
                     flexShrink: 0,
-                    marginLeft: "10px",
                   }}
                 >
-                  <X size={18} />
-                </button>
-              </div>
-
-              {/* Scrollable Content */}
-              <div
-                style={{
-                  padding: isMobile ? "1.5rem" : "2rem 2.5rem",
-                  overflowY: "auto",
-                  flex: 1,
-                }}
-                className="custom-scrollbar"
-              >
-                <div style={{ marginBottom: isMobile ? "1.8rem" : "2.5rem" }}>
-                  <h3
+                  <div style={{ display: "flex", alignItems: "center", gap: isMobile ? "0.85rem" : "1rem", flex: 1, minWidth: 0 }}>
+                    {/* Category Icon */}
+                    <div
+                      style={{
+                        width: isMobile ? 42 : 50,
+                        height: isMobile ? 42 : 50,
+                        borderRadius: "14px",
+                        background: catConfig.bg,
+                        border: `1px solid ${catConfig.color}30`,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <CatIcon size={isMobile ? 18 : 22} color={catConfig.color} />
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          padding: "2px 10px",
+                          background: catConfig.bg,
+                          color: catConfig.color,
+                          borderRadius: "100px",
+                          fontSize: "0.6rem",
+                          fontWeight: 800,
+                          letterSpacing: "0.08em",
+                          textTransform: "uppercase",
+                          marginBottom: "4px",
+                        }}
+                      >
+                        {selectedService.category}
+                      </div>
+                      <h2
+                        style={{
+                          fontSize: isMobile ? "1.05rem" : "1.35rem",
+                          fontWeight: 700,
+                          color: isLightMode ? "#0f172a" : "#fff",
+                          margin: 0,
+                          letterSpacing: "-0.02em",
+                          lineHeight: 1.2,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: isMobile ? "normal" : "nowrap",
+                        }}
+                      >
+                        {selectedService.title}
+                      </h2>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setSelectedService(null)}
                     style={{
-                      fontSize: "0.8rem",
-                      fontWeight: 800,
-                      color: "#22c55e",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.1em",
-                      marginBottom: "0.6rem",
+                      background: isLightMode ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.06)",
+                      border: `1px solid ${isLightMode ? "rgba(0,0,0,0.1)" : "rgba(255,255,255,0.08)"}`,
+                      color: isLightMode ? "#374151" : "rgba(255,255,255,0.7)",
+                      cursor: "pointer",
+                      width: "34px",
+                      height: "34px",
+                      borderRadius: "10px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                      transition: "all 0.15s",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = isLightMode ? "rgba(0,0,0,0.1)" : "rgba(255,255,255,0.1)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = isLightMode ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.06)";
                     }}
                   >
-                    Service Overview
-                  </h3>
+                    <X size={16} />
+                  </button>
+                </div>
+
+                {/* -- SCROLLABLE BODY -- */}
+                <div
+                  style={{
+                    padding: isMobile ? "1.25rem" : "1.75rem 2rem",
+                    overflowY: "auto",
+                    flex: 1,
+                  }}
+                  className="custom-scrollbar"
+                >
+
+                  {/* Description */}
                   <p
                     style={{
-                      color: "var(--text-secondary)",
-                      fontSize: "0.9rem",
-                      lineHeight: 1.6,
-                      margin: 0,
+                      color: isLightMode ? "#4b5563" : "rgba(255,255,255,0.55)",
+                      fontSize: isMobile ? "0.88rem" : "0.92rem",
+                      lineHeight: 1.7,
+                      margin: "0 0 1.5rem",
                     }}
                   >
                     {selectedService.description}
                   </p>
 
+                  {/* -- Pricing & Turnaround Bar -- */}
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
-                      gap: "0.8rem",
-                      marginTop: "1.2rem",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: "0.75rem",
+                      marginBottom: "1.75rem",
                     }}
                   >
+                    {/* Fee */}
                     <div
                       style={{
-                        background: isLightMode
-                          ? "rgba(0,0,0,0.05)"
-                          : "rgba(255,255,255,0.02)",
-                        padding: "1rem",
+                        padding: isMobile ? "1rem" : "1.1rem 1.25rem",
+                        background: isLightMode ? "#f8fafc" : "rgba(255,255,255,0.03)",
+                        border: `1px solid ${isLightMode ? "#e2e8f0" : "rgba(255,255,255,0.07)"}`,
                         borderRadius: "16px",
-                        border: isLightMode
-                          ? "1px solid rgba(0,0,0,0.12)"
-                          : "1px solid rgba(255,255,255,0.05)",
                         display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
+                        flexDirection: "column",
+                        gap: "4px",
                       }}
                     >
                       <span
                         style={{
-                          fontSize: "0.7rem",
-                          color: isLightMode
-                            ? "rgba(0,0,0,0.7)"
-                            : "rgba(255,255,255,0.4)",
+                          fontSize: "0.62rem",
                           fontWeight: 700,
                           textTransform: "uppercase",
+                          letterSpacing: "0.08em",
+                          color: isLightMode ? "#94a3b8" : "rgba(255,255,255,0.35)",
                         }}
                       >
                         Expert Fee
                       </span>
                       <span
                         style={{
-                          fontSize: "1.1rem",
+                          fontSize: isMobile ? "1rem" : "1.15rem",
                           fontWeight: 800,
-                          color: "#22c55e",
+                          color: "#10b981",
+                          letterSpacing: "-0.01em",
                         }}
                       >
-                        ₹1,000
+                        {selectedServicePricing?.displayPrice || "Rs. 1,000"}
                       </span>
                     </div>
+                    {/* Turnaround */}
                     <div
                       style={{
-                        background: isLightMode
-                          ? "rgba(0,0,0,0.05)"
-                          : "rgba(255,255,255,0.02)",
-                        padding: "1rem",
+                        padding: isMobile ? "1rem" : "1.1rem 1.25rem",
+                        background: isLightMode ? "#f8fafc" : "rgba(255,255,255,0.03)",
+                        border: `1px solid ${isLightMode ? "#e2e8f0" : "rgba(255,255,255,0.07)"}`,
                         borderRadius: "16px",
-                        border: isLightMode
-                          ? "1px solid rgba(0,0,0,0.12)"
-                          : "1px solid rgba(255,255,255,0.05)",
                         display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
+                        flexDirection: "column",
+                        gap: "4px",
                       }}
                     >
                       <span
                         style={{
-                          fontSize: "0.7rem",
-                          color: isLightMode
-                            ? "rgba(0,0,0,0.7)"
-                            : "rgba(255,255,255,0.4)",
+                          fontSize: "0.62rem",
                           fontWeight: 700,
                           textTransform: "uppercase",
+                          letterSpacing: "0.08em",
+                          color: isLightMode ? "#94a3b8" : "rgba(255,255,255,0.35)",
                         }}
                       >
                         Turnaround
                       </span>
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "6px",
-                        }}
-                      >
-                        <Clock size={16} color="#22c55e" />
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <Clock size={14} color="#10b981" />
                         <span
                           style={{
-                            fontSize: "0.95rem",
-                            fontWeight: 700,
-                            color: isLightMode ? "#111111" : "var(--text)",
+                            fontSize: isMobile ? "1rem" : "1.05rem",
+                            fontWeight: 800,
+                            color: isLightMode ? "#0f172a" : "#fff",
+                            letterSpacing: "-0.01em",
                           }}
                         >
                           2-4 Days
@@ -2686,505 +2854,465 @@ const Recommendations = () => {
                       </div>
                     </div>
                   </div>
-                </div>
 
-                {/* Checklist Section */}
-                <div>
-                  {/* PDF-only notice */}
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      padding: "0.55rem 0.9rem",
-                      background: "rgba(245, 158, 11, 0.06)",
-                      border: "1px solid rgba(245, 158, 11, 0.15)",
-                      borderRadius: "10px",
-                      marginBottom: "1rem",
-                    }}
-                  >
-                    <FileText size={13} color="#f59e0b" style={{ flexShrink: 0 }} />
-                    <span
+                  {/* -- View Only Notice for Non-Users -- */}
+                  {storedUser?.role && storedUser?.role !== "user" && (
+                    <div
                       style={{
-                        fontSize: "0.72rem",
-                        fontWeight: 600,
-                        color: "#f59e0b",
-                        lineHeight: 1.4,
-                      }}
-                    >
-                      Only PDF documents are accepted for upload
-                    </span>
-                  </div>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: isMobile ? "column" : "row",
-                      justifyContent: "space-between",
-                      alignItems: isMobile ? "flex-start" : "center",
-                      marginBottom: "1rem",
-                      gap: isMobile ? "0.5rem" : 0,
-                    }}
-                  >
-                    <h3
-                      style={{
-                        fontSize: "0.8rem",
-                        fontWeight: 800,
-                        color: "#22c55e",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.1em",
-                        margin: 0,
-                      }}
-                    >
-                      Required Documentation
-                    </h3>
-                    {(() => {
-                      const docs = getActiveDocs(selectedService);
-                      const required = docs.filter((d) => d.required);
-                      const uploaded =
-                        uploadedDocs[selectedService.title] || {};
-                      const count = required.filter(
-                        (d) => uploaded[d.name],
-                      ).length;
-                      return (
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "8px",
-                            width: isMobile ? "100%" : "auto",
-                          }}
-                        >
-                          <span
-                            style={{
-                              fontSize: "0.72rem",
-                              color: "#22c55e",
-                              fontWeight: 800,
-                            }}
-                          >
-                            {count}/{required.length} Required
-                          </span>
-                          <div
-                            style={{
-                              flex: isMobile ? 1 : "unset",
-                              width: isMobile ? "auto" : "80px",
-                              height: "6px",
-                              background: isLightMode
-                                ? "rgba(0,0,0,0.12)"
-                                : "rgba(255,255,255,0.05)",
-                              borderRadius: "10px",
-                              overflow: "hidden",
-                            }}
-                          >
-                            <div
-                              style={{
-                                width: `${(count / Math.max(1, required.length)) * 100}%`,
-                                height: "100%",
-                                background: "#22c55e",
-                                transition: "width 0.4s ease",
-                              }}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "0.8rem",
-                    }}
-                  >
-                    {(() => {
-                      const docs = getActiveDocs(selectedService);
-                      const uploaded =
-                        uploadedDocs[selectedService.title] || {};
-
-                      return docs.map((doc, idx) => (
-                        <div
-                          key={idx}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            padding: isMobile ? "0.8rem 1rem" : "1rem 1.25rem",
-                            background: uploaded[doc.name]
-                              ? isLightMode
-                                ? "rgba(16,185,129,0.15)"
-                                : "rgba(16,185,129,0.04)"
-                              : isLightMode
-                                ? "rgba(0,0,0,0.06)"
-                                : "rgba(255,255,255,0.01)",
-                            borderRadius: "18px",
-                            border: uploaded[doc.name]
-                              ? isLightMode
-                                ? "1px solid rgba(16,185,129,0.35)"
-                                : "1px solid rgba(16,185,129,0.15)"
-                              : isLightMode
-                                ? "1px solid rgba(0,0,0,0.14)"
-                                : "1px solid rgba(255,255,255,0.05)",
-                            transition: "all 0.2s",
-                            opacity:
-                              !doc.required && !uploaded[doc.name] ? 0.7 : 1,
-                            gap: isMobile ? "0.6rem" : "1rem",
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: isMobile ? "0.7rem" : "1rem",
-                              flex: 1,
-                              minWidth: 0,
-                            }}
-                          >
-                            <div
-                              style={{
-                                width: isMobile ? "30px" : "36px",
-                                height: isMobile ? "30px" : "36px",
-                                borderRadius: "8px",
-                                background: uploaded[doc.name]
-                                  ? "rgba(16,185,129,0.1)"
-                                  : isLightMode
-                                    ? "rgba(0,0,0,0.08)"
-                                    : "rgba(255,255,255,0.03)",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                flexShrink: 0,
-                              }}
-                            >
-                              {uploaded[doc.name] ? (
-                                <Check size={16} color="#10b981" />
-                              ) : (
-                                <FileText
-                                  size={16}
-                                  color={
-                                    isLightMode
-                                      ? "rgba(0,0,0,0.6)"
-                                      : "rgba(255,255,255,0.2)"
-                                  }
-                                />
-                              )}
-                            </div>
-                            <div style={{ minWidth: 0, flex: 1 }}>
-                              <div
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: "6px",
-                                  flexWrap: "wrap",
-                                }}
-                              >
-                                <p
-                                  style={{
-                                    fontSize: isMobile ? "0.8rem" : "0.85rem",
-                                    fontWeight: 700,
-                                    color: isLightMode
-                                      ? "#111111"
-                                      : "var(--text)",
-                                    margin: 0,
-                                    whiteSpace: "nowrap",
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                  }}
-                                >
-                                  {doc.name}
-                                </p>
-                                {doc.required ? (
-                                  <span
-                                    style={{
-                                      fontSize: "0.55rem",
-                                      padding: "2px 5px",
-                                      background: "rgba(239,68,68,0.1)",
-                                      color: "#ef4444",
-                                      borderRadius: "4px",
-                                      fontWeight: 800,
-                                      textTransform: "uppercase",
-                                    }}
-                                  >
-                                    Required
-                                  </span>
-                                ) : (
-                                  <span
-                                    style={{
-                                      fontSize: "0.55rem",
-                                      padding: "2px 5px",
-                                      background: isLightMode
-                                        ? "rgba(0,0,0,0.1)"
-                                        : "rgba(255,255,255,0.05)",
-                                      color: isLightMode
-                                        ? "rgba(0,0,0,0.65)"
-                                        : "rgba(255,255,255,0.3)",
-                                      borderRadius: "4px",
-                                      fontWeight: 700,
-                                      textTransform: "uppercase",
-                                    }}
-                                  >
-                                    Optional
-                                  </span>
-                                )}
-                              </div>
-                              <p
-                                style={{
-                                  fontSize: "0.65rem",
-                                  color: isLightMode
-                                    ? "rgba(0,0,0,0.7)"
-                                    : "var(--text-muted)",
-                                  margin: "1px 0 0",
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                  display: "-webkit-box",
-                                  WebkitLineClamp: 1,
-                                  WebkitBoxOrient: "vertical",
-                                }}
-                              >
-                                {uploaded[doc.name]
-                                  ? `Uploaded: ${uploaded[doc.name].name}`
-                                  : doc.desc || "Documentation needed"}
-                              </p>
-                            </div>
-                          </div>
-
-                          <label
-                            style={{
-                              cursor: uploadingDoc ? "not-allowed" : "pointer",
-                              padding: isMobile ? "5px 12px" : "6px 14px",
-                              background: uploaded[doc.name]
-                                ? (isLightMode ? "rgba(16,185,129,0.1)" : "rgba(255,255,255,0.05)")
-                                : "#22c55e",
-                              color: "#fff",
-                              borderRadius: "8px",
-                              fontSize: isMobile ? "0.7rem" : "0.75rem",
-                              fontWeight: 700,
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "5px",
-                              transition: "0.2s",
-                              border: "none",
-                              flexShrink: 0,
-                              marginLeft: isMobile ? "4px" : "0.5rem",
-                              opacity: (uploadingDoc && uploadingDoc !== doc.name) ? 0.5 : 1,
-                              pointerEvents: uploadingDoc ? "none" : "auto",
-                            }}
-                          >
-                            {uploadingDoc === doc.name ? (
-                              <Loader2 size={12} className="animate-spin" />
-                            ) : (
-                              <Upload size={12} />
-                            )}{" "}
-                            {uploadingDoc === doc.name
-                              ? "Uploading..."
-                              : isMobile && uploaded[doc.name]
-                                ? ""
-                                : uploaded[doc.name]
-                                  ? "Change"
-                                  : "Upload"}
-                            <input
-                              type="file"
-                              accept=".pdf"
-                              hidden
-                              disabled={!!uploadingDoc}
-                              onChange={async (e) => {
-                                const file = e.target.files[0];
-                                if (file) {
-                                  if (file.type !== "application/pdf") {
-                                    toast.error(
-                                      "Please upload only PDF documents",
-                                    );
-                                    return;
-                                  }
-                                  
-                                  setUploadingDoc(doc.name);
-                                  const loadingToast = toast.loading(
-                                    `Uploading ${doc.name}...`,
-                                  );
-                                  try {
-                                    const apiUrl = import.meta.env.VITE_API_URL;
-                                    const formData = new FormData();
-                                    formData.append("file", file);
-
-                                    const user = JSON.parse(
-                                      localStorage.getItem("user"),
-                                    );
-                                    const token = user?.token;
-
-                                    if (!token) {
-                                      toast.error(
-                                        "Please log in to upload documents",
-                                        { id: loadingToast },
-                                      );
-                                      setUploadingDoc(null);
-                                      return;
-                                    }
-
-                                    const uploadRes = await axios.post(
-                                      `${apiUrl}/leads/upload`,
-                                      formData,
-                                      {
-                                        headers: {
-                                          Authorization: `Bearer ${token}`,
-                                        },
-                                      },
-                                    );
-
-                                    if (uploadRes.data.success) {
-                                      setUploadedDocs((prev) => ({
-                                        ...prev,
-                                        [selectedService.title]: {
-                                          ...(prev[selectedService.title] ||
-                                            {}),
-                                          [doc.name]: {
-                                            name: file.name,
-                                            url: uploadRes.data.url,
-                                          },
-                                        },
-                                      }));
-                                      toast.success(`Uploaded ${doc.name}`, {
-                                        id: loadingToast,
-                                      });
-                                    }
-                                  } catch (error) {
-                                    console.error("Upload error:", error);
-                                    toast.error(
-                                      `Upload failed for ${doc.name}`,
-                                      { id: loadingToast },
-                                    );
-                                  } finally {
-                                    setUploadingDoc(null);
-                                  }
-                                }
-                              }}
-                            />
-                          </label>
-                        </div>
-                      ));
-                    })()}
-                  </div>
-                </div>
-              </div>
-
-              {/* Sticky Modal Footer */}
-              <div
-                style={{
-                  padding: isMobile ? "1.2rem 1.5rem" : "1.5rem 2.5rem",
-                  borderTop: "1px solid rgba(255,255,255,0.05)",
-                  background: "rgba(255,255,255,0.01)",
-                  display: "flex",
-                  gap: "1rem",
-                }}
-              >
-                {(() => {
-                  const docs = getActiveDocs(selectedService);
-                  const required = docs.filter((d) => d.required);
-                  const uploaded = uploadedDocs[selectedService.title] || {};
-                  const isComplete = required.every((d) => uploaded[d.name]);
-
-                  return (
-                    <button
-                      onClick={async () => {
-                        if (!isComplete) {
-                          toast.error("Complete required uploads to proceed.");
-                          return;
-                        }
-                        setIsSubmitting(true);
-                        try {
-                          const user = JSON.parse(localStorage.getItem("user"));
-                          const apiUrl = import.meta.env.VITE_API_URL;
-                          const docList = Object.keys(uploaded).map(
-                            (docName) => ({
-                              name: docName,
-                              url: uploaded[docName].url,
-                              status: "Pending",
-                              uploadedAt: new Date(),
-                            }),
-                          );
-
-                          console.log(
-                            "[Recommendations] Submitting lead with docs:",
-                            docList,
-                          );
-
-                          await axios.post(
-                            `${apiUrl}/leads`,
-                            {
-                              user: user?._id || user?.id || null,
-                              name: user?.name,
-                              email: user?.email,
-                              serviceName: selectedService.title,
-                              cost: 1000,
-                              documents: docList,
-                            },
-                            {
-                              headers: {
-                                Authorization: `Bearer ${user.token}`,
-                              },
-                            },
-                          );
-
-                          // Clear pending uploads for this service after successful submission
-                          setUploadedDocs((prev) => {
-                            const newState = { ...prev };
-                            delete newState[selectedService.title];
-                            return newState;
-                          });
-
-                          toast.success(
-                            "Interest recorded! Check your dashboard for updates.",
-                          );
-                          setSelectedService(null);
-                          navigate("/dashboard");
-                        } catch (error) {
-                          toast.error("Submission failed. Try again later.");
-                        } finally {
-                          setIsSubmitting(false);
-                        }
-                      }}
-                      disabled={!isComplete || isSubmitting}
-                      style={{
-                        flex: 1,
-                        padding: isMobile ? "0.9rem" : "1.1rem",
-                        background: isComplete
-                          ? "linear-gradient(135deg, #16a34a, #22c55e)"
-                          : "rgba(255,255,255,0.03)",
-                        color: isComplete ? "#fff" : "rgba(255,255,255,0.15)",
-                        border: isComplete
-                          ? "none"
-                          : "1px solid rgba(255,255,255,0.05)",
-                        borderRadius: isMobile ? "12px" : "16px",
-                        fontWeight: 800,
-                        fontSize: isMobile ? "0.85rem" : "0.95rem",
-                        cursor: isComplete ? "pointer" : "not-allowed",
-                        transition: "all 0.3s",
                         display: "flex",
                         alignItems: "center",
-                        justifyContent: "center",
-                        gap: "8px",
-                        boxShadow: isComplete
-                          ? "0 6px 20px rgba(34,197,94,0.25)"
-                          : "none",
+                        gap: "10px",
+                        padding: "1rem",
+                        background: "rgba(67, 97, 238, 0.08)",
+                        border: "1px solid rgba(67, 97, 238, 0.2)",
+                        borderRadius: "12px",
+                        marginBottom: "1rem",
                       }}
                     >
-                      {isSubmitting
-                        ? "Submitting..."
-                        : isComplete
-                          ? "Confirm Interest & Submit"
-                          : isMobile
-                            ? "Upload Required Files"
-                            : "Upload Required Files to Unlock"}
-                      {isComplete && <ArrowRight size={18} />}
-                    </button>
-                  );
-                })()}
-              </div>
+                      <ShieldAlert size={16} color="#4361ee" style={{ flexShrink: 0 }} />
+                      <span
+                        style={{
+                          fontSize: "0.8rem",
+                          fontWeight: 600,
+                          color: "#4361ee",
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        View only - Users can upload documents and confirm their interest in this service
+                      </span>
+                    </div>
+                  )}
+
+                  {/* -- Documents Section -- */}
+                  <div
+                    style={{
+                      marginBottom: "0.5rem",
+                    }}
+                  >
+                    {/* Section Header */}
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        marginBottom: "1rem",
+                        flexWrap: "wrap",
+                        gap: "0.5rem",
+                      }}
+                    >
+                      <div>
+                        <div
+                          style={{
+                            fontSize: "0.65rem",
+                            fontWeight: 800,
+                            textTransform: "uppercase",
+                            letterSpacing: "0.1em",
+                            color: isLightMode ? "#94a3b8" : "rgba(255,255,255,0.35)",
+                            marginBottom: "2px",
+                          }}
+                        >
+                          Required Documents
+                        </div>
+                        <div
+                          style={{
+                            fontSize: isMobile ? "0.95rem" : "1rem",
+                            fontWeight: 700,
+                            color: isLightMode ? "#0f172a" : "#fff",
+                          }}
+                        >
+                          {uploadedCount}/{required.length} Uploaded
+                        </div>
+                      </div>
+                      {/* Progress */}
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <div
+                          style={{
+                            width: isMobile ? "80px" : "100px",
+                            height: "5px",
+                            background: isLightMode ? "#e2e8f0" : "rgba(255,255,255,0.08)",
+                            borderRadius: "99px",
+                            overflow: "hidden",
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: `${progressPct}%`,
+                              height: "100%",
+                              background: progressPct === 100 ? "#10b981" : "#4361ee",
+                              borderRadius: "99px",
+                              transition: "width 0.4s ease",
+                            }}
+                          />
+                        </div>
+                        <span
+                          style={{
+                            fontSize: "0.72rem",
+                            fontWeight: 700,
+                            color: progressPct === 100 ? "#10b981" : (isLightMode ? "#64748b" : "rgba(255,255,255,0.4)"),
+                          }}
+                        >
+                          {progressPct}%
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* PDF Notice */}
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        padding: "0.6rem 0.9rem",
+                        background: isLightMode ? "#fffbeb" : "rgba(245,158,11,0.06)",
+                        border: `1px solid ${isLightMode ? "#fde68a" : "rgba(245,158,11,0.15)"}`,
+                        borderRadius: "10px",
+                        marginBottom: "1rem",
+                      }}
+                    >
+                      <FileText size={13} color="#f59e0b" style={{ flexShrink: 0 }} />
+                      <span
+                        style={{
+                          fontSize: "0.72rem",
+                          fontWeight: 600,
+                          color: "#d97706",
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        Only PDF documents are accepted for upload
+                      </span>
+                    </div>
+
+                    {/* Document List */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+                      {(() => {
+                        return docs.map((doc, idx) => {
+                          const state = getDocumentState(selectedService.title, doc.name);
+                          const statusColor = state.reuploadRequired
+                            ? "#ef4444"
+                            : state.uploaded
+                            ? "#10b981"
+                            : isLightMode ? "#94a3b8" : "rgba(255,255,255,0.25)";
+                          const cardBg = state.reuploadRequired
+                            ? isLightMode ? "#fef2f2" : "rgba(239,68,68,0.05)"
+                            : state.uploaded
+                            ? isLightMode ? "#f0fdf4" : "rgba(16,185,129,0.04)"
+                            : isLightMode ? "#f8fafc" : "rgba(255,255,255,0.02)";
+                          const cardBorder = state.reuploadRequired
+                            ? isLightMode ? "#fca5a5" : "rgba(239,68,68,0.18)"
+                            : state.uploaded
+                            ? isLightMode ? "#86efac" : "rgba(16,185,129,0.15)"
+                            : isLightMode ? "#e2e8f0" : "rgba(255,255,255,0.06)";
+
+                          return (
+                            <div
+                              key={idx}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "0.9rem",
+                                padding: isMobile ? "0.8rem 0.9rem" : "0.9rem 1rem",
+                                background: cardBg,
+                                border: `1px solid ${cardBorder}`,
+                                borderRadius: "14px",
+                                transition: "all 0.2s",
+                                opacity: !doc.required && !state.uploaded ? 0.65 : 1,
+                              }}
+                            >
+                              {/* Status Icon */}
+                              <div
+                                style={{
+                                  width: 34,
+                                  height: 34,
+                                  borderRadius: "9px",
+                                  background: state.reuploadRequired
+                                    ? "rgba(239,68,68,0.1)"
+                                    : state.uploaded
+                                    ? "rgba(16,185,129,0.1)"
+                                    : isLightMode ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.04)",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  flexShrink: 0,
+                                }}
+                              >
+                                {state.reuploadRequired ? (
+                                  <AlertCircle size={15} color="#ef4444" />
+                                ) : state.uploaded ? (
+                                  <Check size={15} color="#10b981" />
+                                ) : (
+                                  <FileText size={15} color={isLightMode ? "#94a3b8" : "rgba(255,255,255,0.25)"} />
+                                )}
+                              </div>
+
+                              {/* Doc Info */}
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                                  <p
+                                    style={{
+                                      margin: 0,
+                                      fontSize: isMobile ? "0.8rem" : "0.84rem",
+                                      fontWeight: 700,
+                                      color: isLightMode ? "#0f172a" : "#fff",
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      whiteSpace: "nowrap",
+                                    }}
+                                  >
+                                    {doc.name}
+                                  </p>
+                                  <span
+                                    style={{
+                                      fontSize: "0.55rem",
+                                      padding: "2px 6px",
+                                      background: doc.required
+                                        ? "rgba(239,68,68,0.1)"
+                                        : isLightMode ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.06)",
+                                      color: doc.required
+                                        ? "#ef4444"
+                                        : isLightMode ? "#94a3b8" : "rgba(255,255,255,0.35)",
+                                      borderRadius: "5px",
+                                      fontWeight: 800,
+                                      textTransform: "uppercase",
+                                      letterSpacing: "0.05em",
+                                      flexShrink: 0,
+                                    }}
+                                  >
+                                    {doc.required ? "Required" : "Optional"}
+                                  </span>
+                                </div>
+                                <p
+                                  style={{
+                                    margin: "2px 0 0",
+                                    fontSize: "0.67rem",
+                                    color: state.reuploadRequired
+                                      ? "#ef4444"
+                                      : state.uploaded
+                                      ? "#10b981"
+                                      : isLightMode ? "#64748b" : "rgba(255,255,255,0.35)",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap",
+                                    lineHeight: 1.4,
+                                  }}
+                                >
+                                  {state.reuploadRequired
+                                    ? `⚠ ${state.message}`
+                                    : state.uploaded
+                                    ? `✓ ${state.uploadedName}`
+                                    : doc.desc || "Upload this document to proceed"}
+                                </p>
+                              </div>
+
+                              {/* Upload Button - Only Visible to Users */}
+                              {(!storedUser?.role || storedUser?.role === "user") && (
+                              <label
+                                style={{
+                                  cursor: uploadingDoc ? "not-allowed" : "pointer",
+                                  padding: isMobile ? "6px 12px" : "7px 14px",
+                                  background: state.reuploadRequired
+                                    ? "#ef4444"
+                                    : state.uploaded
+                                    ? isLightMode ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.06)"
+                                    : "#10b981",
+                                  color: state.uploaded && !state.reuploadRequired
+                                    ? isLightMode ? "#374151" : "rgba(255,255,255,0.7)"
+                                    : "#fff",
+                                  borderRadius: "9px",
+                                  fontSize: "0.72rem",
+                                  fontWeight: 700,
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "5px",
+                                  transition: "all 0.2s",
+                                  flexShrink: 0,
+                                  border: state.uploaded && !state.reuploadRequired
+                                    ? `1px solid ${isLightMode ? "rgba(0,0,0,0.12)" : "rgba(255,255,255,0.1)"}`
+                                    : "1px solid transparent",
+                                  opacity: (uploadingDoc && uploadingDoc !== doc.name) ? 0.4 : 1,
+                                  pointerEvents: uploadingDoc ? "none" : "auto",
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                {uploadingDoc === doc.name ? (
+                                  <Loader2 size={11} className="animate-spin" />
+                                ) : (
+                                  <Upload size={11} />
+                                )}
+                                {uploadingDoc === doc.name
+                                  ? "Uploading"
+                                  : state.reuploadRequired
+                                  ? "Reupload"
+                                  : state.uploaded
+                                  ? "Change"
+                                  : "Upload"}
+                                <input
+                                  type="file"
+                                  accept=".pdf"
+                                  hidden
+                                  disabled={!!uploadingDoc}
+                                  onChange={async (e) => {
+                                    const file = e.target.files[0];
+                                    if (file) {
+                                      if (file.type !== "application/pdf") {
+                                        toast.error("Please upload only PDF documents");
+                                        return;
+                                      }
+                                      setUploadingDoc(doc.name);
+                                      const loadingToast = toast.loading(`Uploading ${doc.name}...`);
+                                      try {
+                                        const apiUrl = import.meta.env.VITE_API_URL;
+                                        const formData = new FormData();
+                                        formData.append("file", file);
+                                        const user = JSON.parse(localStorage.getItem("user"));
+                                        const token = user?.token;
+                                        if (!token) {
+                                          toast.error("Please log in to upload documents", { id: loadingToast });
+                                          setUploadingDoc(null);
+                                          return;
+                                        }
+                                        const uploadRes = await axios.post(
+                                          `${apiUrl}/leads/upload`,
+                                          formData,
+                                          { headers: { Authorization: `Bearer ${token}` } }
+                                        );
+                                        if (uploadRes.data.success) {
+                                          setUploadedDocs((prev) => ({
+                                            ...prev,
+                                            [selectedService.title]: {
+                                              ...(prev[selectedService.title] || {}),
+                                              [doc.name]: { name: file.name, url: uploadRes.data.url },
+                                            },
+                                          }));
+                                          toast.success(`Uploaded ${doc.name}`, { id: loadingToast });
+                                        }
+                                      } catch (error) {
+                                        console.error("Upload error:", error);
+                                        toast.error(`Upload failed for ${doc.name}`, { id: loadingToast });
+                                      } finally {
+                                        setUploadingDoc(null);
+                                      }
+                                    }
+                                  }}
+                                />
+                              </label>
+                              )}
+                            </div>
+                          );
+                        });
+                      })()}
+                    </div>
+                  </div>
+                </div>
+
+                {/* -- STICKY FOOTER -- */}
+                {(!storedUser?.role || storedUser?.role === "user") && (
+                <div
+                  style={{
+                    padding: isMobile ? "1rem 1.25rem" : "1.25rem 2rem",
+                    borderTop: `1px solid ${isLightMode ? "rgba(0,0,0,0.08)" : "rgba(255,255,255,0.06)"}`,
+                    background: isLightMode ? "#f8fafc" : "rgba(255,255,255,0.015)",
+                    flexShrink: 0,
+                  }}
+                >
+                  <button
+                    onClick={async () => {
+                      if (!isComplete) {
+                        toast.error("Complete all required uploads to proceed.");
+                        return;
+                      }
+                      setIsSubmitting(true);
+                      try {
+                        const user = JSON.parse(localStorage.getItem("user"));
+                        const apiUrl = import.meta.env.VITE_API_URL;
+                        const existingLead = getLatestLeadForService(selectedService.title);
+                        const docList = docs
+                          .map((doc) => {
+                            const state = getDocumentState(selectedService.title, doc.name);
+                            if (!state.uploadedUrl) return null;
+                            return { name: doc.name, url: state.uploadedUrl, status: "Pending", uploadedAt: new Date() };
+                          })
+                          .filter(Boolean);
+
+                        if (existingLead?._id) {
+                          const localUploadsForService = uploadedDocs[selectedService.title] || {};
+                          const updatedDocuments = Object.entries(localUploadsForService).map(([docName, value]) => ({
+                            name: docName, url: value?.url, type: "Client", status: "Pending", uploadedAt: new Date(),
+                          }));
+                          const rejectedDocNames = new Set(
+                            (existingLead.documents || []).filter((d) => d?.status === "Rejected").map((d) => String(d?.name || "").trim())
+                          );
+                          const reuploadedDocumentNames = Object.keys(localUploadsForService).filter((n) => rejectedDocNames.has(String(n || "").trim()));
+                          const patchPayload = { status: "PendingReview", reuploadedDocumentNames };
+                          if (updatedDocuments.length > 0) {
+                            patchPayload.$push = { documents: { $each: updatedDocuments } };
+                          }
+                          await axios.patch(`${apiUrl}/leads/${existingLead._id}`, patchPayload, { headers: { Authorization: `Bearer ${user.token}` } });
+                        } else {
+                          await axios.post(
+                            `${apiUrl}/leads`,
+                            { user: user?._id || user?.id || null, name: user?.name, email: user?.email, serviceName: selectedService.title, cost: selectedServicePricing?.amount || 1000, documents: docList },
+                            { headers: { Authorization: `Bearer ${user.token}` } }
+                          );
+                        }
+                        const refreshedLeads = await axios.get(`${apiUrl}/leads?userId=${user?._id || user?.id}`, { headers: { Authorization: `Bearer ${user.token}` } });
+                        setUserLeads(refreshedLeads.data || []);
+                        setUploadedDocs((prev) => { const n = { ...prev }; delete n[selectedService.title]; return n; });
+                        toast.success(existingLead?._id ? "Documents resubmitted for PR review." : "Interest recorded! Check your dashboard for updates.", { id: "service-confirmation" });
+                        setSelectedService(null);
+                        navigate("/dashboard");
+                      } catch (error) {
+                        toast.error("Submission failed. Try again later.");
+                      } finally {
+                        setIsSubmitting(false);
+                      }
+                    }}
+                    disabled={!isComplete || isSubmitting}
+                    style={{
+                      width: "100%",
+                      padding: isMobile ? "0.9rem" : "1rem",
+                      background: isComplete
+                        ? "linear-gradient(135deg, #059669, #10b981)"
+                        : isLightMode ? "#f1f5f9" : "rgba(255,255,255,0.04)",
+                      color: isComplete ? "#fff" : isLightMode ? "#94a3b8" : "rgba(255,255,255,0.2)",
+                      border: isComplete ? "none" : `1px solid ${isLightMode ? "#e2e8f0" : "rgba(255,255,255,0.06)"}`,
+                      borderRadius: "12px",
+                      fontWeight: 700,
+                      fontSize: "0.92rem",
+                      cursor: isComplete ? "pointer" : "not-allowed",
+                      transition: "all 0.3s",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "8px",
+                      boxShadow: isComplete ? "0 4px 20px rgba(16,185,129,0.3)" : "none",
+                      letterSpacing: "-0.01em",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (isComplete) e.currentTarget.style.transform = "translateY(-1px)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = "none";
+                    }}
+                  >
+                    {isSubmitting ? (
+                      <><Loader2 size={16} className="animate-spin" /> Submitting...</>
+                    ) : isComplete ? (
+                      <>Confirm & Submit <ArrowRight size={16} /></>
+                    ) : (
+                      <>Upload Required Files to Unlock</>
+                    )}
+                  </button>
+                </div>
+                )}
+              </motion.div>
             </motion.div>
-          </div>
-        )}
+          );
+        })()}
       </AnimatePresence>
     </div>
   );
 };
 
 export default Recommendations;
+
+

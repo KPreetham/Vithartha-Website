@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import axios from "axios";
+import { getDashboardPathByRole, normalizeRole } from "../utils/roleRouting";
 
 const Navbar = () => {
   const [scrolled, setScrolled] = useState(false);
@@ -51,6 +52,38 @@ const Navbar = () => {
     return () => window.removeEventListener("storage", checkUser);
   }, [location.pathname]);
 
+  // Handle Dynamic Role Updates from Atlas
+  useEffect(() => {
+    const syncProfile = async () => {
+      const savedUser = localStorage.getItem("user");
+      if (!savedUser) return;
+
+      try {
+        const userData = JSON.parse(savedUser);
+        const apiUrl = import.meta.env.VITE_API_URL;
+
+        const response = await axios.get(`${apiUrl}/auth/profile`, {
+          headers: { Authorization: `Bearer ${userData.token}` }
+        });
+
+        if (response.data && response.data.role !== userData.role) {
+          console.log("Role update detected:", response.data.role);
+          const updatedUser = { ...userData, ...response.data };
+          localStorage.setItem("user", JSON.stringify(updatedUser));
+          setUser(updatedUser);
+          window.dispatchEvent(new Event("storage"));
+          // toast.success(`Role updated to ${response.data.role}`); // Removed to prevent multiple toasts during session
+        }
+      } catch (error) {
+        console.warn("Profile sync skipped:", error.message);
+      }
+    };
+
+    if (user) {
+      syncProfile();
+    }
+  }, [user?.email]); // Sync when user identity is established
+
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -64,7 +97,7 @@ const Navbar = () => {
 
   const handleLogout = () => {
     localStorage.removeItem("user");
-    sessionStorage.removeItem("vithartha_guest_walkthrough_seen_v5"); // Reset guest walkthrough
+    sessionStorage.removeItem("fin2line_guest_walkthrough_seen_v5"); // Reset guest walkthrough
     setUser(null);
     setDropdownOpen(false);
     toast.success("Logged Out Successfully");
@@ -108,12 +141,16 @@ const Navbar = () => {
     setDropdownOpen(false);
   }, [location.pathname]);
 
+  const getDashboardPath = () => {
+    return getDashboardPathByRole(user?.role);
+  };
+
   const navLinks = [
     { name: "Home", path: "/" },
     { name: "Services", path: "/recommendations" },
     {
       name: "Dashboard",
-      path: user?.role === "admin" ? "/admin" : "/dashboard",
+      path: getDashboardPath(),
     },
     { name: "About", path: "/about" },
   ];
@@ -126,7 +163,7 @@ const Navbar = () => {
     width: "94%",
     maxWidth: "1200px",
     zIndex: 1000,
-    padding: scrolled ? "0.5rem 1.8rem" : "0.7rem 2.2rem",
+    padding: scrolled ? "0.2rem 1.6rem" : "0.32rem 2rem",
     background: isDarkMode
       ? "rgba(20, 20, 20, 0.45)"
       : "rgba(255, 255, 255, 0.45)",
@@ -160,31 +197,39 @@ const Navbar = () => {
             textDecoration: "none",
             display: "flex",
             alignItems: "center",
-            gap: "0.6rem",
+            gap: "0.9rem",
           }}
         >
-          <img
-            src="/vithartha-logo.png"
-            alt="Vithartha Logo"
-            style={{
-              height: scrolled ? "24px" : "28px",
-              width: "auto",
-              objectFit: "contain",
-              transition: "height 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
-              display: "block",
-            }}
-          />
-          <span
-            style={{
-              fontFamily: "'Inter', 'Outfit', sans-serif",
-              fontSize: scrolled ? "1rem" : "1.1rem",
-              fontWeight: 600,
-              color: logoTextColor,
-              letterSpacing: "-0.02em",
+          <div style={{
+              height: scrolled ? "44px" : "54px",
+              width: scrolled ? "44px" : "54px",
+              borderRadius: "50%",
+              overflow: "hidden",
               transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
-            }}
-          >
-            VITHARTHA
+              border: isDarkMode ? "1px solid rgba(255,255,255,0.15)" : "1px solid rgba(0,0,0,0.1)",
+              boxShadow: isDarkMode ? "0 0 15px rgba(0,0,0,0.3)" : "0 0 15px rgba(0,0,0,0.1)",
+          }}>
+            <img
+              src="/logo2.png"
+              alt="Fin2Line Logo"
+              style={{
+                height: "100%",
+                width: "100%",
+                objectFit: "cover",
+                transform: "scale(1.1)",
+                display: "block",
+              }}
+            />
+          </div>
+          <span style={{
+            fontFamily: "var(--font-display)",
+            fontSize: scrolled ? "1.05rem" : "1.2rem",
+            fontWeight: 700,
+            color: logoTextColor,
+            letterSpacing: "0.04em",
+            transition: "all 0.4s ease"
+          }}>
+            FIN2LINE
           </span>
         </Link>
 
@@ -244,9 +289,9 @@ const Navbar = () => {
               transition: "all 0.3s ease",
             }}
             onMouseEnter={(e) =>
-              (e.currentTarget.style.background = isDarkMode
-                ? "rgba(255,255,255,0.05)"
-                : "rgba(0,0,0,0.05)")
+            (e.currentTarget.style.background = isDarkMode
+              ? "rgba(255,255,255,0.05)"
+              : "rgba(0,0,0,0.05)")
             }
             onMouseLeave={(e) =>
               (e.currentTarget.style.background = "transparent")
@@ -410,7 +455,7 @@ const Navbar = () => {
                           letterSpacing: "0.05em",
                         }}
                       >
-                        {user.role}
+                        {normalizeRole(user.role) === "pr" ? "PR" : user.role}
                       </span>
                     </div>
                   </div>
@@ -465,9 +510,7 @@ const Navbar = () => {
                       id="navbar-goto-dashboard-btn"
                       onClick={() => {
                         setDropdownOpen(false);
-                        navigate(
-                          user.role === "admin" ? "/admin" : "/dashboard",
-                        );
+                        navigate(getDashboardPath());
                       }}
                       style={{
                         display: "flex",
@@ -783,7 +826,7 @@ const Navbar = () => {
                   </Link>
                   <Link
                     id="mobile-dashboard-link"
-                    to={user.role === "admin" ? "/admin" : "/dashboard"}
+                    to={getDashboardPath()}
                     onClick={() => setMobileOpen(false)}
                     style={{
                       display: "flex",

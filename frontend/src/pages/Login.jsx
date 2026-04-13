@@ -6,105 +6,117 @@ import {
   LogIn,
   Eye,
   EyeOff,
-  User,
-  ShieldCheck,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { toast } from "react-hot-toast";
-import { useGoogleLogin } from "@react-oauth/google";
 import {
   hasCompletedOnboarding,
   markOnboardingCompleted,
 } from "../utils/onboardingFlow";
+import { getDashboardPathByRole, normalizeRole } from "../utils/roleRouting";
 
 const Login = () => {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({ email: "", password: "" });
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [loginRole, setLoginRole] = useState("user");
   const [googleLoading, setGoogleLoading] = useState(false);
 
-  // ── Process Google OAuth token (shared logic) ─────────────────────
-  const processGoogleToken = async (accessToken) => {
+  const handleRoleRedirection = async (data) => {
+    const actualRole = normalizeRole(data.role);
+
+    localStorage.setItem("user", JSON.stringify(data));
+    window.dispatchEvent(new Event("storage"));
+
     try {
-      // 1. Fetch user info from Google
-      const userInfoRes = await fetch(
-        "https://www.googleapis.com/oauth2/v3/userinfo",
-        { headers: { Authorization: `Bearer ${accessToken}` } },
-      );
-      if (!userInfoRes.ok) {
-        throw new Error("Failed to fetch Google user info");
-      }
-      const userInfo = await userInfoRes.json();
-
-      // 2. Send to our backend for login/registration
-      const response = await fetch(
-        `${import.meta.env.VITE_API_URL}/auth/google-login`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ idToken: accessToken, userInfo }),
-        },
-      );
-      const data = await response.json();
-
-      if (data.needsRegistration) {
-        toast.success("Welcome! Please complete your registration.");
-        navigate("/register", { state: { initialData: data.user } });
-      } else if (response.ok) {
-        toast.success("Login Successful");
-        localStorage.setItem("user", JSON.stringify(data));
-        window.dispatchEvent(new Event("storage"));
-        if (data.role === "admin") {
-          navigate("/admin");
-        } else {
-          const onboardingDone = hasCompletedOnboarding(data);
-          const userId = data._id || data.id;
-          const leadsRes = await fetch(
-            `${import.meta.env.VITE_API_URL}/leads?userId=${userId}`,
-            {
-              headers: { Authorization: `Bearer ${data.token}` },
-            },
-          );
-          const leads = await leadsRes.json();
-          if (leads && leads.length > 0) {
-            markOnboardingCompleted(data);
-            navigate("/dashboard");
-          } else if (!onboardingDone) {
-            navigate("/onboarding");
-          } else {
-            navigate("/services");
-          }
+      if (data.token) {
+        const profileRes = await fetch(
+          `${import.meta.env.VITE_API_URL}/auth/profile`,
+          {
+            headers: { Authorization: `Bearer ${data.token}` },
+          },
+        );
+        if (profileRes.ok) {
+          const profileData = await profileRes.json();
+          const mergedUser = { ...data, ...profileData };
+          localStorage.setItem("user", JSON.stringify(mergedUser));
+          window.dispatchEvent(new Event("storage"));
         }
-      } else {
-        toast.error(data.message || "Google Login failed");
       }
-    } catch (err) {
-      console.error("Google Auth Error:", err);
-      toast.error("Authentication failed. Please try again.");
-    } finally {
-      setGoogleLoading(false);
+    } catch (error) {
+      console.warn("Profile hydration skipped:", error);
+    }
+
+    if (actualRole !== "user") {
+      navigate(getDashboardPathByRole(actualRole));
+    } else {
+      const onboardingDone = hasCompletedOnboarding(data);
+      const userId = data._id || data.id;
+
+      try {
+        const leadsRes = await fetch(
+          `${import.meta.env.VITE_API_URL}/leads?userId=${userId}`,
+          {
+            headers: { Authorization: `Bearer ${data.token}` },
+          },
+        );
+        const leads = await leadsRes.json();
+
+        if (leads && leads.length > 0) {
+          markOnboardingCompleted(data);
+          navigate("/dashboard");
+        } else if (!onboardingDone) {
+          navigate("/onboarding");
+        } else {
+          navigate("/services");
+        }
+      } catch (error) {
+        console.error("Navigation check error:", error);
+        navigate("/services");
+      }
     }
   };
 
-  // ── Google OAuth via popup (using Google Identity Services) ────────
-  const googleLogin = useGoogleLogin({
-    onSuccess: (tokenResponse) => {
+  const startGoogleOAuthRedirect = () => {
+    try {
+      const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+      if (!clientId) {
+        toast.error("Google client is not configured.");
+        return;
+      }
+
       setGoogleLoading(true);
-      processGoogleToken(tokenResponse.access_token);
-    },
-    onError: (error) => {
-      console.error("Google Login Error:", error);
-      toast.error("Google sign-in failed. Please try again.");
+      const state = crypto.randomUUID();
+      sessionStorage.setItem("google_oauth_state", state);
+
+      const configuredRedirectUri = import.meta.env.VITE_GOOGLE_REDIRECT_URI;
+      const redirectUriRaw =
+        configuredRedirectUri && String(configuredRedirectUri).trim().length > 0
+          ? String(configuredRedirectUri).trim()
+          : `${window.location.origin}/auth/google/callback`;
+      const redirectUri = redirectUriRaw.endsWith("/")
+        ? redirectUriRaw.slice(0, -1)
+        : redirectUriRaw;
+
+      const params = new URLSearchParams({
+        client_id: clientId,
+        redirect_uri: redirectUri,
+        response_type: "token",
+        scope: "openid email profile",
+        prompt: "select_account",
+        include_granted_scopes: "true",
+        state,
+      });
+
+      window.location.assign(
+        `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`,
+      );
+    } catch (error) {
+      console.error("Google redirect start failed:", error);
+      toast.error("Unable to start Google sign in.");
       setGoogleLoading(false);
-    },
-    onNonOAuthError: (error) => {
-      // Popup closed or blocked
-      console.warn("Google popup closed:", error);
-      setGoogleLoading(false);
-    },
-  });
+    }
+  };
 
   const handleChange = (e) =>
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -125,30 +137,18 @@ const Login = () => {
       if (response.ok) {
         toast.success(
           data.role === "admin" ? "Welcome Admin!" : "Login Successful",
+          { id: "auth-toast" }
         );
-        localStorage.setItem("user", JSON.stringify(data));
-        window.dispatchEvent(new Event("storage"));
-        if (data.role === "admin") {
-          navigate("/admin");
-        } else {
-          const onboardingDone = hasCompletedOnboarding(data);
-          const userId = data._id || data.id;
-          const leadsResponse = await fetch(
-            `${import.meta.env.VITE_API_URL}/leads?userId=${userId}`,
-            {
-              headers: { Authorization: `Bearer ${data.token}` },
-            },
-          );
-          const leads = await leadsResponse.json();
-          if (leads && leads.length > 0) {
-            markOnboardingCompleted(data);
-            navigate("/dashboard");
-          } else if (!onboardingDone) {
-            navigate("/onboarding");
-          } else {
-            navigate("/services");
-          }
-        }
+        await handleRoleRedirection(data);
+      } else if (response.status === 404) {
+        navigate("/register", {
+          replace: true,
+          state: {
+            initialData: { email: formData.email },
+            noticeMessage:
+              "No account was found for that email. Create your account to continue to onboarding.",
+          },
+        });
       } else {
         toast.error(data.message || "Login failed");
       }
@@ -164,7 +164,7 @@ const Login = () => {
     display: "flex",
     alignItems: "center",
     gap: "0.75rem",
-    background: "var(--bg-card)",
+    background: "transparent",
     border: "1px solid var(--border)",
     borderRadius: "8px",
     padding: "0.85rem 1.1rem",
@@ -211,11 +211,30 @@ const Login = () => {
         >
           {/* Header */}
           <div style={{ textAlign: "center", marginBottom: "1rem" }}>
-            <img
-              src="/vithartha-logo.png"
-              alt="Logo"
-              style={{ height: "22px", marginBottom: "0.5rem" }}
-            />
+            <div style={{
+              height: "90px",
+              width: "90px",
+              borderRadius: "50%",
+              overflow: "hidden",
+              margin: "0 auto 0.8rem",
+              background: "rgba(255, 255, 255, 0.03)",
+              border: "1px solid rgba(255, 255, 255, 0.1)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}>
+              <img
+                src="/logo2.png"
+                alt="Logo"
+                style={{
+                  height: "100%",
+                  width: "100%",
+                  objectFit: "cover",
+                  transform: "scale(1.1)",
+                  display: "block",
+                }}
+              />
+            </div>
             <h2
               style={{
                 fontSize: "1.4rem",
@@ -228,7 +247,7 @@ const Login = () => {
               Welcome Back
             </h2>
             <p style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
-              Sign in to continue to Vithartha
+              Sign in to continue to Fin2Line
             </p>
           </div>
 
@@ -240,7 +259,7 @@ const Login = () => {
             {/* Email */}
             <div
               style={inputStyle}
-              onFocus={() => {}}
+              onFocus={() => { }}
               onMouseEnter={(e) =>
                 (e.currentTarget.style.borderColor = "rgba(34,197,94,0.4)")
               }
@@ -250,6 +269,7 @@ const Login = () => {
             >
               <Mail size={15} color="var(--text-muted)" />
               <input
+                className="auth-input"
                 type="email"
                 name="email"
                 placeholder="Email Address"
@@ -268,8 +288,8 @@ const Login = () => {
                   (e.currentTarget.parentElement.style.borderColor = "#22c55e")
                 }
                 onBlur={(e) =>
-                  (e.currentTarget.parentElement.style.borderColor =
-                    "var(--border)")
+                (e.currentTarget.parentElement.style.borderColor =
+                  "var(--border)")
                 }
               />
             </div>
@@ -278,6 +298,7 @@ const Login = () => {
             <div style={inputStyle}>
               <Lock size={15} color="var(--text-muted)" />
               <input
+                className="auth-input"
                 type={showPassword ? "text" : "password"}
                 name="password"
                 placeholder="Password"
@@ -296,8 +317,8 @@ const Login = () => {
                   (e.currentTarget.parentElement.style.borderColor = "#22c55e")
                 }
                 onBlur={(e) =>
-                  (e.currentTarget.parentElement.style.borderColor =
-                    "var(--border)")
+                (e.currentTarget.parentElement.style.borderColor =
+                  "var(--border)")
                 }
               />
               <button
@@ -372,8 +393,8 @@ const Login = () => {
                     "0 12px 32px rgba(34,197,94,0.45)";
               }}
               onMouseLeave={(e) =>
-                (e.currentTarget.style.boxShadow =
-                  "0 8px 24px rgba(34,197,94,0.3)")
+              (e.currentTarget.style.boxShadow =
+                "0 8px 24px rgba(34,197,94,0.3)")
               }
             >
               {loading ? (
@@ -420,7 +441,7 @@ const Login = () => {
           </div>
 
           <button
-            onClick={() => googleLogin()}
+            onClick={startGoogleOAuthRedirect}
             disabled={googleLoading}
             style={{
               width: "100%",
@@ -478,7 +499,7 @@ const Login = () => {
                 to="/register"
                 onClick={() =>
                   sessionStorage.setItem(
-                    "vithartha_guest_walkthrough_seen_v5",
+                    "fin2line_guest_walkthrough_seen_v5",
                     "true",
                   )
                 }

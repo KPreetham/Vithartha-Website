@@ -133,11 +133,11 @@ const Loader = ({ minimal = false }) => {
             opacity: { duration: 0.5 },
           }}
           style={{
-            width: "90px",
-            height: "90px",
+            width: "220px",
+            height: "220px",
             background: "rgba(255, 255, 255, 0.04)",
             backdropFilter: "blur(15px)",
-            borderRadius: "26px",
+            borderRadius: "24px",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -148,15 +148,27 @@ const Loader = ({ minimal = false }) => {
             zIndex: 2,
           }}
         >
-          <img
-            src="/vithartha-logo.png"
-            alt="Loading Logo"
-            style={{
-              width: "58px",
-              height: "58px",
-              objectFit: "contain",
-            }}
-          />
+          <div style={{
+            width: "120px",
+            height: "120px",
+            borderRadius: "50%",
+            overflow: "hidden",
+            boxShadow: "0 0 30px rgba(0,0,0,0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}>
+            <img
+              src="/logo2.png"
+              alt="Loading Logo"
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                objectPosition: "center",
+              }}
+            />
+          </div>
         </motion.div>
 
         {/* Subtle Text below (Offset) */}
@@ -186,7 +198,7 @@ const Loader = ({ minimal = false }) => {
               opacity: 0.8,
             }}
           >
-            Vithartha
+            Fin2Line
           </span>
           <div style={{ display: "flex", gap: "5px" }}>
             {[0, 1, 2].map((i) => (

@@ -225,6 +225,40 @@ body.light-mode {
   --grad-silver: linear-gradient(135deg, #f4f4f5 0%, #e4e4e7 100%);
 }
 
+.admin-role-select {
+  background: var(--secondary-mid) !important;
+  color: var(--text) !important;
+}
+
+.admin-role-select option {
+  background: var(--secondary-mid);
+  color: var(--text);
+}
+
+body.light-mode .admin-role-select,
+body.light-mode .admin-role-select option {
+  background: #ffffff !important;
+  color: #111111 !important;
+}
+
+.auth-input {
+  background: transparent !important;
+  border: none;
+  outline: none;
+  color: var(--text);
+}
+
+.auth-input:-webkit-autofill,
+.auth-input:-webkit-autofill:hover,
+.auth-input:-webkit-autofill:focus,
+.auth-input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px transparent inset !important;
+  box-shadow: 0 0 0 1000px transparent inset !important;
+  -webkit-text-fill-color: var(--text) !important;
+  caret-color: var(--text);
+  transition: background-color 9999s ease-in-out 0s;
+}
+
 #root {
   min-height: 100vh;
   display: flex;

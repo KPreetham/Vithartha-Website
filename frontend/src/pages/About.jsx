@@ -20,8 +20,8 @@ import { toast } from "react-hot-toast";
 
 const About = () => {
   const founderDetails = {
-    name: "Vithartha Consulting",
-    tagline: "Precision Compliance. Professional Growth.",
+    name: "Fin2Line Consulting",
+    tagline: "Your direct path to compliance",
     mission:
       "To simplify compliance, finance, and business advisory for startups and growing enterprises across India, delivering expert-led, technology-driven solutions that accelerate growth.",
     vision:
@@ -179,7 +179,7 @@ const About = () => {
                 className="about-hero-subtitle"
                 style={{ color: "#10b981", fontSize: "2.2rem" }}
               >
-                Precision Compliance. Professional Growth.
+                Your direct path to compliance
               </span>
             </h1>
             <p
@@ -389,7 +389,7 @@ const About = () => {
         </div>
       </section>
 
-      {/* ── Detailed About Vithartha ── */}
+      {/* ── Detailed About Fin2Line ── */}
       <section
         className="about-section-margin"
         style={{ marginBottom: "6rem" }}
@@ -416,7 +416,7 @@ const About = () => {
                 letterSpacing: "-0.03em",
               }}
             >
-              The Vithartha Story <span style={{ color: "#10b981" }}>.</span>
+              The Fin2Line Story <span style={{ color: "#10b981" }}>.</span>
             </h2>
             <div
               style={{
@@ -429,10 +429,10 @@ const About = () => {
               }}
             >
               <p>
-                Founded on the principles of <strong>Clarity, Compliance, and Growth</strong>, Vithartha Consulting emerged as a response to the growing complexities faced by Indian startups and MSMEs. We recognized that while entrepreneurship is thriving, the administrative and financial burdens of compliance often stifle innovation.
+                Founded on the principles of <strong>Clarity, Compliance, and Growth</strong>, Fin2Line Consulting emerged as a response to the growing complexities faced by Indian startups and MSMEs. We recognized that while entrepreneurship is thriving, the administrative and financial burdens of compliance often stifle innovation.
               </p>
               <p>
-                Our team consists of seasoned Chartered Accountants, Legal Experts, and Strategic Advisors who believe that compliance shouldn't be a hurdle, but a foundation for scaling. We've built Vithartha to be more than just a consultancy; we are your extended financial and legal department.
+                Our team consists of seasoned Chartered Accountants, Legal Experts, and Strategic Advisors who believe that compliance shouldn't be a hurdle, but a foundation for scaling. We've built Fin2Line to be more than just a consultancy; we are your extended financial and legal department.
               </p>
               <p>
                 By integrating cutting-edge financial technology with deep domain expertise, we provide a seamless dashboard-driven experience where you can track every filing, every document, and every deadline in real-time.
@@ -583,7 +583,7 @@ const About = () => {
                 <h3 style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: "1.5rem" }}>Connect with Us</h3>
                 <div style={{ display: "flex", flexDirection: "column", gap: "1.2rem" }}>
                   {[
-                    { icon: Mail, label: "Email", value: "info@vithartha.com", link: "mailto:info@vithartha.com" },
+                    { icon: Mail, label: "Email", value: "info@fin2line.com", link: "mailto:info@fin2line.com" },
                     { icon: Phone, label: "Phone", value: "+91 98765 43210", link: "tel:+919876543210" },
                     { icon: MapPin, label: "Office", value: "Bangalore, India", link: "#" },
                   ].map((item, i) => (
@@ -611,10 +611,10 @@ const About = () => {
                 <h3 style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: "1.5rem" }}>Follow Our Insights</h3>
                 <div className="about-social-icons" style={{ display: "flex", gap: "0.8rem" }}>
                   {[
-                    { icon: Linkedin, color: "#0077b5", link: "https://linkedin.com/company/vithartha" },
-                    { icon: Twitter, color: "#1da1f2", link: "https://twitter.com/vithartha" },
-                    { icon: Instagram, color: "#e4405f", link: "https://instagram.com/vithartha" },
-                    { icon: Facebook, color: "#1877f2", link: "https://facebook.com/vithartha" },
+                    { icon: Linkedin, color: "#0077b5", link: "https://linkedin.com/company/fin2line" },
+                    { icon: Twitter, color: "#1da1f2", link: "https://twitter.com/fin2line" },
+                    { icon: Instagram, color: "#e4405f", link: "https://instagram.com/fin2line" },
+                    { icon: Facebook, color: "#1877f2", link: "https://facebook.com/fin2line" },
                   ].map((social, i) => (
                     <a 
                       key={i} 

@@ -9,8 +9,11 @@ import Onboarding from "./pages/Onboarding";
 import Recommendations from "./pages/Recommendations";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import GoogleOAuthCallback from "./pages/GoogleOAuthCallback";
 import UserDashboard from "./pages/UserDashboard";
 import AdminDashboard from "./pages/AdminDashboard";
+import PRDashboard from "./pages/PRDashboard";
+import ExecutorDashboard from "./pages/ExecutorDashboard";
 import DocumentReview from "./pages/DocumentReview";
 import DraftReview from "./pages/DraftReview";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -23,9 +26,9 @@ import { Toaster } from "react-hot-toast";
 import "./App.css";
 
 // Routes that hide the Footer
-const HIDE_FOOTER_ROUTES = ["/login", "/register", "/services", "/onboarding"];
+const HIDE_FOOTER_ROUTES = ["/login", "/register", "/services", "/onboarding", "/auth/google/callback"];
 // Routes that hide the Navbar — only auth pages (login/register) since dashboard now uses the shared navbar
-const HIDE_NAVBAR_ROUTES = ["/login", "/register", "/onboarding"];
+const HIDE_NAVBAR_ROUTES = ["/login", "/register", "/onboarding", "/auth/google/callback"];
 
 function App() {
   const location = useLocation();
@@ -42,13 +45,13 @@ function App() {
 
   // Handle Initial Site Load
   useEffect(() => {
-    const hasLoadedBefore = sessionStorage.getItem("vithartha_loaded");
+    const hasLoadedBefore = sessionStorage.getItem("fin2line_loaded");
     const delay = hasLoadedBefore ? 2200 : 4500; // 4.5s for first visit, 2.2s for refresh/return
 
     const timer = setTimeout(() => {
       setIsLoading(false);
       setIsInitialLoad(false);
-      sessionStorage.setItem("vithartha_loaded", "true");
+      sessionStorage.setItem("fin2line_loaded", "true");
     }, delay);
 
     return () => clearTimeout(timer);
@@ -68,7 +71,7 @@ function App() {
 
   
   useEffect(() => {
-    window.triggerVitharthaRefresh = () => {
+    window.triggerFin2LineRefresh = () => {
       setIsInitialLoad(true);
       setIsLoading(true);
       setTimeout(() => {
@@ -113,11 +116,12 @@ function App() {
               } 
             />
             <Route path="/login" element={<Login />} />
+            <Route path="/auth/google/callback" element={<GoogleOAuthCallback />} />
             <Route path="/register" element={<Register />} />
             <Route
               path="/dashboard"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute allowedRoles={["user"]}>
                   <UserDashboard />
                 </ProtectedRoute>
               }
@@ -127,6 +131,22 @@ function App() {
               element={
                 <ProtectedRoute adminOnly={true}>
                   <AdminDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/pr-dashboard"
+              element={
+                <ProtectedRoute allowedRoles={["PR", "admin"]}>
+                  <PRDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/executor-dashboard"
+              element={
+                <ProtectedRoute allowedRoles={["executor", "admin"]}>
+                  <ExecutorDashboard />
                 </ProtectedRoute>
               }
             />

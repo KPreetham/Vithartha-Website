@@ -1,7 +1,12 @@
 import { Navigate } from "react-router-dom";
 import { hasCompletedOnboarding } from "../utils/onboardingFlow";
+import {
+  normalizeRole,
+  getDashboardPathByRole,
+  roleAllowed,
+} from "../utils/roleRouting";
 
-const ProtectedRoute = ({ children, adminOnly = false }) => {
+const ProtectedRoute = ({ children, adminOnly = false, allowedRoles = [] }) => {
   const userStr = localStorage.getItem("user");
 
   if (!userStr) {
@@ -10,14 +15,19 @@ const ProtectedRoute = ({ children, adminOnly = false }) => {
 
   try {
     const user = JSON.parse(userStr);
+    const userRole = normalizeRole(user.role);
+    const fallbackPath = getDashboardPathByRole(userRole);
 
-    if (adminOnly && user.role !== "admin") {
-      // If it's an admin only route and user is not admin, redirect to dashboard or home
-      return <Navigate to="/dashboard" replace />;
+    if (adminOnly && userRole !== "admin") {
+      return <Navigate to={fallbackPath} replace />;
     }
 
-    // New: Force onboarding if not completed (and not admin)
-    if (user.role !== "admin" && !hasCompletedOnboarding(user)) {
+    if (!roleAllowed(userRole, allowedRoles)) {
+      return <Navigate to={fallbackPath} replace />;
+    }
+
+    // New: Force onboarding only for standard users, skip for admin/PR/executor
+    if (userRole === "user" && !hasCompletedOnboarding(user)) {
       return <Navigate to="/onboarding" replace />;
     }
 

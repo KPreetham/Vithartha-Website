@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate, Link, useLocation } from "react-router-dom";
 import {
   User,
@@ -8,7 +8,6 @@ import {
   ArrowLeft,
   Eye,
   EyeOff,
-  ShieldCheck,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { toast } from "react-hot-toast";
@@ -21,26 +20,31 @@ const Register = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const initialData = location.state?.initialData || {};
+  const fromGoogle = location.state?.fromGoogle === true;
+  const googleSignupToken = location.state?.googleSignupToken || "";
+  const noticeMessage = location.state?.noticeMessage || "";
 
   const [formData, setFormData] = useState({
     name: initialData.name || "",
     email: initialData.email || "",
     company: "",
     password: "",
-    role: "user",
   });
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [agreed, setAgreed] = useState(false);
-  const [regRole, setRegRole] = useState("user");
+
+  useEffect(() => {
+    if (noticeMessage) {
+      toast(noticeMessage, {
+        icon: "ℹ️",
+        id: "register-notice-toast",
+      });
+    }
+  }, [noticeMessage]);
 
   const handleChange = (e) =>
     setFormData({ ...formData, [e.target.name]: e.target.value });
-
-  const handleRoleChange = (role) => {
-    setRegRole(role);
-    setFormData({ ...formData, role });
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -51,7 +55,10 @@ const Register = () => {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(formData),
+          body: JSON.stringify({
+            ...formData,
+            googleSignupToken: fromGoogle ? googleSignupToken : undefined,
+          }),
         },
       );
       const data = await response.json();
@@ -60,7 +67,7 @@ const Register = () => {
           icon: "✅",
         });
         const newUser = { ...data, onboardingCompleted: false };
-        sessionStorage.setItem("vithartha_guest_walkthrough_seen_v5", "true");
+        sessionStorage.setItem("fin2line_guest_walkthrough_seen_v5", "true");
         localStorage.setItem("user", JSON.stringify(newUser));
         clearOnboardingCompleted(newUser);
         clearPostLoginWalkthroughSeen(newUser);
@@ -164,6 +171,30 @@ const Register = () => {
 
           {/* Header */}
           <div style={{ textAlign: "center", marginBottom: "0.8rem" }}>
+            <div style={{
+              height: "90px",
+              width: "90px",
+              borderRadius: "50%",
+              overflow: "hidden",
+              margin: "0 auto 0.8rem",
+              background: "rgba(255, 255, 255, 0.03)",
+              border: "1px solid rgba(255, 255, 255, 0.1)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}>
+              <img
+                src="/logo2.png"
+                alt="Logo"
+                style={{
+                  height: "100%",
+                  width: "100%",
+                  objectFit: "cover",
+                  transform: "scale(1.1)",
+                  display: "block",
+                }}
+              />
+            </div>
             <h1
               style={{
                 fontSize: "1.4rem",
@@ -173,10 +204,12 @@ const Register = () => {
                 letterSpacing: "-0.02em",
               }}
             >
-              Create Account
+              {fromGoogle ? "Complete Your Account" : "Create Account"}
             </h1>
             <p style={{ color: "var(--text-muted)", fontSize: "0.78rem" }}>
-              Join Vithartha as a business partner
+              {fromGoogle
+                ? "Set your password to finish Google sign in"
+                : "Join Fin2Line as a business partner"}
             </p>
           </div>
 
@@ -225,12 +258,12 @@ const Register = () => {
                       width: "100%",
                     }}
                     onFocus={(e) =>
-                      (e.currentTarget.parentElement.style.borderColor =
-                        "#22c55e")
+                    (e.currentTarget.parentElement.style.borderColor =
+                      "#22c55e")
                     }
                     onBlur={(e) =>
-                      (e.currentTarget.parentElement.style.borderColor =
-                        "var(--border)")
+                    (e.currentTarget.parentElement.style.borderColor =
+                      "var(--border)")
                     }
                   />
                 </div>
@@ -267,12 +300,12 @@ const Register = () => {
                       width: "100%",
                     }}
                     onFocus={(e) =>
-                      (e.currentTarget.parentElement.style.borderColor =
-                        "#22c55e")
+                    (e.currentTarget.parentElement.style.borderColor =
+                      "#22c55e")
                     }
                     onBlur={(e) =>
-                      (e.currentTarget.parentElement.style.borderColor =
-                        "var(--border)")
+                    (e.currentTarget.parentElement.style.borderColor =
+                      "var(--border)")
                     }
                   />
                 </div>
@@ -304,6 +337,7 @@ const Register = () => {
                   required
                   value={formData.email}
                   onChange={handleChange}
+                  readOnly={fromGoogle}
                   style={{
                     background: "none",
                     border: "none",
@@ -311,14 +345,15 @@ const Register = () => {
                     color: "var(--text)",
                     fontSize: "0.85rem",
                     width: "100%",
+                    opacity: fromGoogle ? 0.8 : 1,
                   }}
                   onFocus={(e) =>
-                    (e.currentTarget.parentElement.style.borderColor =
-                      "#22c55e")
+                  (e.currentTarget.parentElement.style.borderColor =
+                    "#22c55e")
                   }
                   onBlur={(e) =>
-                    (e.currentTarget.parentElement.style.borderColor =
-                      "var(--border)")
+                  (e.currentTarget.parentElement.style.borderColor =
+                    "var(--border)")
                   }
                 />
               </div>
@@ -358,12 +393,12 @@ const Register = () => {
                     flex: 1,
                   }}
                   onFocus={(e) =>
-                    (e.currentTarget.parentElement.style.borderColor =
-                      "#22c55e")
+                  (e.currentTarget.parentElement.style.borderColor =
+                    "#22c55e")
                   }
                   onBlur={(e) =>
-                    (e.currentTarget.parentElement.style.borderColor =
-                      "var(--border)")
+                  (e.currentTarget.parentElement.style.borderColor =
+                    "var(--border)")
                   }
                 />
                 <button
@@ -458,9 +493,9 @@ const Register = () => {
                     "0 12px 32px rgba(34,197,94,0.45)";
               }}
               onMouseLeave={(e) =>
-                (e.currentTarget.style.boxShadow = agreed
-                  ? "0 8px 24px rgba(34,197,94,0.3)"
-                  : "none")
+              (e.currentTarget.style.boxShadow = agreed
+                ? "0 8px 24px rgba(34,197,94,0.3)"
+                : "none")
               }
             >
               {loading ? (

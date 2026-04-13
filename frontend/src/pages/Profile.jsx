@@ -12,6 +12,7 @@ import {
   Globe,
   Hash,
   Briefcase,
+  Zap,
 } from "lucide-react";
 import axios from "axios";
 import { toast } from "react-hot-toast";
@@ -336,11 +337,31 @@ const Profile = () => {
               flexShrink: 0,
             }}
           >
-            <User
-              size={36}
-              color={isLightMode ? "#111111" : "white"}
-              strokeWidth={2.5}
-            />
+            {user.role === "admin" ? (
+              <Shield
+                size={36}
+                color={isLightMode ? "#22c55e" : "#22c55e"}
+                strokeWidth={2.5}
+              />
+            ) : user.role === "PR" ? (
+              <Briefcase
+                size={36}
+                color={isLightMode ? "#3b82f6" : "#3b82f6"}
+                strokeWidth={2.5}
+              />
+            ) : user.role === "executor" ? (
+              <Zap
+                size={36}
+                color={isLightMode ? "#f59e0b" : "#f59e0b"}
+                strokeWidth={2.5}
+              />
+            ) : (
+              <User
+                size={36}
+                color={isLightMode ? "#111111" : "white"}
+                strokeWidth={2.5}
+              />
+            )}
             {/* Green Dot */}
             <div
               style={{
@@ -379,13 +400,21 @@ const Profile = () => {
                   background:
                     user.role === "admin"
                       ? "rgba(34, 197, 94, 0.1)"
-                      : "rgba(255, 255, 255, 0.05)",
+                      : user.role === "PR"
+                        ? "rgba(59, 130, 246, 0.1)"
+                        : user.role === "executor"
+                          ? "rgba(245, 158, 11, 0.1)"
+                          : "rgba(255, 255, 255, 0.05)",
                   color:
                     user.role === "admin"
                       ? "#22c55e"
-                      : isLightMode
-                        ? "rgba(0, 0, 0, 0.55)"
-                        : "rgba(255, 255, 255, 0.6)",
+                      : user.role === "PR"
+                        ? "#3b82f6"
+                        : user.role === "executor"
+                          ? "#f59e0b"
+                          : isLightMode
+                            ? "rgba(0, 0, 0, 0.55)"
+                            : "rgba(255, 255, 255, 0.6)",
                   borderRadius: "8px",
                   textTransform: "uppercase",
                   letterSpacing: "0.05em",
@@ -393,7 +422,13 @@ const Profile = () => {
                   alignSelf: "center",
                 }}
               >
-                {user.role === "admin" ? "Admin" : "User"}
+                {user.role === "admin"
+                  ? "Admin"
+                  : user.role === "PR"
+                    ? "PR Professional"
+                    : user.role === "executor"
+                      ? "Service Executor"
+                      : "Client"}
               </span>
             </h1>
             <p
@@ -551,12 +586,18 @@ const Profile = () => {
                     letterSpacing: "0.1em",
                   }}
                 >
-                  Business
+                  {user.role === "PR" || user.role === "executor"
+                    ? "Professional"
+                    : "Business"}
                 </span>
               </div>
 
               <div>
-                <label style={labelStyle}>Company Name</label>
+                <label style={labelStyle}>
+                  {user.role === "PR" || user.role === "executor"
+                    ? "Organization / Firm"
+                    : "Company Name"}
+                </label>
                 <input
                   className="profile-input"
                   autoComplete="off"
@@ -586,7 +627,11 @@ const Profile = () => {
                 }}
               >
                 <div>
-                  <label style={labelStyle}>Industry</label>
+                  <label style={labelStyle}>
+                    {user.role === "PR" || user.role === "executor"
+                      ? "Specialization"
+                      : "Industry"}
+                  </label>
                   <input
                     className="profile-input"
                     autoComplete="off"
@@ -607,7 +652,11 @@ const Profile = () => {
                   />
                 </div>
                 <div>
-                  <label style={labelStyle}>Stage</label>
+                  <label style={labelStyle}>
+                    {user.role === "PR" || user.role === "executor"
+                      ? "Expertise Level"
+                      : "Stage"}
+                  </label>
                   <input
                     className="profile-input"
                     autoComplete="off"

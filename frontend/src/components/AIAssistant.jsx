@@ -3,7 +3,7 @@ import { MessageSquare, X, Send, Loader2, Bot } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import axios from "axios";
 
-const SYSTEM_PROMPT = `You are a professional AI Business Advisor for Vithartha, a company specializing in Finance, Compliance, Advisory, Tax, and Legal services.
+const SYSTEM_PROMPT = `You are a professional AI Business Advisor for Fin2Line, a company specializing in Finance, Compliance, Advisory, Tax, and Legal services.
 
 Your primary goal is to assist users with queries regarding:
 - Compliance: GST Registration/Filing, MCA Annual Filings, EPF & ESI, TDS, E-Way Bill, and Health Checks.
@@ -16,8 +16,8 @@ Guidelines:
 1. TONE: Maintain a high-level, professional, and sophisticated tone. Avoid informal language.
 2. FORMATTING: Use plain text only. CRITICAL: Never use double asterisks (**) for bolding or emphasis.
 3. PRICING: If asked, mention that fees start at ₹1,000 and the timeline is typically 2-4 days. Advise them to confirm interest via the recommendations page for precise quotes.
-4. SCOPE: If a user asks a general question unrelated to Vithartha, provide a very brief professional answer if possible, but immediately follow up by asking them to keep questions relevant to Vithartha's business services.
-5. CONCISENESS: Keep responses brief and focused on how Vithartha can solve the user's business needs.`;
+4. SCOPE: If a user asks a general question unrelated to Fin2Line, provide a very brief professional answer if possible, but immediately follow up by asking them to keep questions relevant to Fin2Line's business services.
+5. CONCISENESS: Keep responses brief and focused on how Fin2Line can solve the user's business needs.`;
 
 const AIAssistant = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -25,7 +25,7 @@ const AIAssistant = () => {
     {
       role: "assistant",
       content:
-        "Hello! I am your Vithartha AI Assistant. How can I help you with our specialized business services today?",
+        "Hello! I am your Fin2Line AI Assistant. How can I help you with our specialized business services today?",
     },
   ]);
   const [input, setInput] = useState("");
@@ -306,7 +306,7 @@ const AIAssistant = () => {
                       letterSpacing: "0.02em",
                     }}
                   >
-                    Vithartha Assistant
+                    Fin2Line Assistant
                   </div>
                   <div
                     style={{
@@ -413,7 +413,7 @@ const AIAssistant = () => {
                     style={{ animation: "spin 1s linear infinite" }}
                   />
                   <span style={{ fontSize: "0.8rem", fontWeight: 500 }}>
-                    Vithartha Assistant is thinking...
+                    Fin2Line Assistant is thinking...
                   </span>
                 </motion.div>
               )}
@@ -437,7 +437,7 @@ const AIAssistant = () => {
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleSend()}
-                  placeholder="Ask Vithartha AI..."
+                  placeholder="Ask Fin2Line AI..."
                   disabled={isLoading}
                   style={{
                     width: "100%",

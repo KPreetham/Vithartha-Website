@@ -223,7 +223,7 @@ const testimonials = [
     name: "Aditi Sharma",
     role: "Founder, TechNova",
     avatar: "AS",
-    text: "Vithartha completely transformed our financial operations. Their Virtual CFO service gave us the clarity we needed to scale confidently.",
+    text: "Fin2Line completely transformed our financial operations. Their Virtual CFO service gave us the clarity we needed to scale confidently.",
     rating: 5,
     avatarColor: "#8B1A2D",
   },
@@ -318,7 +318,7 @@ const Home = () => {
               marginBottom: "1.6rem",
             }}
           >
-            Redefining
+            Your direct path to
             <br />
             <span
               style={{
@@ -329,7 +329,7 @@ const Home = () => {
                 WebkitTextFillColor: "transparent",
               }}
             >
-              Business Consulting
+              compliance
             </span>
           </motion.h1>
 
@@ -345,9 +345,8 @@ const Home = () => {
               lineHeight: 1.75,
             }}
           >
-            Transforming your ideas into thriving businesses with expert
-            guidance in GST compliance, financial strategy, and startup
-            mentorship.
+            We simplify registrations, filings, and legal requirements so your
+            business stays compliant without slowing down.
           </motion.p>
 
           <motion.div
@@ -508,7 +507,7 @@ const Home = () => {
         </div>
       </section>
 
-      {/* ===== WHY VITHARTHA ===== */}
+      {/* ===== WHY FIN2LINE ===== */}
       <section className="section" style={{ background: "transparent" }}>
         <div className="container">
           <motion.div

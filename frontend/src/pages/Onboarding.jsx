@@ -144,8 +144,8 @@ const InputQuestion = ({ label, placeholder, value, onChange }) => (
           (e.currentTarget.parentElement.style.borderColor = "#22c55e")
         }
         onBlur={(e) =>
-          (e.currentTarget.parentElement.style.borderColor =
-            "rgba(255,255,255,0.1)")
+        (e.currentTarget.parentElement.style.borderColor =
+          "rgba(255,255,255,0.1)")
         }
       />
     </div>
@@ -234,16 +234,23 @@ const Onboarding = () => {
 
     // ── PATH: Filing Returns ──────────────────────────────────────────────
     if (path === "filing") {
-      needsSet.add("Income Tax"); // always relevant
+      // Add granular flags based on Yes answers
       if (formData.salaried === true) needsSet.add("salaried");
       if (formData.capitalGains === true) needsSet.add("capitalGains");
       if (formData.houseProperty === true) needsSet.add("houseProperty");
       if (formData.otherSources === true) needsSet.add("otherSources");
+      // If no specific sub-type was selected, default to basic ITR filing only
+      const hasAnyFlag =
+        formData.salaried === true ||
+        formData.capitalGains === true ||
+        formData.houseProperty === true ||
+        formData.otherSources === true;
+      if (!hasAnyFlag) needsSet.add("itrFiling");
     }
 
     // ── PATH: Capital Gains ───────────────────────────────────────────────
     if (path === "capital") {
-      needsSet.add("Income Tax");
+      // Always capital gains; add other flags based on Yes answers
       needsSet.add("capitalGains");
       if (formData.houseProperty === true) needsSet.add("houseProperty");
       if (formData.otherSources === true) needsSet.add("otherSources");
@@ -251,61 +258,24 @@ const Onboarding = () => {
 
     // ── PATH: Starting a Business ─────────────────────────────────────────
     if (path === "starting") {
-      needsSet.add("startingBusiness"); 
-      const industryText = (formData.industry || "").toLowerCase();
-      if (
-        industryText.includes("itr") ||
-        industryText.includes("income tax") ||
-        industryText.includes("tax")
-      ) {
-        needsSet.add("Income Tax");
+      const hasExplicitNeeds = formData.needs.length > 0;
+
+      if (!hasExplicitNeeds) {
+        // No specific services selected → fall back to generic startup bundle
+        needsSet.add("startingBusiness");
       }
-      if (
-        industryText.includes("capital gain") ||
-        industryText.includes("capital gains")
-      ) {
-        needsSet.add("Income Tax");
-        needsSet.add("capitalGains");
-      }
-      if (
-        industryText.includes("house property") ||
-        industryText.includes("rental")
-      ) {
-        needsSet.add("houseProperty");
-      }
-      if (industryText.includes("gst")) needsSet.add("GST Compliance");
-      if (industryText.includes("cfo") || industryText.includes("account"))
-        needsSet.add("Virtual CFO");
-      if (
-        industryText.includes("payroll") ||
-        industryText.includes("epf") ||
-        industryText.includes("esi")
-      )
-        needsSet.add("Payroll");
-      if (
-        industryText.includes("legal") ||
-        industryText.includes("secretarial") ||
-        industryText.includes("mca")
-      )
-        needsSet.add("Legal Advisory");
-      if (
-        industryText.includes("registration") ||
-        industryText.includes("incorporation") ||
-        industryText.includes("startup")
-      ) {
-        needsSet.add("Registration");
-      }
+      // Note: We no longer infer needs from the industry text field for startups
+      // to ensure we only display what the user explicitly selected.
     }
 
     // ── PATH: Have a Business ─────────────────────────────────────────────
-    
+
     if (path === "having") {
       // needsSet already seeded with formData.needs selections (GST Compliance, Income Tax, etc.)
     }
 
     // ── Explicit needs checkbox "Capital Gains" maps to capital gains service ──
     if (formData.needs.includes("Capital Gains")) {
-      needsSet.add("Income Tax");
       needsSet.add("capitalGains");
     }
 
@@ -507,12 +477,31 @@ const Onboarding = () => {
           }}
         >
           {/* Logo */}
-          <div style={{ textAlign: "center", marginBottom: "1.2rem" }}>
-            <img
-              src="/vithartha-logo.png"
-              alt="Vithartha"
-              style={{ height: "20px" }}
-            />
+          <div style={{ textAlign: "center", marginBottom: "1.4rem" }}>
+            <div style={{
+              height: "80px",
+              width: "80px",
+              borderRadius: "50%",
+              overflow: "hidden",
+              margin: "0 auto",
+              background: "rgba(255, 255, 255, 0.03)",
+              border: "1px solid rgba(255, 255, 255, 0.12)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}>
+              <img
+                src="/logo2.png"
+                alt="Fin2Line Logo"
+                style={{
+                  height: "100%",
+                  width: "100%",
+                  objectFit: "cover",
+                  objectPosition: "center",
+                  display: "block",
+                }}
+              />
+            </div>
           </div>
 
           <AnimatePresence mode="wait">
@@ -535,7 +524,7 @@ const Onboarding = () => {
                       letterSpacing: "-0.01em",
                     }}
                   >
-                    What brings you to Vithartha?
+                    What brings you to Fin2Line?
                   </h2>
                   <p
                     style={{
@@ -577,8 +566,8 @@ const Onboarding = () => {
                         (e.currentTarget.style.borderColor = `${color}60`)
                       }
                       onMouseLeave={(e) =>
-                        (e.currentTarget.style.borderColor =
-                          "rgba(255,255,255,0.08)")
+                      (e.currentTarget.style.borderColor =
+                        "rgba(255,255,255,0.08)")
                       }
                     >
                       <div
@@ -753,6 +742,58 @@ const Onboarding = () => {
                           setFormData({ ...formData, industry: v })
                         }
                       />
+                      {/* Service needs selection for Starting a Business */}
+                      <div>
+                        <p
+                          style={{
+                            fontSize: "0.82rem",
+                            fontWeight: 600,
+                            marginBottom: "0.55rem",
+                            color: "rgba(255,255,255,0.75)",
+                          }}
+                        >
+                          Which services do you need?
+                        </p>
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "1fr 1fr",
+                            gap: "0.45rem",
+                          }}
+                        >
+                          {needsOptions.map(({ value, icon: Icon, color }) => {
+                            const selected = formData.needs.includes(value);
+                            return (
+                              <button
+                                key={value}
+                                onClick={() => toggleNeed(value)}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "0.5rem",
+                                  padding: "0.55rem 0.75rem",
+                                  borderRadius: "8px",
+                                  border: selected
+                                    ? `1.5px solid ${color}`
+                                    : "1.5px solid rgba(255,255,255,0.08)",
+                                  background: selected
+                                    ? `${color}12`
+                                    : "rgba(255,255,255,0.03)",
+                                  color: selected
+                                    ? color
+                                    : "rgba(255,255,255,0.35)",
+                                  fontSize: "0.74rem",
+                                  fontWeight: 600,
+                                  cursor: "pointer",
+                                  transition: "0.2s",
+                                }}
+                              >
+                                <Icon size={12} /> {value}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
                     </>
                   )}
 

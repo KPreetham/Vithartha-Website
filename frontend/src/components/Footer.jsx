@@ -35,6 +35,7 @@ const Footer = () => {
         color: "var(--text)",
         position: "relative",
         overflow: "hidden",
+        marginTop: "6rem",
       }}
     >
       {/* Top gradient border — logo colors */}
@@ -101,11 +102,27 @@ const Footer = () => {
                 marginBottom: "1.4rem",
               }}
             >
-              <img
-                src="/vithartha-logo.png"
-                alt="Vithartha"
-                style={{ height: "32px", width: "auto", objectFit: "contain" }}
-              />
+              <div style={{
+                height: "64px",
+                width: "64px",
+                borderRadius: "50%",
+                overflow: "hidden",
+                border: "1px solid rgba(255,255,255,0.08)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}>
+                <img
+                  src="/logo2.png"
+                  alt="Fin2Line Logo"
+                  style={{
+                    height: "100%",
+                    width: "100%",
+                    objectFit: "cover",
+                    objectPosition: "center",
+                  }}
+                />
+              </div>
               <span
                 style={{
                   fontFamily: "var(--font-display)",
@@ -115,7 +132,7 @@ const Footer = () => {
                   letterSpacing: "0.02em",
                 }}
               >
-                VITHARTHA
+                FIN2LINE
               </span>
             </div>
             <p
@@ -325,7 +342,7 @@ const Footer = () => {
               }}
             >
               {[
-                { icon: Mail, text: "contact@vitharthaconsulting.com" },
+                { icon: Mail, text: "contact@fin2line.com" },
                 { icon: Phone, text: "+91 91234 56789" },
                 { icon: MapPin, text: "Mangaluru, Karnataka — 575001" },
               ].map(({ icon: Icon, text }) => (
@@ -386,7 +403,7 @@ const Footer = () => {
           >
             <Shield size={14} />
             <span>
-              © 2024 Vithartha Consulting Pvt. Ltd. All rights reserved.
+              © 2024 Fin2Line Consulting Pvt. Ltd. All rights reserved.
             </span>
           </div>
           <div

@@ -26,6 +26,11 @@ import {
 import { toast } from "react-hot-toast";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
+import ConfirmationModal from "../components/ConfirmationModal";
+import {
+  formatInr,
+  getLeadRevenueAmount,
+} from "../utils/servicePricing";
 
 const PremiumCard = ({ children, style = {}, className = "" }) => {
   return (
@@ -63,7 +68,22 @@ const AdminDashboard = () => {
     status: "",
     adminMessage: "",
   });
+  const [messageTarget, setMessageTarget] = useState("client");
+  const [messageText, setMessageText] = useState("");
   const [uploadingId, setUploadingId] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, lead: null, isLoading: false });
+
+  const getMessageFieldByTarget = (target) => {
+    if (target === "pr") return "prMessage";
+    if (target === "executor") return "executorMessage";
+    return "adminMessage";
+  };
+
+  const getMessageTextByTarget = (lead, target) => {
+    if (target === "pr") return lead?.prMessage || "";
+    if (target === "executor") return lead?.executorMessage || "";
+    return lead?.adminMessage || "";
+  };
 
   useEffect(() => {
     const lead = leads.find((l) => l._id === expandedLeadId);
@@ -76,21 +96,31 @@ const AdminDashboard = () => {
         adminMessage: lead.adminMessage || "",
         userMessage: lead.userMessage || "",
       });
+      setMessageText(getMessageTextByTarget(lead, messageTarget));
     }
-  }, [expandedLeadId, leads]);
+  }, [expandedLeadId, messageTarget]);
 
   const handleUpdateLead = async (e) => {
     e.preventDefault();
     try {
       const apiUrl = import.meta.env.VITE_API_URL;
       const user = JSON.parse(localStorage.getItem("user"));
+      const targetField = getMessageFieldByTarget(messageTarget);
+      const trimmedMessage = String(messageText || "").trim();
+      if (!trimmedMessage) {
+        toast.error("Please enter a message before sending");
+        return;
+      }
       const response = await axios.patch(
         `${apiUrl}/leads/${expandedLeadId}`,
-        editForm,
+        { [targetField]: trimmedMessage },
         { headers: { Authorization: `Bearer ${user.token}` } },
       );
       if (response.data) {
-        toast.success("Message sent to user");
+        toast.success(
+          `Message sent to ${messageTarget === "client" ? "client" : messageTarget === "pr" ? "PR" : "executor"}`,
+        );
+        setMessageText("");
         fetchLeads();
       }
     } catch (error) {
@@ -184,12 +214,37 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleDeleteService = (lead, e) => {
+    if (e) e.stopPropagation();
+    setDeleteConfirm({ isOpen: true, lead, isLoading: false });
+  };
+
+  const handleConfirmDelete = async () => {
+    const lead = deleteConfirm.lead;
+    const serviceName = lead?.serviceName || "this service";
+    
+    setDeleteConfirm((prev) => ({ ...prev, isLoading: true }));
+    
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL;
+      const user = JSON.parse(localStorage.getItem("user"));
+      await axios.delete(`${apiUrl}/leads/${lead._id}`, {
+        headers: { Authorization: `Bearer ${user.token}` },
+      });
+
+      toast.success("Service deleted");
+      setExpandedLeadId((prev) => (prev === lead._id ? null : prev));
+      setLeads((prev) => prev.filter((item) => item._id !== lead._id));
+      setDeleteConfirm({ isOpen: false, lead: null, isLoading: false });
+    } catch (error) {
+      console.error("Delete service error:", error);
+      toast.error("Failed to delete service");
+      setDeleteConfirm((prev) => ({ ...prev, isLoading: false }));
+    }
+  };
+
   const handleUploadDraft = async (leadId, file, type = "Draft") => {
     if (!file) return;
-    if (file.type !== "application/pdf") {
-      toast.error("Please upload only PDF documents");
-      return;
-    }
     const loadingToast = toast.loading(
       `Uploading ${type.toLowerCase()} document...`,
     );
@@ -333,33 +388,71 @@ const AdminDashboard = () => {
     total: leads.length,
     pending: leads.filter((l) => l.status === "Open").length,
     completed: leads.filter((l) => l.status === "Completed").length,
-    revenue: (leads.length * 2500).toLocaleString("en-IN"),
+    revenue: formatInr(
+      leads.reduce(
+        (sum, lead) =>
+          sum + (lead.status === "Rejected" ? 0 : getLeadRevenueAmount(lead)),
+        0,
+      ),
+    ),
   };
 
-  const getDisplayStatus = (status) => {
-    if (status === "DraftSent") return "Awaiting Draft Review";
-    if (status === "UserAccepted") return "Awaiting Final Upload";
-    if (status === "Completed") return "Final Uploaded";
-    if (status === "InProgress") return "Active";
-    if (status === "Open") return "Pending";
+  const hasPrFeedback = (lead) => String(lead?.prFeedback || "").trim().length > 0;
+
+  const isAdminRejectedLead = (lead) =>
+    lead?.status === "Rejected" &&
+    String(lead?.adminMessage || "")
+      .toLowerCase()
+      .includes("administrator");
+
+  const isExecutorRejectedLead = (lead) => {
+    if (lead?.status !== "Rejected" || isAdminRejectedLead(lead)) return false;
+
+    const executorMsg = String(lead?.executorMessage || "").toLowerCase();
+    const fromExecutorMessage =
+      executorMsg.includes("rejected by executor") ||
+      executorMsg.includes("assignment rejected");
+
+    // If it is rejected and not clearly PR/admin rejected, treat it as executor rejection.
+    return fromExecutorMessage || !hasPrFeedback(lead);
+  };
+
+  const getDisplayStatus = (lead) => {
+    const status = lead?.status;
+    if (isExecutorRejectedLead(lead)) return "Rejected by Executor";
+    if (status === "PendingReview") return "Pending PR Approval";
+    if (status === "InformationRequired") return "Action Required";
+    if (status === "PR_Accepted") return "Pending Executor Approval";
+    if (status === "AssignedToExecutor") return "Pending Executor Approval";
+    if (status === "InProgress") return "Execution Active";
+    if (status === "ExecutionFinished") return "PR Reviewing Result";
+    if (status === "DraftSent") return "Client Reviewing Draft";
+    if (status === "DraftAccepted" || status === "UserAccepted") return "Draft Approved";
+    if (status === "DraftRejected") return "Rejected by User";
+    if (status === "Completed") return "Completed";
+    if (status === "Open") return "Pending PR Approval";
     return status;
   };
 
-  const getStatusTheme = (status) => {
+  const getStatusTheme = (lead) => {
+    const status = lead?.status;
+    if (isExecutorRejectedLead(lead) || status === "Rejected") {
+      return { color: "#ef4444", bg: "rgba(239,68,68,0.1)" };
+    }
     if (status === "Completed") {
       return { color: "#10b981", bg: "rgba(16,185,129,0.1)" };
     }
-    if (status === "InProgress") {
-      return { color: "#22c55e", bg: "rgba(34,197,94,0.1)" };
+    if (["InProgress", "AssignedToExecutor"].includes(status)) {
+      return { color: "#4361ee", bg: "rgba(67,97,238,0.1)" };
     }
-    if (status === "DraftSent") {
-      return { color: "#f59e0b", bg: "rgba(245,158,11,0.12)" };
+    if (status === "InformationRequired" || status === "DraftRejected") {
+      return { color: "#ef4444", bg: "rgba(239,68,68,0.1)" };
     }
-    if (status === "UserAccepted") {
+    if (status === "DraftSent" || status === "ExecutionFinished") {
       return { color: "#8b5cf6", bg: "rgba(139,92,246,0.12)" };
     }
-    if (status === "Rejected") {
-      return { color: "#ef4444", bg: "rgba(239,68,68,0.1)" };
+    if (status === "PR_Accepted" || status === "DraftAccepted") {
+      return { color: "#10b981", bg: "rgba(16,185,129,0.1)" };
     }
     return { color: "#f59e0b", bg: "rgba(245,158,11,0.1)" };
   };
@@ -411,11 +504,30 @@ const AdminDashboard = () => {
 
       <style>{`
         @media (max-width: 768px) {
+          .admin-page-shell {
+            padding-top: 120px !important;
+            padding-bottom: 64px !important;
+          }
           .admin-container {
             padding: 0 1rem !important;
           }
+          .admin-header {
+            margin-bottom: 2.5rem !important;
+          }
+          .admin-header-title {
+            font-size: clamp(1.8rem, 8vw, 2.6rem) !important;
+          }
+          .admin-header-copy {
+            margin-bottom: 1.75rem !important;
+            font-size: 0.96rem !important;
+          }
           .admin-search-wrap {
             flex-direction: column !important;
+            max-width: 100% !important;
+            margin-bottom: 2.5rem !important;
+          }
+          .admin-search-input-group {
+            width: 100% !important;
           }
           .admin-search-wrap button {
             width: 100% !important;
@@ -423,37 +535,111 @@ const AdminDashboard = () => {
           }
           .admin-stats-grid {
             grid-template-columns: 1fr !important;
+            gap: 0.85rem !important;
+            margin-bottom: 2rem !important;
+          }
+          .admin-stat-card {
+            padding: 1.25rem !important;
           }
           .admin-lead-row {
             grid-template-columns: 1fr !important;
-            gap: 1rem !important;
+            gap: 0.85rem !important;
             align-items: flex-start !important;
+            padding: 1rem !important;
+          }
+          .admin-lead-row > div {
+            min-width: 0 !important;
           }
           .admin-lead-row > div:last-child {
             width: 100% !important;
             justify-content: space-between !important;
             margin-top: 0.5rem;
           }
+          .admin-delete-btn {
+            transform: none !important;
+            align-self: flex-start !important;
+          }
           .admin-detail-grid {
             grid-template-columns: 1fr !important;
-            gap: 2rem !important;
+            gap: 1.5rem !important;
           }
           .admin-status-service-grid {
             grid-template-columns: 1fr !important;
             gap: 1rem !important;
           }
-          .admin-actions-grid {
-            grid-template-columns: 1fr !important;
-            gap: 1rem !important;
+          .admin-send-msg-btn {
+            width: 100% !important;
           }
-          .admin-actions-grid > div {
-             grid-column: span 1 !important;
+          .admin-doc-item {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 0.65rem !important;
+          }
+          .admin-doc-item span {
+            white-space: normal !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+          }
+          .admin-doc-item button {
+            width: 100% !important;
+          }
+          .admin-expanded-panel {
+            padding: 1rem !important;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .admin-page-shell {
+            padding-top: 96px !important;
+            padding-bottom: 56px !important;
+          }
+          .admin-container {
+            padding: 0 0.75rem !important;
+          }
+          .admin-header {
+            margin-bottom: 2rem !important;
+          }
+          .admin-header-title {
+            font-size: clamp(1.55rem, 10vw, 2.1rem) !important;
+          }
+          .admin-header-copy {
+            font-size: 0.9rem !important;
+            margin-bottom: 1.5rem !important;
+          }
+          .admin-search-input-group {
+            padding: 0.7rem 0.85rem !important;
+            border-radius: 14px !important;
+            gap: 0.65rem !important;
+          }
+          .admin-search-input-group input {
+            font-size: 0.88rem !important;
+          }
+          .admin-search-wrap button {
+            padding: 0.75rem 1rem !important;
+            border-radius: 14px !important;
+            font-size: 0.88rem !important;
+          }
+          .admin-stat-card {
+            padding: 1rem !important;
+          }
+          .admin-lead-row {
+            padding: 0.9rem !important;
+            border-radius: 16px !important;
+          }
+          .admin-lead-row > div:first-child {
+            gap: 0.6rem !important;
+          }
+          .admin-expanded-panel {
+            padding: 0.9rem !important;
+          }
+          .admin-detail-grid {
+            gap: 1.25rem !important;
           }
         }
       `}</style>
 
       <div
-        className="admin-container"
+        className="admin-container admin-page-shell"
         style={{ maxWidth: "1200px", margin: "0 auto", padding: "0 2rem" }}
       >
         <div
@@ -461,6 +647,7 @@ const AdminDashboard = () => {
           style={{ textAlign: "center", marginBottom: "4rem" }}
         >
           <h1
+            className="admin-header-title"
             style={{
               fontSize: "clamp(2rem, 5vw, 3.2rem)",
               fontWeight: 500,
@@ -472,6 +659,7 @@ const AdminDashboard = () => {
             Admin Dashboard <span style={{ color: "#22c55e" }}>.</span>
           </h1>
           <p
+            className="admin-header-copy"
             style={{
               color: "var(--text-muted)",
               fontSize: "1rem",
@@ -580,7 +768,7 @@ const AdminDashboard = () => {
               color: "#22c55e",
             },
           ].map((s, idx) => (
-            <PremiumCard key={idx} style={{ padding: "1.5rem" }}>
+            <PremiumCard key={idx} className="admin-stat-card" style={{ padding: "1.5rem" }}>
               <div
                 style={{
                   display: "flex",
@@ -697,6 +885,7 @@ const AdminDashboard = () => {
                         style={{
                           width: "34px",
                           height: "34px",
+                          flexShrink: 0,
                           borderRadius: "10px",
                           background: "var(--dashboard-card-bg)",
                           border: "1px solid var(--dashboard-card-border)",
@@ -710,12 +899,13 @@ const AdminDashboard = () => {
                       >
                         {lead.name?.[0]?.toUpperCase() || "U"}
                       </div>
-                      <div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
                         <div
                           style={{
                             fontWeight: 700,
                             fontSize: "0.88rem",
                             color: "var(--text)",
+                            wordBreak: "break-word",
                           }}
                         >
                           {lead.name}
@@ -724,6 +914,7 @@ const AdminDashboard = () => {
                           style={{
                             fontSize: "0.68rem",
                             color: "var(--text-muted)",
+                            wordBreak: "break-all",
                           }}
                         >
                           {lead.email}
@@ -731,17 +922,18 @@ const AdminDashboard = () => {
                       </div>
                     </div>
 
-                    <div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
                       <div
                         style={{
                           fontSize: "0.85rem",
                           fontWeight: 700,
                           color: "var(--text)",
+                          wordBreak: "break-word",
                         }}
                       >
                         {lead.serviceName}
                       </div>
-                      <div style={{ fontSize: "0.7rem", color: "#22c55e" }}>
+                      <div style={{ fontSize: "0.7rem", color: "#22c55e", wordBreak: "break-word" }}>
                         {lead.user?.profile?.industry || "Service Request"}
                       </div>
                     </div>
@@ -819,7 +1011,7 @@ const AdminDashboard = () => {
                           gap: "5px",
                           fontSize: "0.68rem",
                           fontWeight: 700,
-                          color: getStatusTheme(lead.status).color,
+                          color: getStatusTheme(lead).color,
                         }}
                       >
                         <span
@@ -827,16 +1019,49 @@ const AdminDashboard = () => {
                             width: "6px",
                             height: "6px",
                             borderRadius: "50%",
-                            background: getStatusTheme(lead.status).color,
+                            background: getStatusTheme(lead).color,
                           }}
                         />
-                        {getDisplayStatus(lead.status)}
+                        {getDisplayStatus(lead)}
                       </span>
-                      {expandedLeadId === lead._id ? (
-                        <ChevronUp size={18} color="var(--text-muted)" />
-                      ) : (
-                        <ChevronDown size={18} color="var(--text-muted)" />
-                      )}
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "4px" }}>
+                        <button
+                          type="button"
+                          onClick={(e) => handleDeleteService(lead, e)}
+                          title="Delete service"
+                          aria-label={`Delete ${lead.serviceName}`}
+                          className="admin-delete-btn"
+                          style={{
+                            width: "24px",
+                            height: "24px",
+                            border: "none",
+                            background: "transparent",
+                            color: "#9ca3af",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            cursor: "pointer",
+                            flexShrink: 0,
+                            transition: "color 0.2s ease",
+                            padding: 0,
+                            marginBottom: "8px",
+                          }}
+                          onMouseOver={(e) => {
+                            e.currentTarget.style.color = "#d1d5db";
+                          }}
+                          onMouseOut={(e) => {
+                            e.currentTarget.style.color = "#9ca3af";
+                          }}
+                        >
+                          <X size={18} strokeWidth={2.6} />
+                        </button>
+
+                        {expandedLeadId === lead._id ? (
+                          <ChevronUp size={18} color="#9ca3af" />
+                        ) : (
+                          <ChevronDown size={18} color="#9ca3af" />
+                        )}
+                      </div>
                     </div>
                   </motion.div>
 
@@ -850,6 +1075,7 @@ const AdminDashboard = () => {
                           height: { duration: 0.16, ease: "easeOut" },
                           opacity: { duration: 0.1, ease: "linear" },
                         }}
+                        className="admin-expanded-panel"
                         style={{
                           overflow: "hidden",
                           background: "var(--dashboard-row-bg)",
@@ -884,6 +1110,7 @@ const AdminDashboard = () => {
                                 style={{
                                   width: "38px",
                                   height: "38px",
+                                  flexShrink: 0,
                                   borderRadius: "10px",
                                   background: "var(--bg-card)",
                                   border: "1px solid var(--border)",
@@ -934,8 +1161,8 @@ const AdminDashboard = () => {
                                 <div
                                   style={{
                                     marginBottom: "0.2rem",
-                                    background: getStatusTheme(lead.status).bg,
-                                    border: `1px solid ${getStatusTheme(lead.status).color}33`,
+                                    background: getStatusTheme(lead).bg,
+                                    border: `1px solid ${getStatusTheme(lead).color}33`,
                                     borderRadius: "12px",
                                     padding: "0.8rem 0.9rem",
                                   }}
@@ -944,7 +1171,7 @@ const AdminDashboard = () => {
                                     style={{
                                       fontSize: "0.62rem",
                                       fontWeight: 800,
-                                      color: getStatusTheme(lead.status).color,
+                                      color: getStatusTheme(lead).color,
                                       textTransform: "uppercase",
                                       letterSpacing: "0.06em",
                                       marginBottom: "0.25rem",
@@ -959,66 +1186,11 @@ const AdminDashboard = () => {
                                       color: "var(--text)",
                                     }}
                                   >
-                                    {getDisplayStatus(lead.status)}
+                                    {getDisplayStatus(lead)}
                                   </div>
                                 </div>
                               )}
 
-                              {lead.userMessage?.trim() && (
-                                <div
-                                  style={{
-                                    marginBottom: "1rem",
-                                    background: "var(--bg-card)",
-                                    border: "1px solid var(--border)",
-                                    borderRadius: "12px",
-                                    padding: "0.9rem",
-                                  }}
-                                >
-                                  <div
-                                    style={{
-                                      display: "flex",
-                                      alignItems: "center",
-                                      justifyContent: "space-between",
-                                      fontSize: "0.6rem",
-                                      fontWeight: 700,
-                                      color: "var(--text-muted)",
-                                      textTransform: "uppercase",
-                                      letterSpacing: "0.05em",
-                                      marginBottom: "0.5rem",
-                                    }}
-                                  >
-                                    <span>User Message For This Service</span>
-                                    <button
-                                      type="button"
-                                      onClick={(e) =>
-                                        handleDeleteUserMessage(lead._id, e)
-                                      }
-                                      title="Delete user message"
-                                      style={{
-                                        background: "none",
-                                        border: "none",
-                                        color: "var(--text-muted)",
-                                        cursor: "pointer",
-                                        display: "inline-flex",
-                                        alignItems: "center",
-                                        padding: 0,
-                                      }}
-                                    >
-                                      <X size={14} />
-                                    </button>
-                                  </div>
-                                  <p
-                                    style={{
-                                      margin: 0,
-                                      fontSize: "0.83rem",
-                                      color: "var(--text)",
-                                      lineHeight: 1.5,
-                                    }}
-                                  >
-                                    {lead.userMessage}
-                                  </p>
-                                </div>
-                              )}
 
                               <div
                                 className="admin-status-service-grid"
@@ -1057,9 +1229,7 @@ const AdminDashboard = () => {
                                       fontWeight: 600,
                                     }}
                                   >
-                                    {lead.status === "Open"
-                                      ? "Pending"
-                                      : lead.status}
+                                    {getDisplayStatus(lead)}
                                   </div>
                                 </div>
                                 <div
@@ -1112,17 +1282,66 @@ const AdminDashboard = () => {
                                     letterSpacing: "0.05em",
                                   }}
                                 >
+                                  Message Recipient
+                                </label>
+                                <select
+                                  className="admin-role-select"
+                                  value={messageTarget}
+                                  onChange={(e) => {
+                                    const nextTarget = e.target.value;
+                                    setMessageTarget(nextTarget);
+                                    const lead = leads.find(
+                                      (item) => item._id === expandedLeadId,
+                                    );
+                                    setMessageText(
+                                      getMessageTextByTarget(lead, nextTarget),
+                                    );
+                                  }}
+                                  style={{
+                                    background: "var(--secondary-mid)",
+                                    border: "1px solid var(--border)",
+                                    color: "var(--text)",
+                                    padding: "0.6rem 0.75rem",
+                                    borderRadius: "10px",
+                                    fontSize: "0.82rem",
+                                    outline: "none",
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  <option value="client">Client</option>
+                                  <option value="pr">PR</option>
+                                  <option value="executor">Executor</option>
+                                </select>
+                              </div>
+
+                              <div
+                                style={{
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  gap: "0.3rem",
+                                }}
+                              >
+                                <label
+                                  style={{
+                                    fontSize: "0.6rem",
+                                    fontWeight: 700,
+                                    color: "var(--text-muted)",
+                                    textTransform: "uppercase",
+                                    letterSpacing: "0.05em",
+                                  }}
+                                >
                                   Advisor Note
                                 </label>
                                 <textarea
-                                  value={editForm.adminMessage}
-                                  onChange={(e) =>
-                                    setEditForm({
-                                      ...editForm,
-                                      adminMessage: e.target.value,
-                                    })
+                                  value={messageText}
+                                  onChange={(e) => setMessageText(e.target.value)}
+                                  placeholder={
+                                    messageTarget === "client"
+                                      ? "Write your response to the client..."
+                                      : messageTarget === "pr"
+                                      ? "Write your message to PR..."
+                                      : "Write your message to the executor..."
                                   }
-                                  placeholder="Write your response to the client..."
                                   style={{
                                     background: "var(--bg-card)",
                                     border: "1px solid var(--border)",
@@ -1139,6 +1358,7 @@ const AdminDashboard = () => {
                               </div>
                               <button
                                 type="submit"
+                                className="admin-send-msg-btn"
                                 style={{
                                   padding: "0.7rem",
                                   background: "#22c55e",
@@ -1182,6 +1402,7 @@ const AdminDashboard = () => {
                               {lead.documents && lead.documents.length > 0 ? (
                                 lead.documents.map((doc, idx) => (
                                   <div
+                                    className="admin-doc-item"
                                     key={idx}
                                     style={{
                                       display: "flex",
@@ -1200,6 +1421,9 @@ const AdminDashboard = () => {
                                         flex: 1,
                                         fontSize: "0.8rem",
                                         color: "var(--text)",
+                                        whiteSpace: "nowrap",
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
                                       }}
                                     >
                                       {doc.name}
@@ -1242,276 +1466,7 @@ const AdminDashboard = () => {
                               )}
                             </div>
 
-                            {/* PDF-only notice */}
-                            <div
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "8px",
-                                padding: "0.6rem 0.9rem",
-                                background: "rgba(245, 158, 11, 0.06)",
-                                border: "1px solid rgba(245, 158, 11, 0.15)",
-                                borderRadius: "10px",
-                                marginBottom: "0.5rem",
-                              }}
-                            >
-                              <FileText size={14} color="#f59e0b" style={{ flexShrink: 0 }} />
-                              <span
-                                style={{
-                                  fontSize: "0.72rem",
-                                  fontWeight: 600,
-                                  color: "#f59e0b",
-                                  lineHeight: 1.4,
-                                }}
-                              >
-                                Only PDF documents are accepted for upload
-                              </span>
-                            </div>
-
-                            <h5
-                              style={{
-                                fontSize: "0.9rem",
-                                color: "var(--text)",
-                                marginBottom: "1rem",
-                              }}
-                            >
-                              Admin Actions
-                            </h5>
-                            <div
-                              className="admin-actions-grid"
-                              style={{
-                                display: "grid",
-                                gridTemplateColumns: "1fr 1fr",
-                                gap: "1rem",
-                              }}
-                            >
-                              {lead.status === "Open" ? (
-                                <>
-                                  <button
-                                    onClick={(e) => handleApprove(lead._id, e)}
-                                    style={{
-                                      padding: "0.8rem",
-                                      background: "#22c55e",
-                                      border: "none",
-                                      color: "white",
-                                      borderRadius: "12px",
-                                      fontWeight: 800,
-                                      cursor: "pointer",
-                                      boxShadow:
-                                        "0 4px 15px rgba(34, 197, 94, 0.2)",
-                                      transition: "all 0.3s ease",
-                                    }}
-                                  >
-                                    Accept Service
-                                  </button>
-                                  <button
-                                    onClick={(e) => handleReject(lead._id, e)}
-                                    style={{
-                                      padding: "0.8rem",
-                                      background: "rgba(239, 68, 68, 0.08)",
-                                      border:
-                                        "1px solid rgba(239, 68, 68, 0.2)",
-                                      color: "#ef4444",
-                                      borderRadius: "12px",
-                                      fontWeight: 800,
-                                      cursor: "pointer",
-                                      transition: "all 0.3s ease",
-                                    }}
-                                  >
-                                    Reject Lead
-                                  </button>
-                                </>
-                              ) : lead.status === "InProgress" ? (
-                                (() => {
-                                  const hasDraftDoc = lead.documents?.some(
-                                    (doc) => doc.type === "Draft",
-                                  );
-                                  return (
-                                    <>
-                                      <input
-                                        type="file"
-                                        id={`draft-upload-${lead._id}`}
-                                        accept=".pdf"
-                                        hidden
-                                        onChange={(e) =>
-                                          handleUploadDraft(
-                                            lead._id,
-                                            e.target.files[0],
-                                            "Draft",
-                                          )
-                                        }
-                                      />
-                                      <button
-                                        onClick={() =>
-                                          document
-                                            .getElementById(
-                                              `draft-upload-${lead._id}`,
-                                            )
-                                            .click()
-                                        }
-                                        disabled={!!uploadingId}
-                                        style={{
-                                          padding: "0.8rem",
-                                          background: "var(--dashboard-row-bg)",
-                                          border:
-                                            "1px solid var(--dashboard-card-border)",
-                                          color: "var(--text)",
-                                          borderRadius: "12px",
-                                          fontWeight: 800,
-                                          cursor: uploadingId ? "not-allowed" : "pointer",
-                                          transition: "all 0.3s ease",
-                                          display: "flex",
-                                          alignItems: "center",
-                                          justifyContent: "center",
-                                          gap: "8px",
-                                          opacity: (uploadingId && uploadingId !== `${lead._id}-Draft`) ? 0.5 : 1,
-                                          pointerEvents: uploadingId ? "none" : "auto",
-                                        }}
-                                      >
-                                        {uploadingId === `${lead._id}-Draft` ? (
-                                          <Loader2 size={16} className="animate-spin" />
-                                        ) : (
-                                          <Upload size={16} />
-                                        )}
-                                        {uploadingId === `${lead._id}-Draft` ? "Uploading..." : "Upload Draft"}
-                                      </button>
-                                      <button
-                                        onClick={(e) =>
-                                          handleSendDraft(lead._id, e)
-                                        }
-                                        disabled={!hasDraftDoc || !!uploadingId}
-                                        style={{
-                                          padding: "0.8rem",
-                                          background: hasDraftDoc
-                                            ? "#22c55e"
-                                            : "rgba(255,255,255,0.03)",
-                                          border: hasDraftDoc
-                                            ? "none"
-                                            : "1px solid var(--dashboard-card-border)",
-                                          color: hasDraftDoc
-                                            ? "white"
-                                            : "var(--text-muted)",
-                                          borderRadius: "12px",
-                                          fontWeight: 800,
-                                          cursor: hasDraftDoc
-                                            ? "pointer"
-                                            : "not-allowed",
-                                          boxShadow: hasDraftDoc
-                                            ? "0 4px 15px rgba(34, 197, 94, 0.2)"
-                                            : "none",
-                                          transition: "all 0.3s ease",
-                                        }}
-                                      >
-                                        Send Draft
-                                      </button>
-                                    </>
-                                  );
-                                })()
-                              ) : lead.status === "UserAccepted" ? (
-                                (() => {
-                                  const hasFinalDoc = lead.documents?.some(
-                                    (doc) => doc.type === "Final",
-                                  );
-                                  return (
-                                    <>
-                                      <input
-                                        type="file"
-                                        id={`final-upload-${lead._id}`}
-                                        accept=".pdf"
-                                        hidden
-                                        onChange={(e) =>
-                                          handleUploadDraft(
-                                            lead._id,
-                                            e.target.files[0],
-                                            "Final",
-                                          )
-                                        }
-                                      />
-                                      <button
-                                        onClick={() =>
-                                          document
-                                            .getElementById(
-                                              `final-upload-${lead._id}`,
-                                            )
-                                            .click()
-                                        }
-                                        disabled={!!uploadingId}
-                                        style={{
-                                          padding: "0.8rem",
-                                          background: "rgba(34, 197, 94, 0.12)",
-                                          border:
-                                            "1px solid rgba(34, 197, 94, 0.25)",
-                                          color: "#22c55e",
-                                          borderRadius: "12px",
-                                          fontWeight: 800,
-                                          cursor: uploadingId ? "not-allowed" : "pointer",
-                                          transition: "all 0.3s ease",
-                                          display: "flex",
-                                          alignItems: "center",
-                                          justifyContent: "center",
-                                          gap: "8px",
-                                          opacity: (uploadingId && uploadingId !== `${lead._id}-Final`) ? 0.5 : 1,
-                                          pointerEvents: uploadingId ? "none" : "auto",
-                                        }}
-                                      >
-                                        {uploadingId === `${lead._id}-Final` ? (
-                                          <Loader2 size={16} className="animate-spin" />
-                                        ) : (
-                                          <Upload size={16} />
-                                        )}
-                                        {uploadingId === `${lead._id}-Final` ? "Uploading..." : "Upload Final"}
-                                      </button>
-                                      <button
-                                        onClick={(e) =>
-                                          handleComplete(lead._id, e)
-                                        }
-                                        disabled={!hasFinalDoc || !!uploadingId}
-                                        style={{
-                                          padding: "0.8rem",
-                                          background: hasFinalDoc
-                                            ? "#22c55e"
-                                            : "rgba(255,255,255,0.03)",
-                                          border: hasFinalDoc
-                                            ? "none"
-                                            : "1px solid var(--dashboard-card-border)",
-                                          color: hasFinalDoc
-                                            ? "white"
-                                            : "var(--text-muted)",
-                                          borderRadius: "12px",
-                                          fontWeight: 800,
-                                          cursor: hasFinalDoc
-                                            ? "pointer"
-                                            : "not-allowed",
-                                          boxShadow: hasFinalDoc
-                                            ? "0 4px 15px rgba(34, 197, 94, 0.2)"
-                                            : "none",
-                                          transition: "all 0.3s ease",
-                                        }}
-                                      >
-                                        Complete Service
-                                      </button>
-                                    </>
-                                  );
-                                })()
-                              ) : (
-                                <div
-                                  style={{
-                                    gridColumn: "span 2",
-                                    padding: "0.8rem",
-                                    background: "var(--dashboard-row-bg)",
-                                    border:
-                                      "1px solid var(--dashboard-card-border)",
-                                    color: "var(--text-muted)",
-                                    borderRadius: "12px",
-                                    fontSize: "0.75rem",
-                                    fontWeight: 600,
-                                    textAlign: "center",
-                                  }}
-                                >
-                                  No additional actions required
-                                </div>
-                              )}
-                            </div>
+                            {/* Removed Admin Actions Section as per Oversight Only requirement */}
                           </div>
                         </div>
                       </motion.div>
@@ -1532,6 +1487,15 @@ const AdminDashboard = () => {
             )}
           </div>
         </PremiumCard>
+        
+        <ConfirmationModal
+          isOpen={deleteConfirm.isOpen}
+          title="Delete Service"
+          message={`Are you sure you want to delete ${deleteConfirm.lead?.serviceName || "this service"}? This action cannot be undone.`}
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setDeleteConfirm({ isOpen: false, lead: null, isLoading: false })}
+          isLoading={deleteConfirm.isLoading}
+        />
       </div>
     </div>
   );

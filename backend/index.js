@@ -118,7 +118,32 @@ app.get("/", (req, res) => {
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Server running on port ${PORT}`);
-});
 
+  // Prevent sleep in production (for services like Render, Heroku free tiers)
+  const PING_INTERVAL = 14 * 60 * 1000; // 14 minutes
+  const serverUrl = process.env.RENDER_EXTERNAL_URL || process.env.BACKEND_URL;
+
+  if (serverUrl) {
+    console.log(`[Keep-Alive] Setting up self-ping every 14 mins for ${serverUrl}`);
+    setInterval(async () => {
+      try {
+        if (typeof fetch === 'function') {
+           const res = await fetch(serverUrl);
+           console.log(`[Keep-Alive] Ping successful: ${res.status}`);
+        } else {
+           // Fallback for older Node versions
+           const lib = serverUrl.startsWith('https') ? await import('https') : await import('http');
+           lib.default.get(serverUrl, (res) => {
+             console.log(`[Keep-Alive] Ping successful: ${res.statusCode}`);
+           }).on('error', (err) => {
+             console.error(`[Keep-Alive] Ping failed: ${err.message}`);
+           });
+        }
+      } catch (err) {
+        console.error(`[Keep-Alive] Ping error: ${err.message}`);
+      }
+    }, PING_INTERVAL);
+  }
+});
 
 export default app;

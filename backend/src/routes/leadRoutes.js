@@ -4,9 +4,12 @@ import {
   getLeads,
   getLeadById,
   updateLead,
+  deleteLead,
   updateDocumentStatus,
+  assignLead,
+  updatePrFeedback,
 } from "../controllers/leadController.js";
-import { protect } from "../middleware/authMiddleware.js";
+import { protect, authorize } from "../middleware/authMiddleware.js";
 
 import multer from "multer";
 import { Readable } from "stream";
@@ -46,8 +49,8 @@ const sanitizePart = (value) =>
     .replace(/^_+|_+$/g, "")
     .slice(0, 80);
 
-const uploadSingleFile = (req, res, next) => {
-  upload.single("file")(req, res, (error) => {
+const uploadFiles = (req, res, next) => {
+  upload.any()(req, res, (error) => {
     if (!error) return next();
 
     if (error instanceof multer.MulterError) {
@@ -88,9 +91,11 @@ const uploadToCloudinary = (buffer, options) =>
 
 const router = express.Router();
 
-router.post("/upload", protect, uploadSingleFile, async (req, res) => {
+router.post("/upload", protect, uploadFiles, async (req, res) => {
   try {
-    if (!req.file) {
+    const files = Array.isArray(req.files) ? req.files : [];
+
+    if (files.length === 0) {
       return res
         .status(400)
         .json({ success: false, message: "No file uploaded" });
@@ -113,23 +118,34 @@ router.post("/upload", protect, uploadSingleFile, async (req, res) => {
         ? "admin_uploads"
         : sanitizePart(req.user?.email) || "vithartha_general";
 
-    const baseName =
-      sanitizePart(
-        req.file.originalname.split(".").slice(0, -1).join(".") || "document",
-      ) || "document";
-    const publicId = `${Date.now()}-${baseName}`;
+    const uploadedFiles = await Promise.all(
+      files.map(async (file, index) => {
+        const baseName =
+          sanitizePart(
+            file.originalname.split(".").slice(0, -1).join(".") || "document",
+          ) || `document_${index + 1}`;
+        const publicId = `${Date.now()}-${index + 1}-${baseName}`;
 
-    const result = await uploadToCloudinary(req.file.buffer, {
-      folder: `vithartha_documents/${userFolder}`,
-      resource_type: "auto",
-      public_id: publicId,
-    });
+        const result = await uploadToCloudinary(file.buffer, {
+          folder: `vithartha_documents/${userFolder}`,
+          resource_type: "auto",
+          public_id: publicId,
+        });
 
-    const url = result?.secure_url || result?.url;
+        return {
+          url: result?.secure_url || result?.url,
+          filename: result?.public_id || publicId,
+          originalName: file.originalname,
+        };
+      }),
+    );
+
+    const firstFile = uploadedFiles[0] || {};
     return res.status(200).json({
       success: true,
-      url,
-      filename: result?.public_id || publicId,
+      url: firstFile.url,
+      filename: firstFile.filename,
+      files: uploadedFiles,
     });
   } catch (error) {
     console.error("Cloudinary upload failed:", error?.message || error);
@@ -146,6 +162,16 @@ router.post("/", protect, createLead);
 router.get("/", protect, getLeads);
 router.get("/:id", protect, getLeadById);
 router.patch("/:id", protect, updateLead);
-router.patch("/:leadId/documents/:docId", protect, updateDocumentStatus);
+router.delete("/:id", protect, deleteLead);
+router.patch("/:id/assign", protect, assignLead);
+router.patch("/:id/pr-feedback", protect, updatePrFeedback);
+
+// Update individual document status
+router.patch(
+  "/:id/documents/:docId/status",
+  protect,
+  authorize("PR", "admin"),
+  updateDocumentStatus
+);
 
 export default router;
