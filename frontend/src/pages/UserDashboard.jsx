@@ -315,6 +315,17 @@ const UserDashboard = () => {
     }
   };
 
+  const hasRejectedDocuments = (lead) =>
+    Array.isArray(lead?.documents) &&
+    lead.documents.some((doc) => doc?.status === "Rejected");
+
+  const hasPrFeedbackMessage = (lead) =>
+    lead?.prFeedback && String(lead.prFeedback).trim().length > 0;
+
+  const getDocumentRejectionText = (doc) => {
+    return String(doc?.rejectionReason || "").trim() || "Document rejected due to quality issues.";
+  };
+
   const isAdminRejectedState = (lead) =>
     lead?.status === "Rejected" &&
     String(lead?.adminMessage || "")
@@ -920,7 +931,7 @@ const UserDashboard = () => {
                             flexShrink: 0,
                             transition: "color 0.2s ease",
                             padding: 0,
-                            transform: "translateY(-25px)",
+                            transform: "translateY(-10px)",
                           }}
                           onMouseOver={(e) => {
                             e.currentTarget.style.color = "#d1d5db";
