@@ -1783,7 +1783,7 @@ const ServiceCard = ({
   );
 };
 
-const NoServicesFound = ({ onClear }) => (
+const NoServicesFound = ({ onClear, isLightMode = false }) => (
   <div
     style={{
       textAlign: "center",
@@ -3186,7 +3186,10 @@ const Recommendations = () => {
             )}
 
             {myServices.length === 0 && otherServices.length === 0 && (
-              <NoServicesFound onClear={() => setSearchQuery("")} />
+              <NoServicesFound
+                onClear={() => setSearchQuery("")}
+                isLightMode={isLightMode}
+              />
             )}
           </div>
         </div>
