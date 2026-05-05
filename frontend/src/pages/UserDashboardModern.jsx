@@ -121,8 +121,8 @@ const UserDashboardModern = ({
   const getProgressMessage = () => {
     if (!activeLead) return "No active service.";
     if (activeLead.status === "Completed") return "Service completed successfully.";
-    if (activeLead.status === "Rejected") return getRejectionDisplayLabel(activeLead);
-    if (isExecutorRejectedState(activeLead) || isDetailsMissingState(activeLead)) return "Action required! Please review missing or rejected documents.";
+    if (activeLead.status === "Rejected") return "";
+    if (isExecutorRejectedState(activeLead) || isDetailsMissingState(activeLead)) return "";
     if (isReviewDraftState(activeLead)) return "Please review the draft document below.";
     
     const status = String(activeLead.status || "").trim();
@@ -147,6 +147,7 @@ const UserDashboardModern = ({
     
     return "Service is in progress.";
   };
+  const progressMessage = getProgressMessage();
 
   return (
     <div className="home-page-shell user-dashboard-shell" style={containerStyle}>
@@ -341,45 +342,41 @@ const UserDashboardModern = ({
                   }}
                 />
               </div>
-              <button
-                type="button"
-                onClick={() => navigate("/services")}
-                title="Browse services"
-                style={{
-                  width: 46,
-                  height: 46,
-                  borderRadius: 12,
-                  border: "1px solid rgba(255,255,255,0.06)",
-                  background: "rgba(255,255,255,0.03)",
-                  color: "#5eead4",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  cursor: "pointer",
-                  flexShrink: 0,
-                }}
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M4 6h16" />
-                  <path d="M4 12h12" />
-                  <path d="M4 18h8" />
-                </svg>
-              </button>
             </div>
 
             <div className="dashboard-sidebar-scroll" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {filteredLeads.length > 0 ? (
                 filteredLeads.map((lead, index) => {
-                  const theme = getStatusTheme(lead);
+                  const visibleDocs = Array.isArray(lead?.documents) ? lead.documents : [];
+                  const hasRejectedDocument = visibleDocs.some((doc) => {
+                    const docStatus = String(doc?.status || "").trim().toLowerCase();
+                    const rejectionText = String(doc?.rejectionReason || doc?.rejectionMessage || "").trim();
+                    return docStatus === "rejected" || !!rejectionText;
+                  });
+                  const hasRejectedService =
+                    String(lead?.status || "").trim().toLowerCase() === "rejected";
+                  const showRejectedCardState =
+                    hasRejectedService ||
+                    hasRejectedDocument ||
+                    isRejectedServiceState(lead) ||
+                    isExecutorRejectedState(lead);
+                  const theme = showRejectedCardState
+                    ? { color: "#ef4444", bg: "rgba(239,68,68,0.12)" }
+                    : getStatusTheme(lead);
                   const selected = lead._id === activeLead?._id;
                   const amount = formatInr(getCommitmentAmount(lead));
+                  const rejectedCardLabel = isExecutorRejectedState(lead)
+                    ? "Rejected by Executor"
+                    : isPrRejectedState(lead)
+                      ? "Rejected by PR"
+                      : "Rejected";
                   const statusLabel =
                     lead.status === "Completed"
                       ? "Completed"
                       : ["AssignedToExecutor", "InProgress", "ExecutionFinished", "DraftSent", "DraftAccepted", "UserAccepted"].includes(lead.status)
                         ? "In Progress"
-                        : lead.status === "Rejected"
-                          ? getDisplayStatus(lead)
+                        : showRejectedCardState
+                          ? rejectedCardLabel
                           : lead.status === "DraftRejected"
                             ? "Draft Rejected"
                             : "Pending";
@@ -388,7 +385,7 @@ const UserDashboardModern = ({
                       ? <CheckCircle size={14} />
                       : ["AssignedToExecutor", "InProgress", "ExecutionFinished", "DraftSent", "DraftAccepted", "UserAccepted"].includes(lead.status)
                         ? <Clock size={14} />
-                        : (lead.status === "Rejected" || lead.status === "DraftRejected")
+                        : (showRejectedCardState || lead.status === "DraftRejected")
                           ? <AlertCircle size={14} />
                           : <span className="dot" />;
                   return (
@@ -518,11 +515,13 @@ const UserDashboardModern = ({
                         <span style={{ color: "rgba(255,255,255,0.55)", fontSize: "0.88rem" }}>uploaded</span>
                       </div>
                     </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                       <div style={{ width: "100%", height: 10, background: "rgba(255,255,255,0.05)", borderRadius: 999, overflow: "hidden" }}>
                         <div style={{ width: `${serviceProgress}%`, height: "100%", borderRadius: 999, background: "linear-gradient(90deg, #22c55e, #14b8a6)" }} />
                       </div>
-                      <div style={{ color: "rgba(255,255,255,0.55)", fontSize: "0.84rem" }}>{getProgressMessage()}</div>
+                      {progressMessage ? (
+                        <div style={{ color: "rgba(255,255,255,0.55)", fontSize: "0.84rem" }}>{progressMessage}</div>
+                      ) : null}
                     </div>
                     <div style={{ fontSize: "0.9rem", fontWeight: 700, color: "#e5e7eb" }}>{Math.round(serviceProgress)}%</div>
                   </div>
@@ -534,7 +533,6 @@ const UserDashboardModern = ({
                       <strong style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><AlertCircle size={16} /> Rejected by Executor</strong>
                       <button type="button" onClick={(e) => handleDismissDetailsMissingMessage(activeLead, e)} style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "inherit", cursor: "pointer" }}>×</button>
                     </div>
-                    <div style={{ color: "#ffffff", fontSize: "0.95rem" }}>{getDetailsMissingMessage(activeLead)}</div>
                   </div>
                 )}
 
@@ -544,7 +542,6 @@ const UserDashboardModern = ({
                       <strong style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><AlertCircle size={16} /> Rejected by PR</strong>
                       <button type="button" onClick={(e) => handleDismissDetailsMissingMessage(activeLead, e)} style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "inherit", cursor: "pointer" }}>×</button>
                     </div>
-                    <div style={{ color: "#ffffff", fontSize: "0.95rem" }}>{getDetailsMissingMessage(activeLead)}</div>
                   </div>
                 )}
 
@@ -554,7 +551,6 @@ const UserDashboardModern = ({
                       <strong style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><AlertCircle size={16} /> Action Required</strong>
                       <button type="button" onClick={(e) => { if (String(activeLead.prFeedback || "").trim()) { handleDeleteRejectionMessage(activeLead._id, e); return; } handleDismissDetailsMissingMessage(activeLead, e); }} style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "inherit", cursor: "pointer" }}>×</button>
                     </div>
-                    <div style={{ color: "#ffffff", fontSize: "0.95rem" }}>{getDetailsMissingMessage(activeLead)}</div>
                   </div>
                 )}
 
@@ -656,19 +652,25 @@ const UserDashboardModern = ({
                               selectedLeadDocuments.map((doc, idx) => {
                                 const docStatus = String(doc?.status || (doc?.url ? "Uploaded" : "Pending")).trim();
                                 const docStatusLower = docStatus.toLowerCase();
-                                const hasFile = !!doc?.url || !!doc?.publicId;
+                                const hasFile =
+                                  !!doc?.url ||
+                                  !!doc?.secure_url ||
+                                  !!doc?.uploadedUrl ||
+                                  !!doc?.viewUrl ||
+                                  !!doc?.publicId ||
+                                  !!doc?.filename ||
+                                  !!doc?.fileName;
                                 const serviceRejected = isRejectedServiceState?.(activeLead) ||
                                   String(activeLead?.status || "").trim().toLowerCase() === "rejected";
-                                const isReuploaded = !!doc?.displayReuploaded || !!doc?.reuploaded || docStatusLower === "reuploaded";
+                                const isReuploaded = !serviceRejected && (!!doc?.displayReuploaded || !!doc?.reuploaded || docStatusLower === "reuploaded");
                                 const isAccepted = !serviceRejected && ["uploaded", "accepted", "verified", "approved", "completed"].includes(docStatusLower);
-                                const isPending = ["pending", "pendingreview"].includes(docStatusLower) || (serviceRejected && isReuploaded);
+                                const isPending = !serviceRejected && ["pending", "pendingreview"].includes(docStatusLower);
                                 const isRejectedByExecutor = serviceRejected && !isReuploaded && isExecutorRejectedState(activeLead);
-                                const isRejected = serviceRejected && !isReuploaded && !isRejectedByExecutor;
+                                const isRejected = docStatusLower === "rejected" || serviceRejected;
+                                const isDraftDocument = String(doc?.type || "").trim().toLowerCase() === "draft";
                                 const statusColor = isAccepted ? "#22c55e" : (isRejected || isRejectedByExecutor) ? "#ef4444" : "#fbbf24";
                                 const statusBg = isAccepted ? "rgba(34,197,94,0.12)" : (isRejected || isRejectedByExecutor) ? "rgba(239,68,68,0.12)" : "rgba(245,158,11,0.12)";
-                                const displayStatus = isRejectedByExecutor
-                                  ? "Rejected by Executor"
-                                  : isRejected
+                                const displayStatus = isRejected
                                     ? "Rejected"
                                     : isPending
                                       ? "Pending Review"
@@ -680,7 +682,18 @@ const UserDashboardModern = ({
                                         <FileText size={18} color={isAccepted ? "#22c55e" : (isRejected || isRejectedByExecutor) ? "#ef4444" : "#a78bfa"} style={{ flexShrink: 0 }} />
                                         <div style={{ minWidth: 0 }}>
                                           <div style={{ fontSize: "0.92rem", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.name}</div>
-                                           {(isRejected || isRejectedByExecutor) && <div style={{ marginTop: 4, color: "#f87171", fontSize: "0.76rem", fontWeight: 700 }}>Reupload the documents of this service from the Services page</div>}
+                                          {(isRejected || isRejectedByExecutor) && !isDraftDocument && (
+                                            <div
+                                              style={{
+                                                marginTop: 4,
+                                                color: "#f87171",
+                                                fontSize: "0.76rem",
+                                                fontWeight: 700,
+                                              }}
+                                            >
+                                              Reupload this document from the Services page
+                                            </div>
+                                          )}
                                           {isReuploaded && <div style={{ marginTop: 4, color: "#38bdf8", fontSize: "0.76rem", fontWeight: 700 }}>Reuploaded</div>}
                                         </div>
                                       </div>

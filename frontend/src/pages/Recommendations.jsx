@@ -301,7 +301,7 @@ const AdminServicesView = () => {
     try {
       const apiUrl = import.meta.env.VITE_API_URL;
       const response = await axios.get(`${apiUrl}/leads`);
-      console.log("[AdminServicesView] Fetched leads:", response.data);
+      
       setLeads(response.data);
     } catch (error) {
       console.error("[AdminServicesView] Error fetching leads:", error);
@@ -2036,7 +2036,7 @@ const Recommendations = () => {
             headers: { Authorization: `Bearer ${storedUser.token}` },
           });
           setUserLeads(response.data);
-          console.log("[Recommendations] Fetched userLeads:", response.data);
+          
         } catch (error) {
           console.error("Error fetching user leads:", error);
         }

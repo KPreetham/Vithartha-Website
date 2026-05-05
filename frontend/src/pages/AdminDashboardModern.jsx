@@ -336,14 +336,42 @@ const AdminDashboardModern = ({
             { label: "Fulfilled", value: stats.completed, icon: CheckCircle, color: "#10b981" },
             { label: "Revenue (₹)", value: stats.revenue, icon: TrendingUp, color: "#22c55e" },
           ].map((card) => {
-            const Icon = card.icon;
             return (
-              <PremiumCard key={card.label} style={{ padding: 18, minHeight: 115, borderColor: `${card.color}22`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
-                <div style={{ width: 58, height: 58, borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12, background: `${card.color}18`, color: card.color }}>
-                  <Icon size={24} />
+              <PremiumCard
+                key={card.label}
+                style={{
+                  padding: 18,
+                  minHeight: 115,
+                  borderColor: `${card.color}22`,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  textAlign: "center",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: "0.88rem",
+                    fontWeight: 700,
+                    color: "#f5f5f5",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.1em",
+                    marginBottom: 10,
+                  }}
+                >
+                  {card.label}
                 </div>
-                <div style={{ fontSize: "0.88rem", fontWeight: 600, color: "#f5f5f5", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10 }}>{card.label}</div>
-                <div style={{ fontSize: "1.9rem", fontWeight: 800, lineHeight: 1, color: "#ffffff" }}>{card.value}</div>
+                <div
+                  style={{
+                    fontSize: "1.9rem",
+                    fontWeight: 800,
+                    lineHeight: 1,
+                    color: "#ffffff",
+                  }}
+                >
+                  {card.value}
+                </div>
               </PremiumCard>
             );
           })}
@@ -397,26 +425,6 @@ const AdminDashboardModern = ({
                   </button>
                 )}
               </div>
-              <button
-                type="button"
-                onClick={() => setSearchQuery("")}
-                title="Reset search"
-                style={{
-                  width: 46,
-                  height: 46,
-                  borderRadius: 12,
-                  border: "1px solid rgba(255,255,255,0.06)",
-                  background: "rgba(255,255,255,0.03)",
-                  color: "#9ca3af",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  cursor: "pointer",
-                  flexShrink: 0,
-                }}
-              >
-                <RefreshCw size={18} className={searchQuery ? "" : "opacity-50"} />
-              </button>
             </div>
 
             <div className="dashboard-sidebar-scroll" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -706,8 +714,12 @@ const AdminDashboardModern = ({
                               documents.map((doc, idx) => {
                                 const docStatus = String(doc?.status || (doc?.url ? "Uploaded" : "Pending")).trim();
                                 const docStatusLower = docStatus.toLowerCase();
-                                const isDone = ["uploaded", "accepted", "verified", "approved", "completed", "reuploaded"].includes(docStatusLower) || !!doc?.url;
-                                const isRejected = docStatusLower === "rejected" || docStatusLower === "rejected by executor" || doc.executorRejected;
+                                  const isDraftDocument = String(doc?.type || "").trim().toLowerCase() === "draft";
+                                  const draftRejected = String(activeLead?.status || "").trim().toLowerCase() === "draftrejected";
+                                  const displayedStatus = draftRejected && isDraftDocument ? "Rejected" : docStatus;
+                                  const displayedStatusLower = displayedStatus.toLowerCase();
+                                  const isDone = ["uploaded", "accepted", "verified", "approved", "completed", "reuploaded"].includes(displayedStatusLower) || !!doc?.url;
+                                  const isRejected = displayedStatusLower === "rejected" || displayedStatusLower === "rejected by executor" || doc.executorRejected;
                                 const statusColor = isDone ? "#22c55e" : isRejected ? "#ef4444" : "#fbbf24";
                                 const statusBg = isDone ? "rgba(34,197,94,0.12)" : isRejected ? "rgba(239,68,68,0.12)" : "rgba(245,158,11,0.12)";
                                 return (
@@ -725,7 +737,7 @@ const AdminDashboardModern = ({
                                     <td>
                                       <span style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 12px", borderRadius: 999, color: statusColor, background: statusBg, border: `1px solid ${statusColor}33`, fontSize: "0.8rem", fontWeight: 700, whiteSpace: "nowrap", lineHeight: 1, flexWrap: "nowrap" }}>
                                         <span className="dot" />
-                                        {getDocumentDisplayStatus(activeLead, doc)}
+                                        {displayedStatus}
                                       </span>
                                     </td>
                                     <td style={{ textAlign: "right" }}>

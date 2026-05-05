@@ -77,7 +77,7 @@ const Navbar = () => {
         });
 
         if (response.data && response.data.role !== userData.role) {
-          console.log("Role update detected:", response.data.role);
+          
           const updatedUser = { ...userData, ...response.data };
           localStorage.setItem("user", JSON.stringify(updatedUser));
           setUser(updatedUser);

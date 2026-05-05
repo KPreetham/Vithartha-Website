@@ -372,6 +372,34 @@ export const updateLead = async (req, res) => {
 
     const updateData = { ...req.body, updatedAt: Date.now() };
 
+    if (updateData.status === "DraftRejected") {
+      const rawRejectionMessage = String(
+        updateData.rejectionMessage || updateData.userMessage || "",
+      ).trim();
+      const rejectionMessage = rawRejectionMessage.replace(
+        /^Draft rejected by user:\s*/i,
+        "",
+      ).trim() || rawRejectionMessage;
+
+      const currentDocuments = Array.isArray(lead.documents)
+        ? lead.documents.map((doc) =>
+            typeof doc.toObject === "function" ? doc.toObject() : { ...doc },
+          )
+        : [];
+
+      updateData.documents = currentDocuments.map((doc) => {
+        if (String(doc?.type || "").trim() !== "Draft") {
+          return doc;
+        }
+
+        return {
+          ...doc,
+          status: "Rejected",
+          rejectionMessage,
+        };
+      });
+    }
+
     const pushedDocuments = req.body?.$push?.documents;
     const hasIncomingDocuments = !!pushedDocuments;
     const reuploadedDocumentNames = Array.isArray(req.body?.reuploadedDocumentNames)

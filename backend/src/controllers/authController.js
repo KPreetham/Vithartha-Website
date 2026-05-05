@@ -224,7 +224,7 @@ export const loginUser = async (req, res) => {
     }
 
     const normalizedEmail = normalizeEmail(email);
-    console.log("[Auth] Login attempt for:", normalizedEmail);
+    
 
     const matchedUsers = await findUsersByEmail(normalizedEmail);
 
@@ -307,7 +307,7 @@ export const googleLogin = async (req, res) => {
   const { idToken, accessToken, userInfo } = req.body || {};
   const googleToken = accessToken || idToken;
 
-  console.log("Ã°Å¸Å¡â‚¬ [GoogleLogin] Request received", {
+  console.log("[GoogleLogin] Request received", {
     hasToken: !!googleToken,
     tokenType: accessToken ? "accessToken" : (idToken ? "idToken" : "none"),
     bodyKeys: Object.keys(req.body || {})
@@ -384,7 +384,7 @@ export const googleLogin = async (req, res) => {
       });
     }
 
-    console.log("Ã¢Å“â€¦ [GoogleLogin] Auth verified for:", email);
+    
 
     const normalizedEmail = String(email || "").trim().toLowerCase();
     const normalizedGoogleId = String(googleId || "").trim();

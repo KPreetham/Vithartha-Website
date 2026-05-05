@@ -742,6 +742,9 @@ const AdminDashboard = () => {
   const getDocumentDisplayStatus = (lead, doc) => {
     const rejectionLabel = getRejectionDisplayLabel(lead);
     if (rejectionLabel) return rejectionLabel;
+    const isDraftDocument = String(doc?.type || "").trim().toLowerCase() === "draft";
+    const draftRejected = String(lead?.status || "").trim().toLowerCase() === "draftrejected";
+    if (draftRejected && isDraftDocument) return "Rejected";
     return doc?.status || "Pending Review";
   };
 

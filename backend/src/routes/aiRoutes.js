@@ -9,7 +9,7 @@ router.get("/ping", (req, res) => {
 });
 
 router.post("/chat", protect, async (req, res) => {
-  console.log("AI Chat Request Received");
+  
   try {
     const { messages } = req.body;
     let apiKey =
@@ -42,7 +42,7 @@ router.post("/chat", protect, async (req, res) => {
     let lastError = null;
     for (const model of modelsToTry) {
       try {
-        console.log(`Calling OpenRouter API with model: ${model}...`);
+        
         const response = await axios.post(
           "https://openrouter.ai/api/v1/chat/completions",
           {
@@ -60,7 +60,7 @@ router.post("/chat", protect, async (req, res) => {
           },
         );
 
-        console.log(`OpenRouter API Response Received (Model: ${model})`);
+        
         return res.json(response.data);
       } catch (error) {
         lastError = error;

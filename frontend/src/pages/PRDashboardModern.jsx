@@ -109,7 +109,8 @@ const PRDashboardModern = ({
     "admin message removed",
     "draft rejected by user: ",
     "rejected by executor",
-    "assignment rejected"
+    "assignment rejected",
+    "assignment rejected by executor"
   ];
 
   const isSystemMessage = (msg) => {
@@ -152,28 +153,22 @@ const PRDashboardModern = ({
     return progressByStatus[status] ?? 0;
   })();
   const uploadedDocumentCount = uploadedClientDocs.length;
-  const progressMessage = lead
-    ? leadStatus === "Completed"
-      ? "The service is complete and ready for closure."
-      : leadStatus === "DraftSent"
-        ? "Draft shared with the client. Awaiting their approval."
-        : leadStatus === "ExecutionFinished"
-          ? "Executor has finished the work. Review the draft and move it forward."
-          : leadStatus === "AssignedToExecutor" || leadStatus === "PR_Accepted"
-            ? "Documents are verified. Coordinate with the executor next."
-            : leadStatus === "InformationRequired"
-              ? "Some client documents still need attention before coordination can continue."
-              : leadStatus === "Rejected"
-                ? "This service was rejected and needs a fresh review."
-                : leadStatus === "Open" || leadStatus === "PendingReview"
-                  ? "Review the client documents to begin the service flow."
-                  : "Review the client documents and continue the service flow."
-    : "";
   const isDraftApprovedByWorkflow = ["DraftAccepted", "UserAccepted", "Completed"].includes(leadStatus);
   const isFinalApprovedByWorkflow = leadStatus === "Completed";
   const getDraftFinalStatusInfo = (doc) => {
     const docType = String(doc?.type || "").trim();
     const rawStatus = String(doc?.status || "").trim().toLowerCase();
+    const draftRejected = String(lead?.status || "").trim().toLowerCase() === "draftrejected";
+
+    if (draftRejected && docType === "Draft") {
+      return {
+        label: "REJECTED",
+        color: "#ef4444",
+        bg: "rgba(239,68,68,0.12)",
+        border: "rgba(239,68,68,0.2)",
+        note: "Rejected by the user and awaiting revision.",
+      };
+    }
 
     if (rawStatus === "rejected") {
       return {
@@ -378,14 +373,42 @@ const PRDashboardModern = ({
             { label: "Completed", value: stats.completed, icon: CheckCircle, color: "#10b981" },
             { label: "Revenue", value: stats.revenue, icon: TrendingUp, color: "#22c55e" },
           ].map((card) => {
-            const Icon = card.icon;
             return (
-              <PremiumCard key={card.label} style={{ padding: 18, minHeight: 115, borderColor: `${card.color}22`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
-                <div style={{ width: 58, height: 58, borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12, background: `${card.color}18`, color: card.color }}>
-                  <Icon size={24} />
+              <PremiumCard
+                key={card.label}
+                style={{
+                  padding: 18,
+                  minHeight: 115,
+                  borderColor: `${card.color}22`,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  textAlign: "center",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: "0.88rem",
+                    fontWeight: 700,
+                    color: "#f5f5f5",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.1em",
+                    marginBottom: 10,
+                  }}
+                >
+                  {card.label}
                 </div>
-                <div style={{ fontSize: "0.88rem", fontWeight: 600, color: "#f5f5f5", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10 }}>{card.label}</div>
-                <div style={{ fontSize: "1.9rem", fontWeight: 800, lineHeight: 1, color: "#ffffff" }}>{card.value}</div>
+                <div
+                  style={{
+                    fontSize: "1.9rem",
+                    fontWeight: 800,
+                    lineHeight: 1,
+                    color: "#ffffff",
+                  }}
+                >
+                  {card.value}
+                </div>
               </PremiumCard>
             );
           })}
@@ -417,26 +440,6 @@ const PRDashboardModern = ({
                   }}
                 />
               </div>
-              <button
-                type="button"
-                onClick={() => navigate("/pr")}
-                title="PR dashboard"
-                style={{
-                  width: 46,
-                  height: 46,
-                  borderRadius: 12,
-                  border: "1px solid rgba(255,255,255,0.06)",
-                  background: "rgba(255,255,255,0.03)",
-                  color: "#5eead4",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  cursor: "pointer",
-                  flexShrink: 0,
-                }}
-              >
-                <ChevronRight size={20} />
-              </button>
             </div>
 
             <div className="dashboard-sidebar-scroll" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -468,8 +471,6 @@ const PRDashboardModern = ({
                               ? "rgba(239,68,68,0.1)"
                               : "rgba(34,197,94,0.1)",
                   };
-                  const hasExecutorMsg = Boolean(item.executorMessage);
-                  const hasPrMsg = Boolean(item.prMessage);
                   return (
                     <motion.div
                       key={item._id}
@@ -512,7 +513,7 @@ const PRDashboardModern = ({
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
                           <span style={{ color: "rgba(255,255,255,0.65)", fontSize: "0.86rem" }}>{formatInr(pricing.amount)}</span>
                           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                            <span style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "6px 12px", borderRadius: 999, fontSize: "0.78rem", fontWeight: 700, color: hasExecutorMsg || hasPrMsg ? "#c4b5fd" : "#fbbf24", background: hasExecutorMsg || hasPrMsg ? "rgba(139,92,246,0.08)" : "rgba(245,158,11,0.08)", border: `1px solid ${hasExecutorMsg || hasPrMsg ? "rgba(139,92,246,0.15)" : "rgba(245,158,11,0.15)"}` }}>
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "6px 12px", borderRadius: 999, fontSize: "0.78rem", fontWeight: 700, color: "#fbbf24", background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.15)" }}>
                               <FileText size={14} />
                               {item.documents?.length || 0} Docs
                             </span>
@@ -563,21 +564,10 @@ const PRDashboardModern = ({
                       <div style={{ width: "100%", height: 10, background: "rgba(255,255,255,0.05)", borderRadius: 999, overflow: "hidden" }}>
                         <div style={{ width: `${serviceProgressPercent}%`, height: "100%", borderRadius: 999, background: "linear-gradient(90deg, #22c55e, #14b8a6)" }} />
                       </div>
-                      <div style={{ color: "rgba(255,255,255,0.65)", fontSize: "0.84rem" }}>{progressMessage}</div>
                     </div>
                     <div style={{ fontSize: "0.9rem", fontWeight: 700, color: "#e5e7eb" }}>{Math.round(serviceProgressPercent)}%</div>
                   </div>
                 </PremiumCard>
-
-                {lead.executorMessage && !isSystemMessage(lead.executorMessage) && (
-                  <div style={{ padding: 16, borderRadius: 18, border: "1px solid rgba(67,97,238,0.22)", background: "rgba(67,97,238,0.05)" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 8, color: "#93c5fd" }}>
-                      <strong style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><MessageSquare size={16} /> Message from Executor</strong>
-                      <button type="button" onClick={(e) => handleClearExecutorMessage(lead._id, e)} style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "inherit", cursor: "pointer" }}>×</button>
-                    </div>
-                    <div style={{ color: "#ffffff", fontSize: "0.95rem", fontStyle: "italic" }}>{lead.executorMessage}</div>
-                  </div>
-                )}
 
                 {lead.adminToPrMessage && !isSystemMessage(lead.adminToPrMessage) && (
                   <div style={{ padding: 16, borderRadius: 18, border: "1px solid rgba(16,185,129,0.22)", background: "rgba(16,185,129,0.05)" }}>
@@ -636,16 +626,22 @@ const PRDashboardModern = ({
                               {clientDocs.length > 0 ? (
                                 clientDocs.map((doc) => {
                                   const docKey = `${lead._id}:${doc._id}`;
-                                  const isReuploaded = doc.displayReuploaded;
+                                  const isDraftDocument = String(doc?.type || "").trim().toLowerCase() === "draft";
+                                  const draftRejected = String(lead?.status || "").trim().toLowerCase() === "draftrejected";
+                                  const isReuploaded = !serviceRejected && doc.displayReuploaded;
                                   const actualStatus = String(doc.status || "").trim().toLowerCase();
                                   const isReuploadPending =
                                     isReuploaded &&
                                     !["accepted", "rejected"].includes(actualStatus);
-                                  const docStatus = ["accepted", "rejected"].includes(actualStatus)
-                                    ? doc.status
-                                    : isReuploadPending
-                                      ? "Under Review"
-                                      : String(doc.status || "Waiting Review");
+                                  const docStatus = serviceRejected
+                                    ? "Rejected"
+                                    : draftRejected && isDraftDocument
+                                      ? "Rejected"
+                                    : ["accepted", "rejected"].includes(actualStatus)
+                                      ? doc.status
+                                      : isReuploadPending
+                                        ? "Under Review"
+                                        : String(doc.status || "Waiting Review");
                                   const showReviewActions =
                                     ["Open", "PendingReview", "InformationRequired", "Rejected"].includes(lead.status) &&
                                     (!serviceRejected || docStatus !== "Rejected");
@@ -657,7 +653,7 @@ const PRDashboardModern = ({
                                               <FileText size={18} color={docStatus === "Accepted" ? "#22c55e" : docStatus === "Rejected" ? "#ef4444" : "#fbbf24"} style={{ flexShrink: 0 }} />
                                               <div style={{ minWidth: 0 }}>
                                                 <div style={{ fontSize: "0.92rem", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.name}</div>
-                                                {doc.displayReuploaded && <div style={{ marginTop: 4, color: "#38bdf8", fontSize: "0.76rem", fontWeight: 700 }}>Reuploaded</div>}
+                                                {isReuploaded && <div style={{ marginTop: 4, color: "#38bdf8", fontSize: "0.76rem", fontWeight: 700 }}>Reuploaded</div>}
                                               </div>
                                             </div>
                                           </td>
@@ -692,7 +688,7 @@ const PRDashboardModern = ({
                                                     VIEW <Eye size={14} />
                                                   </button>
                                                 
-                                                {(serviceRejected && !isReuploaded && actualStatus === "rejected") ? (
+                                                {((serviceRejected || draftRejected) && !isReuploaded && actualStatus === "rejected") ? (
                                                   <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#ef4444", fontSize: "0.75rem", fontWeight: 800, padding: "0 10px" }}>
                                                     <X size={18} strokeWidth={3} /> REJECTED
                                                   </div>
@@ -891,16 +887,6 @@ const PRDashboardModern = ({
                           <button type="button" onClick={() => handleRejectService(lead._id)} style={{ padding: "0.7rem 1rem", borderRadius: 10, border: "none", background: "#ef4444", color: "#fff", fontSize: "0.78rem", fontWeight: 800, cursor: "pointer" }}>Reject Service and Notify User</button>
                           <button type="button" onClick={() => setRejectingLeadId(null)} style={{ padding: "0.7rem 1rem", borderRadius: 10, border: "1px solid rgba(255,255,255,0.2)", background: "transparent", color: "var(--text-secondary)", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer" }}>Cancel</button>
                         </div>
-                      </div>
-                    )}
-
-                    {lead.executorMessage && (
-                      <div style={{ marginTop: 14, padding: 14, background: "rgba(67,97,238,0.05)", border: "1px dashed rgba(67,97,238,0.3)", borderRadius: 16, color: "#93c5fd" }}>
-                        <div style={{ fontSize: "0.7rem", fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><MessageSquare size={14} /> Message from Executor</span>
-                          <button type="button" onClick={(e) => handleClearExecutorMessage(lead._id, e)} style={{ border: "1px solid rgba(239,68,68,0.35)", background: "rgba(239,68,68,0.18)", color: "#fff", width: 24, height: 24, borderRadius: 999, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><X size={14} strokeWidth={2.8} /></button>
-                        </div>
-                        <p style={{ margin: 0, fontStyle: "italic" }}>{lead.executorMessage}</p>
                       </div>
                     )}
 

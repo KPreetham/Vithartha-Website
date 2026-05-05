@@ -205,15 +205,30 @@ const UserDashboard = () => {
     }
 
     return Array.from(grouped.values()).map((group) => {
+      const reuploadedDoc = group.find(
+        (doc) =>
+          !!doc?.displayReuploaded ||
+          !!doc?.reuploaded ||
+          String(doc?.status || "").trim().toLowerCase() === "reuploaded",
+      );
+      const rejectedDoc = group.find((doc) => String(doc?.status || "").trim().toLowerCase() === "rejected");
       const selected =
-        group.find(
-          (doc) =>
-            !!doc?.displayReuploaded ||
-            !!doc?.reuploaded ||
-            String(doc?.status || "").trim().toLowerCase() === "reuploaded",
-        ) ||
+        reuploadedDoc ||
+        rejectedDoc ||
         group.find((doc) => String(doc?.status || "").trim().toLowerCase() !== "rejected") ||
         group[0];
+      const fileSource =
+        group.find(
+          (doc) =>
+            !!doc?.url ||
+            !!doc?.secure_url ||
+            !!doc?.uploadedUrl ||
+            !!doc?.viewUrl ||
+            !!doc?.publicId ||
+            !!doc?.filename ||
+            !!doc?.fileName,
+        ) ||
+        selected;
       const docName = normalizeText(normalizeDocumentName(selected));
 
       const resolvedUrl =
@@ -221,11 +236,18 @@ const UserDashboard = () => {
         selected?.secure_url ||
         selected?.uploadedUrl ||
         selected?.viewUrl ||
+        fileSource?.url ||
+        fileSource?.secure_url ||
+        fileSource?.uploadedUrl ||
+        fileSource?.viewUrl ||
         "";
       const resolvedPublicId =
         selected?.publicId ||
         selected?.filename ||
         selected?.fileName ||
+        fileSource?.publicId ||
+        fileSource?.filename ||
+        fileSource?.fileName ||
         extractCloudinaryPublicIdFromUrl(resolvedUrl);
 
       return {
@@ -271,19 +293,24 @@ const UserDashboard = () => {
 
       const executorRejected = isExecutorRejectedState(lead);
       const serviceRejected = String(lead?.status || "").trim().toLowerCase() === "rejected";
+      const draftRejected = String(lead?.status || "").trim().toLowerCase() === "draftrejected";
 
       const finalDocs = mergedDocs.map(doc => {
-        const isReuploaded = !!doc?.displayReuploaded || !!doc?.reuploaded || String(doc?.status || "").trim().toLowerCase() === "reuploaded";
-        
         let resolvedStatus = doc?.status || "Pending";
-        if (serviceRejected && !isReuploaded) {
-          resolvedStatus = executorRejected ? "Rejected by Executor" : "Rejected";
+        if (serviceRejected) {
+          resolvedStatus = "Rejected";
+        } else if (draftRejected && String(doc?.type || "").trim().toLowerCase() === "draft") {
+          resolvedStatus = "Rejected";
         }
 
         return {
           ...doc,
           status: resolvedStatus,
-          executorRejected: executorRejected && serviceRejected && !isReuploaded
+          executorRejected: executorRejected && serviceRejected,
+          displayReuploaded:
+            serviceRejected || draftRejected
+              ? false
+              : !!doc?.displayReuploaded || !!doc?.reuploaded || String(doc?.status || "").trim().toLowerCase() === "reuploaded",
         };
       });
 
@@ -712,18 +739,11 @@ const UserDashboard = () => {
 
   const getDetailsMissingMessage = (lead) => {
     if (isExecutorRejectedState(lead)) {
-      const reason = getExecutorRejectionReason(lead);
-      return reason
-        ? `Rejected by Executor. Please reupload the documents of this service from the Services page. Message: ${reason}`
-        : "Rejected by Executor. Please reupload the documents of this service from the Services page.";
+      return "Rejected by Executor. Please reupload the documents of this service from the Services page.";
     }
 
     if (isRejectedServiceState(lead)) {
-      const reason =
-        String(lead?.prFeedback || lead?.adminMessage || lead?.executorMessage || "").trim();
-      return reason
-        ? `Rejected by PR. Please reupload the documents of this service from the Services page. Message: ${reason}`
-        : "Rejected by PR. Please reupload the documents of this service from the Services page.";
+      return "Rejected by PR. Please reupload the documents of this service from the Services page.";
     }
 
     const rejectedDoc = Array.isArray(lead?.documents)

@@ -218,8 +218,11 @@ const ExecutorDashboardModern = () => {
     }
     return Array.from(grouped.values()).map((group) => {
       const selected = group.find((doc) => !!doc?.displayReuploaded || !!doc?.reuploaded || String(doc?.status || "").trim().toLowerCase() === "reuploaded") || group[0];
+      const draftRejected = String(lead?.status || "").trim().toLowerCase() === "draftrejected";
+      const isDraftDocument = String(selected?.type || "").trim().toLowerCase() === "draft";
       return {
         ...selected,
+        status: draftRejected && isDraftDocument ? "Rejected" : selected?.status,
         displayReuploaded: !!selected?.displayReuploaded || group.length > 1 || !!selected?.reuploaded || String(selected?.status || "").trim().toLowerCase() === "reuploaded",
       };
     });
@@ -498,14 +501,42 @@ const ExecutorDashboardModern = () => {
             { label: "Completed", value: stats.completed, icon: CheckCircle, color: "#10b981" },
             { label: "Est. Revenue", value: formatInr(stats.revenue), icon: TrendingUp, color: "#22c55e" },
           ].map((card) => {
-            const Icon = card.icon;
             return (
-              <PremiumCard key={card.label} style={{ padding: 18, minHeight: 115, borderColor: `${card.color}22`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
-                <div style={{ width: 58, height: 58, borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12, background: `${card.color}18`, color: card.color }}>
-                  <Icon size={24} />
+              <PremiumCard
+                key={card.label}
+                style={{
+                  padding: 18,
+                  minHeight: 115,
+                  borderColor: `${card.color}22`,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  textAlign: "center",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: "0.88rem",
+                    fontWeight: 700,
+                    color: "#f5f5f5",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.1em",
+                    marginBottom: 10,
+                  }}
+                >
+                  {card.label}
                 </div>
-                <div style={{ fontSize: "0.88rem", fontWeight: 600, color: "#f5f5f5", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10 }}>{card.label}</div>
-                <div style={{ fontSize: "1.9rem", fontWeight: 800, lineHeight: 1, color: "#ffffff" }}>{card.value}</div>
+                <div
+                  style={{
+                    fontSize: "1.9rem",
+                    fontWeight: 800,
+                    lineHeight: 1,
+                    color: "#ffffff",
+                  }}
+                >
+                  {card.value}
+                </div>
               </PremiumCard>
             );
           })}

@@ -91,7 +91,7 @@ const PRDashboard = () => {
 
       const tryFetch = async (apiUrl) => {
         console.log(
-          `[PRDashboard] Fetching from: ${apiUrl}/leads and ${apiUrl}/auth/users`,
+          `[PRDashboard] Fetching from: ${apiUrl}/leads and ${apiUrl}/auth/users`
         );
 
         const [leadsRes, usersRes, servicesRes] = await Promise.allSettled([
@@ -510,6 +510,17 @@ const PRDashboard = () => {
     return map[s] || status;
   };
 
+  const isAutomatedExecutorMessage = (msg) => {
+    const lower = String(msg || "").trim().toLowerCase();
+    if (!lower) return false;
+    return (
+      lower.includes("assignment rejected by executor") ||
+      lower.includes("assignment rejected") ||
+      lower.includes("rejected by executor") ||
+      lower.includes("executor rejected")
+    );
+  };
+
   const canManageDraftForLead = (lead) =>
     ['InProgress', 'ExecutionFinished', 'DraftSent', 'DraftRejected'].includes(lead?.status);
 
@@ -524,6 +535,21 @@ const PRDashboard = () => {
   function getVisibleDocuments(lead) {
     const documents = Array.isArray(lead?.documents) ? lead.documents : [];
     const serviceRejected = String(lead?.status || "").trim().toLowerCase() === "rejected";
+    const isExecutorRejectedLead = (item) => {
+      if (!item || String(item?.status || "").trim().toLowerCase() !== "rejected") return false;
+      const execMsg = String(item?.executorMessage || "").toLowerCase();
+      const prMsg = String(item?.prFeedback || "").toLowerCase();
+      const adminMsg = String(item?.adminMessage || "").toLowerCase();
+      return (
+        execMsg.length > 0 ||
+        prMsg.includes("executor") ||
+        prMsg.includes("assignment") ||
+        adminMsg.includes("executor") ||
+        adminMsg.includes("assignment") ||
+        prMsg.includes("rejected by executor")
+      );
+    };
+    const executorRejectedService = serviceRejected && isExecutorRejectedLead(lead);
     const requiredDocNames = getRequiredServiceDocumentNames(lead);
     const sorted = [...documents].sort((a, b) => {
       const aTime = new Date(a?.uploadedAt || a?.createdAt || 0).getTime();
@@ -579,7 +605,7 @@ const PRDashboard = () => {
         return null;
       }
 
-      const displayStatus = serviceRejected && !isReuploaded
+      const displayStatus = executorRejectedService || serviceRejected
         ? "Rejected"
         : isReuploaded && isPendingReviewState
           ? "Under Review"
@@ -588,7 +614,7 @@ const PRDashboard = () => {
       return {
         ...selected,
         status: displayStatus,
-        displayReuploaded: isReuploaded,
+        displayReuploaded: serviceRejected ? false : isReuploaded,
       };
     }).filter(Boolean);
   }
@@ -1043,12 +1069,16 @@ const PRDashboard = () => {
                                     (d) => d.type === "Client",
                                   );
                                   const serviceRejected = String(lead?.status || "").trim().toLowerCase() === "rejected";
+                                  const draftRejected = String(lead?.status || "").trim().toLowerCase() === "draftrejected";
                                   return (
                                     <>
                                       <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                                        {clientDocs.map((doc) => {
+                              {clientDocs.map((doc) => {
                                           const docKey = `${lead._id}:${doc._id}`;
-                                          const docStatus = serviceRejected ? "Rejected" : String(doc.status || "Waiting Review");
+                                          const isDraftDocument = String(doc?.type || "").trim().toLowerCase() === "draft";
+                                          const docStatus = serviceRejected || (draftRejected && isDraftDocument)
+                                            ? "Rejected"
+                                            : String(doc.status || "Waiting Review");
                                           const showReviewActions = !serviceRejected && ['Open', 'PendingReview', 'InformationRequired'].includes(lead.status);
                                           return (
                                             <React.Fragment key={doc._id}>
@@ -1351,40 +1381,6 @@ const PRDashboard = () => {
                                   <div style={{ textAlign: "center", padding: "1.5rem", background: "rgba(245, 158, 11, 0.05)", border: "1px solid rgba(245, 158, 11, 0.2)", borderRadius: "14px", color: "#f59e0b", marginTop: "1.5rem" }}>
                                     <div style={{ fontSize: "1rem", fontWeight: 800, marginBottom: "4px" }}>Waiting for Executor Approval</div>
                                     <p style={{ fontSize: "0.75rem", fontWeight: 600, margin: 0, opacity: 0.8 }}>Assigning executor... Draft delivery will be available once they accept.</p>
-                                  </div>
-                                )}
-
-                                {lead.executorMessage && (
-                                  <div style={{ marginTop: "1.5rem", padding: "1.5rem", background: "rgba(67, 97, 238, 0.05)", border: "1px dashed rgba(67, 97, 238, 0.3)", borderRadius: "16px", color: "var(--v-blue)" }}>
-                                    <div style={{ fontSize: "0.7rem", fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "8px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
-                                      <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                                        <MessageSquare size={14} /> Message from Executor
-                                      </span>
-                                      <button
-                                        onClick={(e) => handleClearExecutorMessage(lead._id, e)}
-                                        title="Remove message"
-                                        style={{
-                                          border: "1px solid rgba(239, 68, 68, 0.35)",
-                                          background: "rgba(239, 68, 68, 0.18)",
-                                          color: "#ffffff",
-                                          width: "24px",
-                                          height: "24px",
-                                          borderRadius: "999px",
-                                          cursor: "pointer",
-                                          display: "flex",
-                                          alignItems: "center",
-                                          justifyContent: "center",
-                                        }}
-                                      >
-                                        <X size={14} strokeWidth={2.8} />
-                                      </button>
-                                    </div>
-                                    <p style={{ fontSize: "0.9rem", fontWeight: 500, margin: 0, fontStyle: "italic", opacity: 0.9 }}>
-                                      "{lead.executorMessage}"
-                                    </p>
-                                    <p style={{ fontSize: "0.72rem", marginTop: "8px", marginBottom: 0, opacity: 0.8 }}>
-                                      Current status: {getDisplayStatus(effectiveStatus)}
-                                    </p>
                                   </div>
                                 )}
 

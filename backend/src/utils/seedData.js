@@ -247,7 +247,7 @@ const seedDB = async () => {
     );
     await Service.deleteMany({});
     await Service.insertMany(ALL_SERVICES);
-    console.log(`✅ ${ALL_SERVICES.length} Services Seeded Successfully`);
+    
     mongoose.connection.close();
   } catch (error) {
     console.error("❌ Seeding Error:", error);
