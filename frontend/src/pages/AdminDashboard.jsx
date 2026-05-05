@@ -560,15 +560,30 @@ const AdminDashboard = () => {
           (doc) =>
             !!doc?.reuploaded ||
             String(doc?.status || "").trim().toLowerCase() === "reuploaded",
-        ) || group[0];
+          ) || group[0];
       const isReuploaded = !!selected?.displayReuploaded || !!selected?.reuploaded || String(selected?.status || "").trim().toLowerCase() === "reuploaded";
       const serviceRejected = lead?.status === "Rejected";
+      const isDraftDocument = String(selected?.type || "").trim().toLowerCase() === "draft";
+      const leadStatusLower = String(lead?.status || "").trim().toLowerCase();
+      const draftRejected = leadStatusLower === "draftrejected";
+      const draftAccepted = leadStatusLower === "draftaccepted" || leadStatusLower === "useraccepted" || leadStatusLower === "completed";
+      const draftShared = leadStatusLower === "draftsent" || leadStatusLower === "draftrejected" || leadStatusLower === "draftaccepted" || leadStatusLower === "useraccepted";
 
       // When the executor rejects the entire service, mark all docs with
       // a special status so the UI can display "Rejected by Executor"
       // instead of the generic per-document "Rejected" label.
       let resolvedStatus = selected?.status || "Waiting Review";
-      if (serviceRejected && !isReuploaded) {
+      if (isDraftDocument) {
+        resolvedStatus = draftAccepted
+          ? "Accepted"
+          : isReuploaded
+            ? "Draft Reuploaded"
+            : draftRejected
+              ? "Draft Rejected"
+              : draftShared
+                ? "Draft Shared"
+                : "Pending User Approval";
+      } else if (serviceRejected && !isReuploaded) {
         resolvedStatus = executorRejected ? "Rejected by Executor" : "Rejected";
       }
 
@@ -743,8 +758,18 @@ const AdminDashboard = () => {
     const rejectionLabel = getRejectionDisplayLabel(lead);
     if (rejectionLabel) return rejectionLabel;
     const isDraftDocument = String(doc?.type || "").trim().toLowerCase() === "draft";
-    const draftRejected = String(lead?.status || "").trim().toLowerCase() === "draftrejected";
-    if (draftRejected && isDraftDocument) return "Rejected";
+    const leadStatusLower = String(lead?.status || "").trim().toLowerCase();
+    const isReuploaded = !!doc?.displayReuploaded || !!doc?.reuploaded || String(doc?.status || "").trim().toLowerCase() === "reuploaded";
+    const draftRejected = leadStatusLower === "draftrejected";
+    const draftAccepted = leadStatusLower === "draftaccepted" || leadStatusLower === "useraccepted" || leadStatusLower === "completed";
+    const draftShared = leadStatusLower === "draftsent" || leadStatusLower === "draftrejected" || leadStatusLower === "draftaccepted" || leadStatusLower === "useraccepted";
+    if (isDraftDocument) {
+      if (draftAccepted) return "Accepted";
+      if (isReuploaded) return "Draft Reuploaded";
+      if (draftRejected) return "Draft Rejected";
+      if (draftShared) return "Draft Shared";
+      return "Pending User Approval";
+    }
     return doc?.status || "Pending Review";
   };
 

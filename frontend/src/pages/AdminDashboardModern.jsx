@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import ConfirmationModal from "../components/ConfirmationModal";
 import { viewDocument } from "../utils/documentViewer";
+import { normalizeRole } from "../utils/roleRouting";
 
 const PremiumCard = ({ children, style = {}, className = "" }) => (
   <div
@@ -107,6 +108,9 @@ const AdminDashboardModern = ({
   React.useEffect(() => {
     setDocumentsOpen(false);
   }, [activeLead?._id]);
+
+  const currentUser = typeof window !== "undefined" ? JSON.parse(localStorage.getItem("user") || "{}") : {};
+  const isUserRole = normalizeRole(currentUser.role) === "user";
 
   const systemPhrases = ["status changed", "lead assigned", "draft accepted", "draft sent", "draft rejected", "document accepted", "document rejected", "service updated", "rejected by executor", "assignment rejected"];
   const isSystemMessage = (msg) => {
@@ -712,14 +716,36 @@ const AdminDashboardModern = ({
                           <tbody>
                             {documents.length > 0 ? (
                               documents.map((doc, idx) => {
-                                const docStatus = String(doc?.status || (doc?.url ? "Uploaded" : "Pending")).trim();
+                                const hasFile =
+                                  !!doc?.url ||
+                                  !!doc?.secure_url ||
+                                  !!doc?.uploadedUrl ||
+                                  !!doc?.viewUrl ||
+                                  !!doc?.publicId;
+                                const docStatus = String(doc?.status || (hasFile ? "Uploaded" : "Pending")).trim();
                                 const docStatusLower = docStatus.toLowerCase();
-                                  const isDraftDocument = String(doc?.type || "").trim().toLowerCase() === "draft";
-                                  const draftRejected = String(activeLead?.status || "").trim().toLowerCase() === "draftrejected";
-                                  const displayedStatus = draftRejected && isDraftDocument ? "Rejected" : docStatus;
-                                  const displayedStatusLower = displayedStatus.toLowerCase();
-                                  const isDone = ["uploaded", "accepted", "verified", "approved", "completed", "reuploaded"].includes(displayedStatusLower) || !!doc?.url;
-                                  const isRejected = displayedStatusLower === "rejected" || displayedStatusLower === "rejected by executor" || doc.executorRejected;
+                                const isDraftDocument = String(doc?.type || "").trim().toLowerCase() === "draft";
+                                const leadStatusLower = String(activeLead?.status || "").trim().toLowerCase();
+                                const isReuploaded = !!doc?.displayReuploaded || !!doc?.reuploaded || docStatusLower === "reuploaded";
+                                const draftRejected = leadStatusLower === "draftrejected";
+                                const draftAccepted = leadStatusLower === "draftaccepted" || leadStatusLower === "useraccepted" || leadStatusLower === "completed";
+                                const draftShared = leadStatusLower === "draftsent" || leadStatusLower === "draftrejected" || leadStatusLower === "draftaccepted" || leadStatusLower === "useraccepted";
+                                const displayedStatus = isDraftDocument
+                                  ? draftAccepted
+                                    ? "Accepted"
+                                    : isReuploaded
+                                      ? "Draft Reuploaded"
+                                      : draftRejected
+                                        ? "Draft Rejected"
+                                        : draftShared
+                                          ? "Draft Shared"
+                                          : "Pending User Approval"
+                                  : docStatus;
+                                const displayedStatusLower = displayedStatus.toLowerCase();
+                                const isDone = isDraftDocument
+                                  ? draftAccepted || isReuploaded || hasFile
+                                  : ["uploaded", "accepted", "verified", "approved", "completed", "reuploaded"].includes(displayedStatusLower) || !!doc?.url;
+                                const isRejected = displayedStatusLower === "rejected" || displayedStatusLower === "rejected by executor" || doc.executorRejected;
                                 const statusColor = isDone ? "#22c55e" : isRejected ? "#ef4444" : "#fbbf24";
                                 const statusBg = isDone ? "rgba(34,197,94,0.12)" : isRejected ? "rgba(239,68,68,0.12)" : "rgba(245,158,11,0.12)";
                                 return (
@@ -730,7 +756,7 @@ const AdminDashboardModern = ({
                                         <div style={{ minWidth: 0 }}>
                                           <div style={{ fontSize: "0.92rem", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.name}</div>
                                           {isRejected && <div style={{ marginTop: 4, color: "#ef4444", fontSize: "0.76rem", fontWeight: 700 }}>Reupload Required</div>}
-                                          {doc.displayReuploaded && <div style={{ marginTop: 4, color: "#38bdf8", fontSize: "0.76rem", fontWeight: 700 }}>Reuploaded</div>}
+                                          {isReuploaded && <div style={{ marginTop: 4, color: "#38bdf8", fontSize: "0.76rem", fontWeight: 700 }}>Reuploaded</div>}
                                         </div>
                                       </div>
                                     </td>
@@ -741,29 +767,31 @@ const AdminDashboardModern = ({
                                       </span>
                                     </td>
                                     <td style={{ textAlign: "right" }}>
-                                      <button 
-                                        type="button" 
-                                        onClick={() => (isDone ? viewDocument(doc.publicId, doc.url, activeLead._id) : handlePickUpload("Draft"))} 
-                                        style={{ 
-                                          padding: isDone ? "0 14px" : "0 12px",
-                                          height: 34,
-                                          borderRadius: 10, 
-                                          border: "1px solid rgba(255,255,255,0.08)", 
-                                          background: "rgba(255,255,255,0.03)", 
-                                          color: isDone ? "#e2e8f0" : "#34d399", 
-                                          display: "inline-flex", 
-                                          alignItems: "center", 
-                                          justifyContent: "center", 
-                                          gap: 8,
-                                          cursor: "pointer",
-                                          fontSize: "0.75rem",
-                                          fontWeight: 800
-                                        }} 
-                                        title={isDone ? "View" : "Upload"}
-                                      >
-                                        {isDone ? "VIEW" : "UPLOAD"}
-                                        {isDone ? <Eye size={15} /> : <Upload size={15} />}
-                                      </button>
+                                      {(isDone || isUserRole || hasFile) && (
+                                        <button 
+                                          type="button" 
+                                          onClick={() => (hasFile || isDone ? viewDocument(doc.publicId, doc.url, activeLead._id) : handlePickUpload("Draft"))} 
+                                          style={{ 
+                                            padding: (hasFile || isDone) ? "0 14px" : "0 12px",
+                                            height: 34,
+                                            borderRadius: 10, 
+                                            border: "1px solid rgba(255,255,255,0.08)", 
+                                            background: "rgba(255,255,255,0.03)", 
+                                            color: (hasFile || isDone) ? "#e2e8f0" : "#34d399", 
+                                            display: "inline-flex", 
+                                            alignItems: "center", 
+                                            justifyContent: "center", 
+                                            gap: 8,
+                                            cursor: "pointer",
+                                            fontSize: "0.75rem",
+                                            fontWeight: 800
+                                          }} 
+                                          title={(hasFile || isDone) ? "View" : "Upload"}
+                                        >
+                                          {(hasFile || isDone) ? "VIEW" : "UPLOAD"}
+                                          {(hasFile || isDone) ? <Eye size={15} /> : <Upload size={15} />}
+                                        </button>
+                                      )}
                                     </td>
                                   </tr>
                                 );
@@ -799,7 +827,9 @@ const AdminDashboardModern = ({
                         </span>
                       </div>
                     </div>
-                    <input ref={uploadInputRef} type="file" accept=".pdf" style={{ display: "none" }} onChange={handleUploadInput} />
+                    {isUserRole && (
+                      <input ref={uploadInputRef} type="file" accept=".pdf" style={{ display: "none" }} onChange={handleUploadInput} />
+                    )}
                   </PremiumCard>
 
                   <PremiumCard style={{ padding: 16 }}>

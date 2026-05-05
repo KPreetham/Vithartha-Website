@@ -27,6 +27,7 @@ import {
   ShieldAlert
 } from "lucide-react";
 import { viewDocument } from "../utils/documentViewer";
+import { normalizeRole } from "../utils/roleRouting";
 import Loader from "../components/Loader";
 import ConfirmationModal from "../components/ConfirmationModal";
 import {
@@ -54,6 +55,7 @@ const PRDashboard = () => {
   const navigate = useNavigate();
 
   const storedUser = JSON.parse(localStorage.getItem("user"));
+  const isUserRole = normalizeRole(storedUser?.role) === "user";
 
   useEffect(() => {
     fetchData();
@@ -522,7 +524,7 @@ const PRDashboard = () => {
   };
 
   const canManageDraftForLead = (lead) =>
-    ['InProgress', 'ExecutionFinished', 'DraftSent', 'DraftRejected'].includes(lead?.status);
+    ['PR_Accepted', 'AssignedToExecutor', 'InProgress', 'ExecutionFinished', 'DraftSent', 'DraftRejected'].includes(lead?.status);
 
   const hasDraftDocument = (lead) =>
     Array.isArray(lead?.documents) && lead.documents.some((d) => d.type === 'Draft');
@@ -585,6 +587,7 @@ const PRDashboard = () => {
       const hasReplacement = group.length > 1;
       const isReuploaded = !!selected?.displayReuploaded || hasReplacement || !!selected?.reuploaded || String(selected?.status || "").trim().toLowerCase() === "reuploaded";
       const normalizedStatus = String(selected?.status || "").trim().toLowerCase();
+      const isDraftDocument = String(selected?.type || "").trim().toLowerCase() === "draft";
       const isPendingReviewState =
         !normalizedStatus ||
         normalizedStatus === "pending" ||
@@ -601,12 +604,25 @@ const PRDashboard = () => {
         normalizedName &&
         !requiredDocNames.has(normalizedName);
 
-      if (isStaleOrphanRejected || (serviceRejected && isNotPartOfServiceRequirements)) {
+      if (isStaleOrphanRejected || (!isDraftDocument && serviceRejected && isNotPartOfServiceRequirements)) {
         return null;
       }
 
-      const displayStatus = executorRejectedService || serviceRejected
-        ? "Rejected"
+      const draftRejected = String(lead?.status || "").trim().toLowerCase() === "draftrejected";
+      const draftAccepted = ["draftaccepted", "useraccepted", "completed"].includes(String(lead?.status || "").trim().toLowerCase());
+      const draftShared = ["draftsent", "draftrejected", "draftaccepted", "useraccepted"].includes(String(lead?.status || "").trim().toLowerCase());
+      const displayStatus = isDraftDocument
+        ? isReuploaded
+          ? "Draft Reuploaded"
+          : draftRejected
+            ? "Draft Rejected"
+            : draftAccepted
+              ? "Draft Accepted"
+              : draftShared
+                ? "Draft Shared"
+                : (selected?.status || "Pending Review")
+        : executorRejectedService || serviceRejected
+          ? "Rejected"
         : isReuploaded && isPendingReviewState
           ? "Under Review"
           : selected?.status || "Waiting Review";
@@ -614,7 +630,7 @@ const PRDashboard = () => {
       return {
         ...selected,
         status: displayStatus,
-        displayReuploaded: serviceRejected ? false : isReuploaded,
+        displayReuploaded: isDraftDocument ? isReuploaded : serviceRejected ? false : isReuploaded,
       };
     }).filter(Boolean);
   }
@@ -1276,27 +1292,44 @@ const PRDashboard = () => {
                               <div className="column" style={{ borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: "2rem" }}>
                                 <h4 style={{ fontSize: "0.65rem", fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.15em", color: "var(--text-muted)", marginBottom: "1.5rem" }}>Workflow Controls</h4>
 
-                                {(lead.status === 'PendingReview' || lead.status === 'Open' || lead.status === 'InformationRequired') && (
-                                  <div className="pr-workflow-btns" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "15px" }}>
-                                    {(() => {
-                                      const clientDocs = getVisibleDocuments(lead).filter(d => d.type === 'Client');
-                                      const allAccepted =
-                                        clientDocs.length > 0 &&
-                                        clientDocs.every((d) => d.status === 'Accepted');
-                                      const anyRejected = clientDocs.some(d => d.status === 'Rejected');
+                                {(() => {
+                                  const hasDraftFiles = Array.isArray(lead.documents) && lead.documents.some((doc) => ["Draft", "Final"].includes(String(doc?.type || "").trim()));
+                                  const draftWorkflowStarted = hasDraftFiles || ["PR_Accepted", "AssignedToExecutor", "InProgress", "ExecutionFinished", "DraftSent", "DraftRejected", "DraftAccepted", "UserAccepted", "Completed"].includes(lead.status);
 
-                                      if (allAccepted) {
-                                        return <button onClick={() => handleUpdateLeadStatus(lead._id, 'AssignedToExecutor')} style={{ padding: "1.2rem", borderRadius: "14px", background: "#10b981", color: "white", border: "none", fontWeight: 800, cursor: "pointer", fontSize: "0.9rem" }}>ACCEPT SERVICE & START COORDINATION</button>;
-                                      } else if (anyRejected) {
-                                        return <div style={{ padding: "1.2rem", borderRadius: "14px", background: "rgba(239, 68, 68, 0.05)", border: "1px solid rgba(239, 68, 68, 0.2)", color: "#ef4444", fontSize: "0.8rem", fontWeight: 700, textAlign: "center" }}>Documents rejected. Waiting for user to re-upload.</div>;
-                                      } else {
-                                        return <div style={{ padding: "1.2rem", borderRadius: "14px", background: "rgba(245, 158, 11, 0.05)", border: "1px solid rgba(245, 158, 11, 0.2)", color: "#f59e0b", fontSize: "0.8rem", fontWeight: 700, textAlign: "center" }}>Accept all documents to proceed.</div>;
-                                      }
-                                    })()}
+                                  if (draftWorkflowStarted) {
+                                    return (
+                                      <div style={{ display: "flex", alignItems: "center", gap: 10, color: "#10b981", fontSize: "1rem", fontWeight: 800, padding: "8px 16px", background: "rgba(16,185,129,0.1)", borderRadius: 12, border: "1px solid rgba(16,185,129,0.2)" }}>
+                                        <CheckCircle size={20} /> SERVICE ACCEPTED
+                                      </div>
+                                    );
+                                  }
 
-                                    <button onClick={() => openRejectForm(lead._id)} style={{ padding: "1.2rem", borderRadius: "14px", background: "rgba(239, 68, 68, 0.1)", color: "#ef4444", border: "1px solid rgba(239, 68, 68, 0.2)", fontWeight: 800, cursor: "pointer" }}>REJECT ENTIRE SERVICE</button>
-                                  </div>
-                                )}
+                                  if (!(lead.status === 'PendingReview' || lead.status === 'Open' || lead.status === 'InformationRequired')) {
+                                    return null;
+                                  }
+
+                                  return (
+                                    <div className="pr-workflow-btns" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "15px" }}>
+                                      {(() => {
+                                        const clientDocs = getVisibleDocuments(lead).filter(d => d.type === 'Client');
+                                        const allAccepted =
+                                          clientDocs.length > 0 &&
+                                          clientDocs.every((d) => d.status === 'Accepted');
+                                        const anyRejected = clientDocs.some(d => d.status === 'Rejected');
+
+                                        if (allAccepted) {
+                                          return <button onClick={() => handleUpdateLeadStatus(lead._id, 'AssignedToExecutor')} style={{ padding: "1.2rem", borderRadius: "14px", background: "#10b981", color: "white", border: "none", fontWeight: 800, cursor: "pointer", fontSize: "0.9rem" }}>ACCEPT SERVICE & START COORDINATION</button>;
+                                        } else if (anyRejected) {
+                                          return <div style={{ padding: "1.2rem", borderRadius: "14px", background: "rgba(239, 68, 68, 0.05)", border: "1px solid rgba(239, 68, 68, 0.2)", color: "#ef4444", fontSize: "0.8rem", fontWeight: 700, textAlign: "center" }}>Documents rejected. Waiting for user to re-upload.</div>;
+                                        } else {
+                                          return <div style={{ padding: "1.2rem", borderRadius: "14px", background: "rgba(245, 158, 11, 0.05)", border: "1px solid rgba(245, 158, 11, 0.2)", color: "#f59e0b", fontSize: "0.8rem", fontWeight: 700, textAlign: "center" }}>Accept all documents to proceed.</div>;
+                                        }
+                                      })()}
+
+                                      <button onClick={() => openRejectForm(lead._id)} style={{ padding: "1.2rem", borderRadius: "14px", background: "rgba(239, 68, 68, 0.1)", color: "#ef4444", border: "1px solid rgba(239, 68, 68, 0.2)", fontWeight: 800, cursor: "pointer" }}>REJECT ENTIRE SERVICE</button>
+                                    </div>
+                                  );
+                                })()}
 
                                 {rejectingLeadId === lead._id && (
                                   <div
@@ -1460,14 +1493,18 @@ const PRDashboard = () => {
 
                                     {lead.status === 'DraftAccepted' || lead.status === 'UserAccepted' ? (
                                       <div className="pr-draft-btns" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
-                                        <input type="file" id={`final-${lead._id}`} hidden onChange={(e) => handleFileUpload(lead._id, e.target.files[0], 'Final')} />
-                                        <button onClick={() => document.getElementById(`final-${lead._id}`).click()} style={{ padding: "1.2rem", borderRadius: "14px", background: "rgba(255,255,255,0.04)", color: "white", border: "1px solid rgba(255,255,255,0.1)", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", cursor: "pointer" }}>
-                                          {uploadingId === `${lead._id}-Final` ? (
-                                            <><Loader2 size={18} className="animate-spin" /> UPLOADING...</>
-                                          ) : (
-                                            <><Upload size={18} /> UPLOAD FINAL</>
-                                          )}
-                                        </button>
+                                        {isUserRole && (
+                                          <>
+                                            <input type="file" id={`final-${lead._id}`} hidden onChange={(e) => handleFileUpload(lead._id, e.target.files[0], 'Final')} />
+                                            <button onClick={() => document.getElementById(`final-${lead._id}`).click()} style={{ padding: "1.2rem", borderRadius: "14px", background: "rgba(255,255,255,0.04)", color: "white", border: "1px solid rgba(255,255,255,0.1)", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", cursor: "pointer" }}>
+                                              {uploadingId === `${lead._id}-Final` ? (
+                                                <><Loader2 size={18} className="animate-spin" /> UPLOADING...</>
+                                              ) : (
+                                                <><Upload size={18} /> UPLOAD FINAL</>
+                                              )}
+                                            </button>
+                                          </>
+                                        )}
                                         <button
                                           disabled={!lead.documents?.some(d => d.type === 'Final')}
                                           onClick={() => handleUpdateLeadStatus(lead._id, 'Completed')}
@@ -1479,30 +1516,34 @@ const PRDashboard = () => {
                                     ) : (
                                       <div className="pr-draft-btns" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
                                         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                                          <input type="file" id={`draft-${lead._id}`} hidden onChange={(e) => handleFileUpload(lead._id, e.target.files[0], 'Draft')} />
-                                          <button
-                                            disabled={!canManageDraftForLead(lead)}
-                                            onClick={() => document.getElementById(`draft-${lead._id}`).click()}
-                                            style={{
-                                              padding: "1.2rem",
-                                              borderRadius: "14px",
-                                              background: canManageDraftForLead(lead) ? "rgba(67, 97, 238, 0.1)" : "rgba(255,255,255,0.02)",
-                                              color: canManageDraftForLead(lead) ? "#4361ee" : "rgba(255,255,255,0.2)",
-                                              border: "1px solid rgba(67, 97, 238, 0.2)",
-                                              fontWeight: 800,
-                                              display: "flex",
-                                              alignItems: "center",
-                                              justifyContent: "center",
-                                              gap: "10px",
-                                              cursor: canManageDraftForLead(lead) ? "pointer" : "not-allowed"
-                                            }}
-                                          >
-                                            {uploadingId === `${lead._id}-Draft` ? (
-                                              <><Loader2 size={18} className="animate-spin" /> UPLOADING...</>
-                                            ) : (
-                                              <><Upload size={18} /> UPLOAD DRAFT</>
-                                            )}
-                                          </button>
+                                          {isUserRole && (
+                                            <>
+                                              <input type="file" id={`draft-${lead._id}`} hidden onChange={(e) => handleFileUpload(lead._id, e.target.files[0], 'Draft')} />
+                                              <button
+                                                disabled={!canManageDraftForLead(lead)}
+                                                onClick={() => document.getElementById(`draft-${lead._id}`).click()}
+                                                style={{
+                                                  padding: "1.2rem",
+                                                  borderRadius: "14px",
+                                                  background: canManageDraftForLead(lead) ? "rgba(67, 97, 238, 0.1)" : "rgba(255,255,255,0.02)",
+                                                  color: canManageDraftForLead(lead) ? "#4361ee" : "rgba(255,255,255,0.2)",
+                                                  border: "1px solid rgba(67, 97, 238, 0.2)",
+                                                  fontWeight: 800,
+                                                  display: "flex",
+                                                  alignItems: "center",
+                                                  justifyContent: "center",
+                                                  gap: "10px",
+                                                  cursor: canManageDraftForLead(lead) ? "pointer" : "not-allowed"
+                                                }}
+                                              >
+                                                {uploadingId === `${lead._id}-Draft` ? (
+                                                  <><Loader2 size={18} className="animate-spin" /> UPLOADING...</>
+                                                ) : (
+                                                  <><Upload size={18} /> UPLOAD DRAFT</>
+                                                )}
+                                              </button>
+                                            </>
+                                          )}
                                         </div>
 
                                         <button

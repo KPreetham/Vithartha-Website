@@ -31,6 +31,7 @@ import {
 import { toast } from "react-hot-toast";
 import { formatInr, getServicePricing, parseFeeAmount } from "../utils/servicePricing";
 import { viewDocument } from "../utils/documentViewer";
+import { normalizeRole } from "../utils/roleRouting";
 
 const iconMap = {
   "GST COMPLIANCE": Shield,
@@ -206,6 +207,8 @@ const DOCUMENTS_REGISTRY = {
     },
   ],
 };
+
+// Note: role checks are computed inside the component to reflect runtime login state
 
 // Fallback services in case API fails
 const FALLBACK_SERVICES = [
@@ -1839,6 +1842,7 @@ const Recommendations = () => {
   const [userLeads, setUserLeads] = useState([]);
   const [allDbServices, setAllDbServices] = useState([]);
   const storedUser = JSON.parse(localStorage.getItem("user"));
+  const isUserRole = normalizeRole(storedUser?.role) === "user";
 
   const [uploadedDocs, setUploadedDocs] = useState(() => {
     const saved = localStorage.getItem("pending_uploads");
@@ -4066,7 +4070,7 @@ const Recommendations = () => {
                               </div>
 
                               {/* Upload Button - Only Visible to Users */}
-                              {true && (
+                              {isUserRole && (
                                 <label
                                   style={{
                                     cursor: uploadingDoc ? "not-allowed" : "pointer",

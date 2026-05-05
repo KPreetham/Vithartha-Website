@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import ConfirmationModal from "../components/ConfirmationModal";
 import { getServicePricing } from "../utils/servicePricing";
+import { normalizeRole } from "../utils/roleRouting";
 
 const PremiumCard = ({ children, style = {}, className = "" }) => (
   <div
@@ -91,6 +92,9 @@ const PRDashboardModern = ({
   const draftInputRef = React.useRef(null);
   const finalInputRef = React.useRef(null);
 
+  const storedUser = typeof window !== "undefined" ? JSON.parse(localStorage.getItem("user") || "{}") : {};
+  const isPRRole = normalizeRole(storedUser?.role) === "pr";
+
   React.useEffect(() => {
     setDocumentsOpen(false);
   }, [activeLead?._id]);
@@ -124,14 +128,18 @@ const PRDashboardModern = ({
   const serviceRejected = String(lead?.status || "").trim().toLowerCase() === "rejected";
   const isDraftUploading = lead ? uploadingId === `${lead._id}-Draft` : false;
   const isFinalUploading = lead ? uploadingId === `${lead._id}-Final` : false;
+  const rawDocs = Array.isArray(lead?.documents) ? lead.documents : [];
   const docs = lead ? getVisibleDocuments(lead) : [];
   const clientDocs = docs.filter((d) => d.type === "Client");
-  const draftFinalDocs = docs.filter((d) => ["Draft", "Final"].includes(d.type));
+  const draftFinalDocs = rawDocs.filter((d) => ["Draft", "Final"].includes(String(d?.type || "").trim()));
   const uploadedClientDocs = clientDocs.filter((d) => {
     const status = String(d?.status || "").trim().toLowerCase();
     return ["uploaded", "accepted", "verified", "approved", "completed", "reuploaded", "under review"].includes(status) || !!d?.url;
   });
-  const hasReuploadedDocs = docs.some(d => d.displayReuploaded);
+  const hasReuploadedDocs = rawDocs.some((d) => !!d?.displayReuploaded || !!d?.reuploaded || String(d?.status || "").trim().toLowerCase() === "reuploaded");
+  const draftWorkflowStarted =
+    ["PR_Accepted", "AssignedToExecutor", "InProgress", "ExecutionFinished", "DraftSent", "DraftRejected", "DraftAccepted", "UserAccepted", "Completed"].includes(leadStatus) ||
+    draftFinalDocs.length > 0;
   const serviceProgressPercent = (() => {
     if (!lead) return 0;
     const status = String(leadStatus || "").trim();
@@ -152,6 +160,23 @@ const PRDashboardModern = ({
     };
     return progressByStatus[status] ?? 0;
   })();
+  const serviceProgressMessage = lead
+    ? {
+        Open: "New request received. PR review will begin shortly.",
+        PendingReview: "Documents are under PR review.",
+        InformationRequired: "Client action is needed to continue.",
+        PR_Accepted: "Service accepted. Executor assignment is in progress.",
+        AssignedToExecutor: "Executor has been assigned and is preparing the service.",
+        InProgress: "Executor is working on the service.",
+        ExecutionFinished: "Executor work is complete. Review the draft and continue.",
+        DraftSent: "Draft is ready for user review.",
+        DraftAccepted: "Draft approved. Upload the final return document.",
+        UserAccepted: "Draft approved. Upload the final return document.",
+        DraftRejected: "Draft was rejected by the user. Revise and resubmit.",
+        Completed: "Service completed successfully.",
+        Rejected: "Service was rejected.",
+      }[leadStatus] || getDisplayStatus(leadStatus, lead)
+    : "";
   const uploadedDocumentCount = uploadedClientDocs.length;
   const isDraftApprovedByWorkflow = ["DraftAccepted", "UserAccepted", "Completed"].includes(leadStatus);
   const isFinalApprovedByWorkflow = leadStatus === "Completed";
@@ -159,8 +184,11 @@ const PRDashboardModern = ({
     const docType = String(doc?.type || "").trim();
     const rawStatus = String(doc?.status || "").trim().toLowerCase();
     const draftRejected = String(lead?.status || "").trim().toLowerCase() === "draftrejected";
+    const draftRejectedByUser =
+      draftRejected ||
+      String(lead?.userMessage || "").toLowerCase().includes("draft rejected by user");
 
-    if (draftRejected && docType === "Draft") {
+    if (draftRejectedByUser && docType === "Draft") {
       return {
         label: "REJECTED",
         color: "#ef4444",
@@ -564,6 +592,9 @@ const PRDashboardModern = ({
                       <div style={{ width: "100%", height: 10, background: "rgba(255,255,255,0.05)", borderRadius: 999, overflow: "hidden" }}>
                         <div style={{ width: `${serviceProgressPercent}%`, height: "100%", borderRadius: 999, background: "linear-gradient(90deg, #22c55e, #14b8a6)" }} />
                       </div>
+                      <div style={{ color: "rgba(255,255,255,0.72)", fontSize: "0.9rem", lineHeight: 1.5, minHeight: 22 }}>
+                        {serviceProgressMessage}
+                      </div>
                     </div>
                     <div style={{ fontSize: "0.9rem", fontWeight: 700, color: "#e5e7eb" }}>{Math.round(serviceProgressPercent)}%</div>
                   </div>
@@ -628,7 +659,7 @@ const PRDashboardModern = ({
                                   const docKey = `${lead._id}:${doc._id}`;
                                   const isDraftDocument = String(doc?.type || "").trim().toLowerCase() === "draft";
                                   const draftRejected = String(lead?.status || "").trim().toLowerCase() === "draftrejected";
-                                  const isReuploaded = !serviceRejected && doc.displayReuploaded;
+                                  const isReuploaded = !!doc.displayReuploaded;
                                   const actualStatus = String(doc.status || "").trim().toLowerCase();
                                   const isReuploadPending =
                                     isReuploaded &&
@@ -636,12 +667,18 @@ const PRDashboardModern = ({
                                   const docStatus = serviceRejected
                                     ? "Rejected"
                                     : draftRejected && isDraftDocument
-                                      ? "Rejected"
-                                    : ["accepted", "rejected"].includes(actualStatus)
-                                      ? doc.status
-                                      : isReuploadPending
-                                        ? "Under Review"
-                                        : String(doc.status || "Waiting Review");
+                                      ? isReuploaded
+                                        ? "Draft Reuploaded"
+                                        : "Draft Rejected"
+                                      : isDraftDocument && isReuploaded
+                                        ? "Draft Reuploaded"
+                                        : isDraftDocument
+                                          ? "Draft Shared"
+                                      : ["accepted", "rejected"].includes(actualStatus)
+                                        ? doc.status
+                                        : isReuploadPending
+                                          ? "Under Review"
+                                          : String(doc.status || "Waiting Review");
                                   const showReviewActions =
                                     ["Open", "PendingReview", "InformationRequired", "Rejected"].includes(lead.status) &&
                                     (!serviceRejected || docStatus !== "Rejected");
@@ -653,7 +690,7 @@ const PRDashboardModern = ({
                                               <FileText size={18} color={docStatus === "Accepted" ? "#22c55e" : docStatus === "Rejected" ? "#ef4444" : "#fbbf24"} style={{ flexShrink: 0 }} />
                                               <div style={{ minWidth: 0 }}>
                                                 <div style={{ fontSize: "0.92rem", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.name}</div>
-                                                {isReuploaded && <div style={{ marginTop: 4, color: "#38bdf8", fontSize: "0.76rem", fontWeight: 700 }}>Reuploaded</div>}
+                                                {isReuploaded && <div style={{ marginTop: 4, color: "#38bdf8", fontSize: "0.76rem", fontWeight: 700 }}>{isDraftDocument ? "Draft Reuploaded" : "Reuploaded"}</div>}
                                               </div>
                                             </div>
                                           </td>
@@ -835,7 +872,7 @@ const PRDashboardModern = ({
                         <div style={{ color: "rgba(255,255,255,0.65)", fontSize: "0.8rem" }}>Accept the service only after every client document is approved, then manage drafts from one panel.</div>
                       </div>
                       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                        {["PR_Accepted", "AssignedToExecutor", "InProgress", "ExecutionFinished", "DraftSent", "DraftAccepted", "UserAccepted", "Completed"].includes(lead.status) ? (
+                        {draftWorkflowStarted ? (
                           <div style={{ display: "flex", alignItems: "center", gap: 10, color: "#10b981", fontSize: "1rem", fontWeight: 800, padding: "8px 16px", background: "rgba(16,185,129,0.1)", borderRadius: 12, border: "1px solid rgba(16,185,129,0.2)" }}>
                             <CheckCircle size={20} /> SERVICE ACCEPTED
                           </div>
@@ -872,7 +909,7 @@ const PRDashboardModern = ({
                           </>
                         )}
                       </div>
-                      {!canAcceptService && (
+                      {!canAcceptService && !draftWorkflowStarted && (
                         <div style={{ marginTop: 12, padding: "8px 14px", borderRadius: 10, background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)", color: "#f59e0b", fontSize: "0.78rem", fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
                           <AlertCircle size={14} /> Accept all client documents to enable service approval.
                         </div>
@@ -910,40 +947,51 @@ const PRDashboardModern = ({
                       </div>
                     )}
 
-                    {["InProgress", "ExecutionFinished", "DraftSent", "DraftRejected", "DraftAccepted", "UserAccepted"].includes(lead.status) && (
+                    {draftWorkflowStarted && (
                       <div style={{ marginTop: 16, padding: 16, background: "rgba(16,185,129,0.02)", border: "1px solid rgba(16,185,129,0.1)", borderRadius: 16 }}>
                         <div style={{ fontSize: "0.7rem", fontWeight: 900, color: "#10b981", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 12 }}>Draft & Completion Management</div>
 
-                        {(lead.status === "DraftAccepted" || lead.status === "UserAccepted") ? (
+                        {(lead.status === "DraftAccepted" || lead.status === "UserAccepted" || lead.status === "Completed") ? (
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                            <input ref={finalInputRef} type="file" accept=".pdf" hidden onChange={(e) => handleDraftUpload("Final", e.target.files?.[0])} />
-                            <button type="button" onClick={() => finalInputRef.current?.click()} style={{ padding: "1rem", borderRadius: 14, background: "rgba(255,255,255,0.04)", color: "#fff", border: "1px solid rgba(255,255,255,0.1)", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, cursor: "pointer" }}>
-                              {isFinalUploading ? (
-                                <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
-                                  <Loader2 size={18} className="animate-spin" /> UPLOADING...
-                                </span>
-                              ) : (
-                                <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
-                                  <Upload size={18} /> UPLOAD FINAL
-                                </span>
-                              )}
-                            </button>
+                            {isPRRole && (
+                              <>
+                                <input ref={finalInputRef} type="file" accept=".pdf" hidden onChange={(e) => handleDraftUpload("Final", e.target.files?.[0])} />
+                                <button type="button" onClick={() => finalInputRef.current?.click()} style={{ padding: "1rem", borderRadius: 14, background: "rgba(255,255,255,0.04)", color: "#fff", border: "1px solid rgba(255,255,255,0.1)", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, cursor: "pointer" }}>
+                                  {isFinalUploading ? (
+                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+                                      <Loader2 size={18} className="animate-spin" /> UPLOADING...
+                                    </span>
+                                  ) : (
+                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+                                      <Upload size={18} /> UPLOAD FINAL
+                                    </span>
+                                  )}
+                                </button>
+                              </>
+                            )}
                             <button type="button" disabled={!draftFinalDocs.some((d) => d.type === "Final")} onClick={() => handleUpdateLeadStatus(lead._id, "Completed")} style={{ padding: "1rem", borderRadius: 14, background: "#10b981", color: "#fff", border: "none", fontWeight: 800, cursor: "pointer", opacity: draftFinalDocs.some((d) => d.type === "Final") ? 1 : 0.3 }}>MARK COMPLETED</button>
                           </div>
                         ) : (
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                            <input ref={draftInputRef} type="file" accept=".pdf" hidden onChange={(e) => handleDraftUpload("Draft", e.target.files?.[0])} />
-                            <button type="button" disabled={!canManageDraftForLead(lead)} onClick={() => draftInputRef.current?.click()} style={{ padding: "1rem", borderRadius: 14, background: canManageDraftForLead(lead) ? "rgba(67,97,238,0.1)" : "rgba(255,255,255,0.02)", color: canManageDraftForLead(lead) ? "#4361ee" : "rgba(255,255,255,0.2)", border: "1px solid rgba(67,97,238,0.2)", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, cursor: canManageDraftForLead(lead) ? "pointer" : "not-allowed" }}>
-                              {isDraftUploading ? (
-                                <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
-                                  <Loader2 size={18} className="animate-spin" /> UPLOADING...
-                                </span>
-                              ) : (
-                                <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
-                                  <Upload size={18} /> UPLOAD DRAFT
-                                </span>
+                            <div>
+                              {isPRRole && (
+                                <>
+                                  <input ref={draftInputRef} type="file" accept=".pdf" hidden onChange={(e) => handleDraftUpload("Draft", e.target.files?.[0])} />
+                                  <button type="button" disabled={!canManageDraftForLead(lead)} onClick={() => draftInputRef.current?.click()} style={{ padding: "1rem", borderRadius: 14, background: canManageDraftForLead(lead) ? "rgba(67,97,238,0.1)" : "rgba(255,255,255,0.02)", color: canManageDraftForLead(lead) ? "#4361ee" : "rgba(255,255,255,0.2)", border: "1px solid rgba(67,97,238,0.2)", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, cursor: canManageDraftForLead(lead) ? "pointer" : "not-allowed" }}>
+                                    {isDraftUploading ? (
+                                      <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+                                        <Loader2 size={18} className="animate-spin" /> UPLOADING...
+                                      </span>
+                                    ) : (
+                                      <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+                                        <Upload size={18} /> UPLOAD DRAFT
+                                      </span>
+                                    )}
+                                  </button>
+                                </>
                               )}
-                            </button>
+                            </div>
+
                             <button type="button" disabled={!canSendDraftNow} onClick={() => handleSendDraftToClient(lead._id)} style={{ padding: "1rem", borderRadius: 14, background: canSendDraftNow ? "#10b981" : "rgba(255,255,255,0.02)", color: canSendDraftNow ? "#fff" : "rgba(255,255,255,0.2)", border: "none", fontWeight: 800, cursor: canSendDraftNow ? "pointer" : "not-allowed" }}>SEND DRAFT TO CLIENT</button>
                             {lead.status === "ExecutionFinished" && (
                               <div style={{ gridColumn: "span 2", padding: 12, background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.2)", borderRadius: 12, fontSize: "0.8rem", color: "#10b981", fontWeight: 800, textAlign: "center" }}>Executor has finished work. Review and Send to Client.</div>
@@ -953,7 +1001,7 @@ const PRDashboardModern = ({
                       </div>
                     )}
 
-                    {["Open", "PendingReview", "InformationRequired", "PR_Accepted", "AssignedToExecutor"].includes(lead.status) && (
+                    {!draftWorkflowStarted && ["Open", "PendingReview", "InformationRequired", "PR_Accepted", "AssignedToExecutor"].includes(lead.status) && (
                       <div style={{ marginTop: 16, padding: "1.2rem 1.4rem", background: "rgba(245, 158, 11, 0.05)", border: "1px solid rgba(245, 158, 11, 0.18)", borderRadius: 16, color: "#f59e0b", fontSize: "0.78rem", fontWeight: 700, textAlign: "center" }}>
                         Draft controls will appear after the executor accepts this service.
                       </div>
