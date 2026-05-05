@@ -12,6 +12,8 @@ const serviceSchema = new mongoose.Schema({
   },
   trigger: { type: String, required: false },
   tags: [String],
+  marketFees: { type: String, default: "" },
+  recommendedFees: { type: String, default: "" },
   createdAt: { type: Date, default: Date.now },
 });
 

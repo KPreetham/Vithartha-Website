@@ -16,6 +16,8 @@ import {
   clearPostLoginWalkthroughSeen,
 } from "../utils/onboardingFlow";
 
+void motion;
+
 const Register = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -33,6 +35,7 @@ const Register = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [agreed, setAgreed] = useState(false);
+  const accentColor = "#7F57FB";
 
   useEffect(() => {
     if (noticeMessage) {
@@ -110,14 +113,14 @@ const Register = () => {
         padding: "4.5rem 1rem 1rem",
       }}
     >
-      {/* Green radial glow */}
+      {/* Theme radial glow */}
       <div
         style={{
           position: "absolute",
           inset: 0,
           background: `
-                    radial-gradient(ellipse 40% 30% at 20% 20%, rgba(34,197,94,0.05) 0%, transparent 60%),
-                    radial-gradient(ellipse 40% 30% at 80% 80%, rgba(74,173,160,0.04) 0%, transparent 60%)
+                    radial-gradient(ellipse 40% 30% at 20% 20%, rgba(127,87,251,0.07) 0%, transparent 60%),
+                    radial-gradient(ellipse 40% 30% at 80% 80%, rgba(106,54,251,0.05) 0%, transparent 60%)
                 `,
           pointerEvents: "none",
         }}
@@ -240,7 +243,7 @@ const Register = () => {
                   Full Name *
                 </label>
                 <div style={inputStyle}>
-                  <User size={14} color="rgba(255,255,255,0.3)" />
+                  <User size={14} color="rgba(127,87,251,0.75)" />
                   <input
                     id="reg-name"
                     type="text"
@@ -258,8 +261,7 @@ const Register = () => {
                       width: "100%",
                     }}
                     onFocus={(e) =>
-                    (e.currentTarget.parentElement.style.borderColor =
-                      "#22c55e")
+                    (e.currentTarget.parentElement.style.borderColor = accentColor)
                     }
                     onBlur={(e) =>
                     (e.currentTarget.parentElement.style.borderColor =
@@ -283,7 +285,7 @@ const Register = () => {
                   Company
                 </label>
                 <div style={inputStyle}>
-                  <Building size={14} color="rgba(255,255,255,0.3)" />
+                  <Building size={14} color="rgba(127,87,251,0.75)" />
                   <input
                     id="reg-company"
                     type="text"
@@ -300,8 +302,7 @@ const Register = () => {
                       width: "100%",
                     }}
                     onFocus={(e) =>
-                    (e.currentTarget.parentElement.style.borderColor =
-                      "#22c55e")
+                    (e.currentTarget.parentElement.style.borderColor = accentColor)
                     }
                     onBlur={(e) =>
                     (e.currentTarget.parentElement.style.borderColor =
@@ -328,7 +329,7 @@ const Register = () => {
                 Email Address *
               </label>
               <div style={inputStyle}>
-                <Mail size={14} color="rgba(255,255,255,0.3)" />
+                <Mail size={14} color="rgba(127,87,251,0.75)" />
                 <input
                   id="reg-email"
                   type="email"
@@ -348,8 +349,7 @@ const Register = () => {
                     opacity: fromGoogle ? 0.8 : 1,
                   }}
                   onFocus={(e) =>
-                  (e.currentTarget.parentElement.style.borderColor =
-                    "#22c55e")
+                    (e.currentTarget.parentElement.style.borderColor = accentColor)
                   }
                   onBlur={(e) =>
                   (e.currentTarget.parentElement.style.borderColor =
@@ -375,7 +375,7 @@ const Register = () => {
                 Password *
               </label>
               <div style={inputStyle}>
-                <Lock size={14} color="rgba(255,255,255,0.3)" />
+                <Lock size={14} color="rgba(127,87,251,0.75)" />
                 <input
                   id="reg-password"
                   type={showPassword ? "text" : "password"}
@@ -393,8 +393,7 @@ const Register = () => {
                     flex: 1,
                   }}
                   onFocus={(e) =>
-                  (e.currentTarget.parentElement.style.borderColor =
-                    "#22c55e")
+                    (e.currentTarget.parentElement.style.borderColor = accentColor)
                   }
                   onBlur={(e) =>
                   (e.currentTarget.parentElement.style.borderColor =
@@ -408,7 +407,7 @@ const Register = () => {
                     background: "none",
                     border: "none",
                     cursor: "pointer",
-                    color: "rgba(255,255,255,0.35)",
+                    color: "rgba(127,87,251,0.7)",
                     padding: 0,
                     display: "flex",
                   }}
@@ -434,7 +433,7 @@ const Register = () => {
                 checked={agreed}
                 onChange={(e) => setAgreed(e.target.checked)}
                 style={{
-                  accentColor: "#22c55e",
+                  accentColor: accentColor,
                   cursor: "pointer",
                   marginTop: "2px",
                   flexShrink: 0,
@@ -448,11 +447,11 @@ const Register = () => {
                 }}
               >
                 I agree to the{" "}
-                <span style={{ color: "#22c55e", fontWeight: 600 }}>
+                <span style={{ color: accentColor, fontWeight: 600 }}>
                   Terms of Service
                 </span>{" "}
                 and{" "}
-                <span style={{ color: "#22c55e", fontWeight: 600 }}>
+                <span style={{ color: accentColor, fontWeight: 600 }}>
                   Privacy Policy
                 </span>
                 .
@@ -470,8 +469,8 @@ const Register = () => {
                 borderRadius: "8px",
                 background:
                   !agreed || loading
-                    ? "rgba(34,197,94,0.3)"
-                    : "linear-gradient(135deg, #16a34a 0%, #22c55e 100%)",
+                    ? "rgba(127,87,251,0.35)"
+                    : "linear-gradient(135deg, #7F57FB 0%, #6A36FB 100%)",
                 color: "white",
                 fontWeight: 800,
                 border: "none",
@@ -483,18 +482,18 @@ const Register = () => {
                 alignItems: "center",
                 justifyContent: "center",
                 gap: "0.5rem",
-                boxShadow: agreed ? "0 6px 20px rgba(34,197,94,0.3)" : "none",
+                boxShadow: agreed ? "0 6px 20px rgba(127,87,251,0.3)" : "none",
                 transition: "all 0.3s ease",
                 marginTop: "0.1rem",
               }}
               onMouseEnter={(e) => {
                 if (agreed && !loading)
                   e.currentTarget.style.boxShadow =
-                    "0 12px 32px rgba(34,197,94,0.45)";
+                    "0 12px 32px rgba(127,87,251,0.45)";
               }}
               onMouseLeave={(e) =>
               (e.currentTarget.style.boxShadow = agreed
-                ? "0 8px 24px rgba(34,197,94,0.3)"
+                ? "0 8px 24px rgba(127,87,251,0.3)"
                 : "none")
               }
             >
@@ -523,7 +522,7 @@ const Register = () => {
                 to="/login"
                 id="reg-login-link"
                 style={{
-                  color: "#22c55e",
+                  color: accentColor,
                   fontWeight: 700,
                   textDecoration: "none",
                 }}

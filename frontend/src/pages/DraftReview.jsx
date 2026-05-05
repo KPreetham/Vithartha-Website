@@ -14,10 +14,13 @@ import {
   ArrowRight,
   Info,
   Sparkles,
+  Loader2,
+  Send,
 } from "lucide-react";
 import axios from "axios";
 import { toast } from "react-hot-toast";
 import Loader from "../components/Loader";
+import { viewDocument, getSecureDocumentUrl } from "../utils/documentViewer";
 
 const DraftReview = () => {
   const { leadId } = useParams();
@@ -28,7 +31,9 @@ const DraftReview = () => {
   const [actionLoading, setActionLoading] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [showRejectForm, setShowRejectForm] = useState(false);
+  const [showAcceptConfirm, setShowAcceptConfirm] = useState(false);
   const [rejectMessage, setRejectMessage] = useState("");
+  const [secureIframeUrl, setSecureIframeUrl] = useState("");
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 768);
@@ -69,6 +74,20 @@ const DraftReview = () => {
   useEffect(() => {
     fetchLeadDetails();
   }, [fetchLeadDetails]);
+
+  useEffect(() => {
+    const fetchSecureUrl = async () => {
+      if (selectedDoc) {
+        try {
+          const url = await getSecureDocumentUrl(selectedDoc.publicId, selectedDoc.url, leadId);
+          setSecureIframeUrl(url);
+        } catch (error) {
+          console.error("Error fetching secure URL:", error);
+        }
+      }
+    };
+    fetchSecureUrl();
+  }, [selectedDoc, leadId]);
 
   const handleAcceptDraft = async () => {
     setActionLoading(true);
@@ -279,7 +298,7 @@ const DraftReview = () => {
               <X size={18} /> I Reject This Draft
             </button>
             <button
-              onClick={handleAcceptDraft}
+              onClick={() => setShowAcceptConfirm(true)}
               disabled={actionLoading}
               style={{
                 background: "#10b981",
@@ -358,10 +377,8 @@ const DraftReview = () => {
                 </span>
               </div>
               <div style={{ display: "flex", gap: "0.5rem" }}>
-                <a
-                  href={selectedDoc?.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  onClick={() => viewDocument(selectedDoc?.publicId, selectedDoc?.url, leadId)}
                   style={{
                     padding: "8px 16px",
                     background: "rgba(255,255,255,0.05)",
@@ -370,20 +387,20 @@ const DraftReview = () => {
                     borderRadius: "10px",
                     fontSize: "0.75rem",
                     fontWeight: 700,
-                    textDecoration: "none",
+                    cursor: "pointer",
                     display: "flex",
                     alignItems: "center",
                     gap: "6px",
                   }}
                 >
                   <ExternalLink size={14} /> Full Screen
-                </a>
+                </button>
               </div>
             </div>
             <div style={{ flex: 1 }}>
-              {selectedDoc?.url ? (
+              {secureIframeUrl || selectedDoc?.url ? (
                 <iframe
-                  src={selectedDoc.url}
+                  src={secureIframeUrl || selectedDoc.url}
                   title="Draft Preview"
                   style={{
                     width: "100%",
@@ -595,83 +612,261 @@ const DraftReview = () => {
           </div>
         </div>
 
-        {showRejectForm && (
-          <div
-            style={{
-              marginBottom: isMobile ? "1.2rem" : "1.8rem",
-              padding: "1rem",
-              borderRadius: "14px",
-              background: "rgba(239, 68, 68, 0.06)",
-              border: "1px solid rgba(239, 68, 68, 0.2)",
-              display: "flex",
-              flexDirection: "column",
-              gap: "0.65rem",
-            }}
-          >
-            <div
+        <AnimatePresence>
+          {showRejectForm && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
               style={{
-                fontSize: "0.72rem",
-                fontWeight: 800,
-                color: "#ef4444",
-                textTransform: "uppercase",
-                letterSpacing: "0.08em",
-              }}
-            >
-              Send Rejection Message to PR
-            </div>
-            <textarea
-              value={rejectMessage}
-              onChange={(e) => setRejectMessage(e.target.value)}
-              rows={3}
-              placeholder="Describe what needs to be changed in this draft..."
-              style={{
+                position: "fixed",
+                top: 0,
+                left: 0,
                 width: "100%",
-                resize: "vertical",
-                borderRadius: "10px",
-                border: "1px solid rgba(255,255,255,0.12)",
-                background: "rgba(0,0,0,0.25)",
-                color: "white",
-                padding: "0.8rem",
-                outline: "none",
-                fontSize: "0.85rem",
+                height: "100%",
+                background: "rgba(0, 0, 0, 0.8)",
+                backdropFilter: "blur(8px)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                zIndex: 1000,
+                padding: "1rem",
               }}
-            />
-            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-              <button
-                onClick={handleRejectDraft}
-                disabled={actionLoading}
+              onClick={() => setShowRejectForm(false)}
+            >
+              <motion.div
+                initial={{ scale: 0.9, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.9, y: 20 }}
                 style={{
-                  padding: "0.68rem 0.95rem",
-                  borderRadius: "10px",
-                  border: "none",
-                  background: "#ef4444",
-                  color: "white",
-                  fontSize: "0.78rem",
-                  fontWeight: 800,
-                  cursor: actionLoading ? "not-allowed" : "pointer",
-                  opacity: actionLoading ? 0.7 : 1,
+                  width: "100%",
+                  maxWidth: "500px",
+                  background: "#121422",
+                  border: "1px solid rgba(239, 68, 68, 0.3)",
+                  borderRadius: "24px",
+                  padding: "2rem",
+                  boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5)",
+                  position: "relative",
                 }}
+                onClick={(e) => e.stopPropagation()}
               >
-                {actionLoading ? "Sending..." : "Send to PR and Reject Draft"}
-              </button>
-              <button
-                onClick={() => setShowRejectForm(false)}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "12px",
+                    marginBottom: "1.5rem",
+                    color: "#ef4444",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "40px",
+                      height: "40px",
+                      borderRadius: "12px",
+                      background: "rgba(239, 68, 68, 0.1)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <AlertCircle size={24} />
+                  </div>
+                  <div>
+                    <h3 style={{ fontSize: "1.25rem", fontWeight: 800, margin: 0 }}>
+                      Reject This Draft?
+                    </h3>
+                    <p style={{ fontSize: "0.85rem", color: "rgba(255,255,255,0.5)", margin: 0 }}>
+                      Please provide feedback for the PR to improve the draft.
+                    </p>
+                  </div>
+                </div>
+
+                <textarea
+                  value={rejectMessage}
+                  onChange={(e) => setRejectMessage(e.target.value)}
+                  rows={4}
+                  placeholder="Describe what needs to be changed in this draft (e.g., incorrect names, missing details, etc.)..."
+                  autoFocus
+                  style={{
+                    width: "100%",
+                    resize: "none",
+                    borderRadius: "16px",
+                    border: "1px solid rgba(255, 255, 255, 0.1)",
+                    background: "rgba(255, 255, 255, 0.03)",
+                    color: "white",
+                    padding: "1rem",
+                    outline: "none",
+                    fontSize: "0.95rem",
+                    marginBottom: "1.5rem",
+                    lineHeight: 1.5,
+                  }}
+                />
+
+                <div style={{ display: "flex", gap: "12px" }}>
+                  <button
+                    onClick={() => setShowRejectForm(false)}
+                    style={{
+                      flex: 1,
+                      padding: "0.85rem",
+                      borderRadius: "14px",
+                      border: "1px solid rgba(255, 255, 255, 0.1)",
+                      background: "transparent",
+                      color: "rgba(255,255,255,0.6)",
+                      fontSize: "0.9rem",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleRejectDraft}
+                    disabled={actionLoading || !rejectMessage.trim()}
+                    style={{
+                      flex: 2,
+                      padding: "0.85rem",
+                      borderRadius: "14px",
+                      border: "none",
+                      background: "#ef4444",
+                      color: "white",
+                      fontSize: "0.9rem",
+                      fontWeight: 800,
+                      cursor: actionLoading || !rejectMessage.trim() ? "not-allowed" : "pointer",
+                      opacity: actionLoading || !rejectMessage.trim() ? 0.7 : 1,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "8px",
+                      boxShadow: "0 8px 20px rgba(239, 68, 68, 0.2)",
+                    }}
+                  >
+                    {actionLoading ? (
+                      <Loader2 size={18} className="animate-spin" />
+                    ) : (
+                      <>
+                        <Send size={18} /> Send Feedback & Reject
+                      </>
+                    )}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+
+          {showAcceptConfirm && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              style={{
+                position: "fixed",
+                top: 0,
+                left: 0,
+                width: "100%",
+                height: "100%",
+                background: "rgba(0, 0, 0, 0.8)",
+                backdropFilter: "blur(8px)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                zIndex: 1000,
+                padding: "1rem",
+              }}
+              onClick={() => setShowAcceptConfirm(false)}
+            >
+              <motion.div
+                initial={{ scale: 0.9, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.9, y: 20 }}
                 style={{
-                  padding: "0.68rem 0.95rem",
-                  borderRadius: "10px",
-                  border: "1px solid rgba(255,255,255,0.2)",
-                  background: "transparent",
-                  color: "var(--text-secondary)",
-                  fontSize: "0.78rem",
-                  fontWeight: 700,
-                  cursor: "pointer",
+                  width: "100%",
+                  maxWidth: "460px",
+                  background: "#121422",
+                  border: "1px solid rgba(16, 185, 129, 0.3)",
+                  borderRadius: "24px",
+                  padding: "2rem",
+                  boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5)",
+                  position: "relative",
+                  textAlign: "center"
                 }}
+                onClick={(e) => e.stopPropagation()}
               >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
+                <div
+                  style={{
+                    width: "64px",
+                    height: "64px",
+                    borderRadius: "20px",
+                    background: "rgba(16, 185, 129, 0.1)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    margin: "0 auto 1.5rem",
+                    color: "#10b981"
+                  }}
+                >
+                  <ShieldCheck size={32} />
+                </div>
+                
+                <h3 style={{ fontSize: "1.5rem", fontWeight: 800, marginBottom: "0.75rem", color: "white" }}>
+                  Approve Draft?
+                </h3>
+                <p style={{ fontSize: "0.95rem", color: "rgba(255,255,255,0.6)", lineHeight: 1.6, marginBottom: "2rem" }}>
+                  By approving this draft, you confirm that all details are correct. We will proceed to generate your final return documents.
+                </p>
+
+                <div style={{ display: "flex", gap: "12px" }}>
+                  <button
+                    onClick={() => setShowAcceptConfirm(false)}
+                    style={{
+                      flex: 1,
+                      padding: "0.95rem",
+                      borderRadius: "14px",
+                      border: "1px solid rgba(255,255,255,0.1)",
+                      background: "transparent",
+                      color: "rgba(255,255,255,0.6)",
+                      fontSize: "0.95rem",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Review Again
+                  </button>
+                  <button
+                    onClick={handleAcceptDraft}
+                    disabled={actionLoading}
+                    style={{
+                      flex: 1.5,
+                      padding: "0.95rem",
+                      borderRadius: "14px",
+                      border: "none",
+                      background: "#10b981",
+                      color: "white",
+                      fontSize: "0.95rem",
+                      fontWeight: 800,
+                      cursor: actionLoading ? "not-allowed" : "pointer",
+                      opacity: actionLoading ? 0.7 : 1,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "8px",
+                      boxShadow: "0 8px 20px rgba(16, 185, 129, 0.2)",
+                    }}
+                  >
+                    {actionLoading ? (
+                      <Loader2 size={20} className="animate-spin" />
+                    ) : (
+                      <>
+                        <Check size={20} /> Approve Now
+                      </>
+                    )}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
       </div>
     </div>
   );

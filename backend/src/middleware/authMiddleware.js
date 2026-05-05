@@ -1,6 +1,8 @@
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 
+const normalizeRole = (role) => String(role || "").trim().toLowerCase();
+
 export const protect = async (req, res, next) => {
   let token;
 
@@ -51,7 +53,7 @@ export const protect = async (req, res, next) => {
 };
 
 export const admin = (req, res, next) => {
-  if (req.user && req.user.role === "admin") {
+  if (req.user && normalizeRole(req.user.role) === "admin") {
     next();
   } else {
     res.status(403).json({ message: "Not authorized as an admin" });
@@ -63,7 +65,13 @@ export const authorize = (...allowedRoles) => (req, res, next) => {
     return res.status(401).json({ message: "Not authorized, no user" });
   }
 
-  if (allowedRoles.length === 0 || allowedRoles.includes(req.user.role)) {
+  const normalizedUserRole = normalizeRole(req.user.role);
+  const normalizedAllowedRoles = allowedRoles.map(normalizeRole);
+
+  if (
+    normalizedAllowedRoles.length === 0 ||
+    normalizedAllowedRoles.includes(normalizedUserRole)
+  ) {
     return next();
   }
 

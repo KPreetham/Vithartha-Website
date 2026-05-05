@@ -26,24 +26,30 @@ import {
   ChevronDown,
   ChevronUp,
   Loader2,
+  XCircle,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
-import { getServicePricing } from "../utils/servicePricing";
+import { formatInr, getServicePricing, parseFeeAmount } from "../utils/servicePricing";
+import { viewDocument } from "../utils/documentViewer";
 
 const iconMap = {
-  Finance: BarChart3,
-  Compliance: Shield,
-  Advisory: Zap,
-  Tax: FileCheck,
-  Legal: Building,
+  "GST COMPLIANCE": Shield,
+  "MCA & COMPANY COMPLIANCE": Building,
+  "EPF, ESI & PAYROLL COMPLIANCE": Users,
+  "INCOME TAX & ITR FILING": FileCheck,
+  "TRUST & NGO COMPLIANCE": Star,
+  "VIRTUAL CFO & ACCOUNTING SERVICES": BarChart3,
 };
 
 const categoryColors = {
-  Finance: { color: "#4361ee", bg: "rgba(67,97,238,0.08)" },
-  Compliance: { color: "#10b981", bg: "rgba(16,185,129,0.08)" },
-  Advisory: { color: "#f72585", bg: "rgba(247,37,133,0.08)" },
-  Tax: { color: "#7c3aed", bg: "rgba(124,58,237,0.08)" },
-  Legal: { color: "#f59e0b", bg: "rgba(245,158,11,0.08)" },
+  "GST COMPLIANCE": { color: "#10b981", bg: "rgba(16,185,129,0.08)" },
+  "MCA & COMPANY COMPLIANCE": { color: "#f59e0b", bg: "rgba(245,158,11,0.08)" },
+  "EPF, ESI & PAYROLL COMPLIANCE": { color: "#4361ee", bg: "rgba(67,97,238,0.08)" },
+  "INCOME TAX & ITR FILING": { color: "#7c3aed", bg: "rgba(124,58,237,0.08)" },
+  "TRUST & NGO COMPLIANCE": { color: "#f72585", bg: "rgba(247,37,133,0.08)" },
+  "VIRTUAL CFO & ACCOUNTING SERVICES": { color: "#3b82f6", bg: "rgba(59,130,246,0.08)" },
+  // Safe fallback used when a service has no category or an unknown category.
+  Advisory: { color: "#22c55e", bg: "rgba(34,197,94,0.08)" },
 };
 
 const DOCUMENTS_REGISTRY = {
@@ -286,6 +292,10 @@ const AdminServicesView = () => {
   const [expandedUser, setExpandedUser] = useState(null);
   const [expandedServiceId, setExpandedServiceId] = useState(null);
   const navigate = useNavigate();
+  const isLightMode =
+    typeof document !== "undefined" && document.body
+      ? document.body.classList.contains("light-mode")
+      : false;
 
   const fetchLeads = async () => {
     try {
@@ -441,7 +451,7 @@ const AdminServicesView = () => {
           position: "absolute",
           inset: 0,
           background:
-            "radial-gradient(circle at 50% 0%, rgba(34, 197, 94, 0.03) 0%, transparent 70%)",
+            "radial-gradient(circle at 50% 0%, rgba(139, 92, 246, 0.06) 0%, transparent 70%)",
           pointerEvents: "none",
         }}
       />
@@ -463,7 +473,7 @@ const AdminServicesView = () => {
               color: "var(--text)",
             }}
           >
-            User Services <span style={{ color: "#22c55e" }}>.</span>
+            User Services.
           </h1>
 
           <p
@@ -499,7 +509,7 @@ const AdminServicesView = () => {
                 display: "flex",
                 alignItems: "center",
                 gap: "12px",
-                background: "var(--bg-card)",
+                background: "transparent",
                 border: "1px solid var(--border)",
                 padding: "0.8rem 1.2rem",
                 borderRadius: "18px",
@@ -541,8 +551,8 @@ const AdminServicesView = () => {
               className="admin-search-btn"
               onClick={handleSearch}
               style={{
-                background: "#22c55e",
-                border: "none",
+                background: "linear-gradient(135deg, #8b5cf6, #6d4dff)",
+                border: "1px solid rgba(255,255,255,0.85)",
                 color: "white",
                 padding: "0.8rem 2rem",
                 borderRadius: "18px",
@@ -551,7 +561,7 @@ const AdminServicesView = () => {
                 alignItems: "center",
                 gap: "10px",
                 fontWeight: 700,
-                boxShadow: "0 4px 15px rgba(34, 197, 94, 0.2)",
+                boxShadow: "0 10px 24px rgba(126, 87, 251, 0.22)",
                 transition: "all 0.3s",
               }}
             >
@@ -617,7 +627,7 @@ const AdminServicesView = () => {
                     borderRadius: "20px",
                     border:
                       expandedUser === group.email
-                        ? "1px solid rgba(34, 197, 94, 0.3)"
+                        ? "1px solid rgba(255,255,255,0.95)"
                         : "1px solid var(--dashboard-card-border)",
                     overflow: "hidden",
                     transition: "border-color 0.3s",
@@ -640,8 +650,8 @@ const AdminServicesView = () => {
                       transition: "background 0.2s",
                     }}
                     onMouseEnter={(e) =>
-                      (e.currentTarget.style.background =
-                        "var(--dashboard-highlight-bg)")
+                    (e.currentTarget.style.background =
+                      "var(--dashboard-highlight-bg)")
                     }
                     onMouseLeave={(e) =>
                       (e.currentTarget.style.background = "transparent")
@@ -659,14 +669,14 @@ const AdminServicesView = () => {
                           width: "38px",
                           height: "38px",
                           borderRadius: "10px",
-                          background: "var(--dashboard-card-bg)",
-                          border: "1px solid var(--dashboard-card-border)",
+                          background: "linear-gradient(135deg, rgba(124,58,237,0.12), rgba(255,255,255,0.96))",
+                          border: "1px solid rgba(255,255,255,0.95)",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
                           fontSize: "0.9rem",
                           fontWeight: 800,
-                          color: "#22c55e",
+                          color: "#6d4dff",
                         }}
                       >
                         {group.name?.[0]?.toUpperCase() || "?"}
@@ -777,7 +787,9 @@ const AdminServicesView = () => {
                                   justifyContent: "space-between",
                                   alignItems: "center",
                                   padding: "0.9rem 1.4rem",
+                                  paddingTop: "1.15rem",
                                   background: "var(--dashboard-row-bg)",
+                                  position: "relative",
                                   borderRadius:
                                     expandedServiceId === lead._id
                                       ? "14px 14px 0 0"
@@ -791,6 +803,45 @@ const AdminServicesView = () => {
                                   transition: "all 0.3s",
                                 }}
                               >
+                                {(() => {
+                                  const status = String(lead.status || "").trim();
+                                  const isRejected = status === "Rejected";
+                                  const isAccepted = ["Completed", "InProgress", "AssignedToExecutor", "ExecutionFinished", "DraftAccepted", "UserAccepted", "PR_Accepted"].includes(status);
+                                  const statusColor = isRejected ? "#ef4444" : "#10b981";
+                                  const statusBg = isRejected ? "rgba(239,68,68,0.14)" : "rgba(16,185,129,0.14)";
+                                  const StatusIcon = isRejected ? XCircle : CheckCircle;
+                                  const statusLabel = isRejected
+                                    ? "Rejected"
+                                    : isAccepted
+                                      ? "Active"
+                                      : "Pending";
+                                  return (
+                                    <div
+                                      style={{
+                                        position: "absolute",
+                                        top: "-12px",
+                                        right: "16px",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "6px",
+                                        padding: "0.4rem 0.7rem",
+                                        borderRadius: "999px",
+                                        background: statusBg,
+                                        border: `1px solid ${statusColor}33`,
+                                        color: statusColor,
+                                        fontSize: "0.68rem",
+                                        fontWeight: 800,
+                                        textTransform: "uppercase",
+                                        letterSpacing: "0.06em",
+                                        boxShadow: "0 10px 24px rgba(0,0,0,0.18)",
+                                        zIndex: 2,
+                                      }}
+                                    >
+                                      <StatusIcon size={13} />
+                                      {statusLabel}
+                                    </div>
+                                  );
+                                })()}
                                 <div
                                   style={{
                                     display: "flex",
@@ -835,44 +886,6 @@ const AdminServicesView = () => {
                                     gap: "0.8rem",
                                   }}
                                 >
-                                  <span
-                                    style={{
-                                      display: "inline-flex",
-                                      alignItems: "center",
-                                      gap: "5px",
-                                      fontSize: "0.68rem",
-                                      fontWeight: 700,
-                                      color:
-                                        lead.status === "Completed"
-                                          ? "#10b981"
-                                          : lead.status === "InProgress"
-                                            ? "#22c55e"
-                                            : lead.status === "Rejected"
-                                              ? "#ef4444"
-                                              : "#f59e0b",
-                                    }}
-                                  >
-                                    <span
-                                      style={{
-                                        width: "6px",
-                                        height: "6px",
-                                        borderRadius: "50%",
-                                        background:
-                                          lead.status === "Completed"
-                                            ? "#10b981"
-                                            : lead.status === "InProgress"
-                                              ? "#22c55e"
-                                              : lead.status === "Rejected"
-                                                ? "#ef4444"
-                                                : "#f59e0b",
-                                      }}
-                                    />
-                                    {lead.status === "Open"
-                                      ? "Pending"
-                                      : lead.status === "InProgress"
-                                        ? "Active"
-                                        : lead.status}
-                                  </span>
                                   {expandedServiceId === lead._id ? (
                                     <ChevronUp
                                       size={15}
@@ -1067,7 +1080,7 @@ const AdminServicesView = () => {
                                             <button
                                               onClick={(e) => {
                                                 e.stopPropagation();
-                                                window.open(doc.url, "_blank");
+                                                viewDocument(doc.publicId, doc.url, lead._id);
                                               }}
                                               style={{
                                                 padding: "4px 12px",
@@ -1125,47 +1138,47 @@ const AdminServicesView = () => {
                                       )}
                                       {(lead.status === "Open" ||
                                         lead.status === "InProgress") && (
-                                        <button
-                                          onClick={async (e) => {
-                                            e.stopPropagation();
-                                            if (
-                                              window.confirm(
-                                                "Reject this service request?",
-                                              )
-                                            ) {
-                                              try {
-                                                const apiUrl = import.meta.env
-                                                  .VITE_API_URL;
-                                                await axios.patch(
-                                                  `${apiUrl}/leads/${lead._id}`,
-                                                  { status: "Rejected" },
-                                                );
-                                                toast.success(
-                                                  "Service rejected",
-                                                );
-                                                fetchLeads();
-                                              } catch (err) {
-                                                toast.error("Failed to reject");
+                                          <button
+                                            onClick={async (e) => {
+                                              e.stopPropagation();
+                                              if (
+                                                window.confirm(
+                                                  "Reject this service request?",
+                                                )
+                                              ) {
+                                                try {
+                                                  const apiUrl = import.meta.env
+                                                    .VITE_API_URL;
+                                                  await axios.patch(
+                                                    `${apiUrl}/leads/${lead._id}`,
+                                                    { status: "Rejected" },
+                                                  );
+                                                  toast.success(
+                                                    "Service rejected",
+                                                  );
+                                                  fetchLeads();
+                                                } catch (err) {
+                                                  toast.error("Failed to reject");
+                                                }
                                               }
-                                            }
-                                          }}
-                                          style={{
-                                            padding: "8px",
-                                            background:
-                                              "rgba(239, 68, 68, 0.08)",
-                                            border:
-                                              "1px solid rgba(239, 68, 68, 0.2)",
-                                            color: "#ef4444",
-                                            borderRadius: "10px",
-                                            fontWeight: 700,
-                                            cursor: "pointer",
-                                            fontSize: "0.78rem",
-                                            transition: "all 0.3s",
-                                          }}
-                                        >
-                                          Reject
-                                        </button>
-                                      )}
+                                            }}
+                                            style={{
+                                              padding: "8px",
+                                              background:
+                                                "rgba(239, 68, 68, 0.08)",
+                                              border:
+                                                "1px solid rgba(239, 68, 68, 0.2)",
+                                              color: "#ef4444",
+                                              borderRadius: "10px",
+                                              fontWeight: 700,
+                                              cursor: "pointer",
+                                              fontSize: "0.78rem",
+                                              transition: "all 0.3s",
+                                            }}
+                                          >
+                                            Reject
+                                          </button>
+                                        )}
                                     </div>
                                   </motion.div>
                                 )}
@@ -1226,12 +1239,18 @@ const AdminServicesView = () => {
               style={{
                 width: "100%",
                 maxWidth: "500px",
-                background: "var(--secondary)",
-                border: "1px solid rgba(34, 197, 94, 0.2)",
+                background: isLightMode
+                  ? "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(244,238,255,0.98) 100%)"
+                  : "var(--secondary)",
+                border: isLightMode
+                  ? "1px solid rgba(255,255,255,0.95)"
+                  : "1px solid rgba(34, 197, 94, 0.2)",
                 position: "relative",
                 padding: "1.5rem 2rem",
                 borderRadius: "28px",
-                boxShadow: "0 30px 60px rgba(0,0,0,0.5)",
+                boxShadow: isLightMode
+                  ? "0 30px 60px rgba(126, 87, 251, 0.12)"
+                  : "0 30px 60px rgba(0,0,0,0.5)",
               }}
             >
               <button
@@ -1255,7 +1274,9 @@ const AdminServicesView = () => {
                     width: "60px",
                     height: "60px",
                     borderRadius: "18px",
-                    background: "linear-gradient(135deg, #22c55e, #16a34a)",
+                    background: isLightMode
+                      ? "linear-gradient(135deg, #8b5cf6, #6d4dff)"
+                      : "linear-gradient(135deg, #22c55e, #16a34a)",
                     margin: "0 auto 1rem",
                     display: "flex",
                     alignItems: "center",
@@ -1263,7 +1284,9 @@ const AdminServicesView = () => {
                     fontSize: "1.5rem",
                     fontWeight: 900,
                     color: "white",
-                    boxShadow: "0 10px 25px rgba(34, 197, 94, 0.3)",
+                    boxShadow: isLightMode
+                      ? "0 12px 28px rgba(126, 87, 251, 0.22)"
+                      : "0 10px 25px rgba(34, 197, 94, 0.3)",
                   }}
                 >
                   {selectedLead.name?.[0]}
@@ -1341,7 +1364,7 @@ const AdminServicesView = () => {
                       style={{
                         fontSize: "0.65rem",
                         fontWeight: 800,
-                        color: "#22c55e",
+                        color: isLightMode ? "#6d4dff" : "#22c55e",
                         textTransform: "uppercase",
                         letterSpacing: "0.1em",
                       }}
@@ -1367,9 +1390,13 @@ const AdminServicesView = () => {
                   style={{
                     marginBottom: "1.2rem",
                     padding: "1rem 1.25rem",
-                    background: "rgba(16, 185, 129, 0.08)",
+                    background: isLightMode
+                      ? "linear-gradient(135deg, rgba(124,58,237,0.08), rgba(255,255,255,0.96))"
+                      : "rgba(16, 185, 129, 0.08)",
                     borderRadius: "16px",
-                    border: "1px solid rgba(16, 185, 129, 0.15)",
+                    border: isLightMode
+                      ? "1px solid rgba(255,255,255,0.95)"
+                      : "1px solid rgba(16, 185, 129, 0.15)",
                   }}
                 >
                   <div
@@ -1384,7 +1411,7 @@ const AdminServicesView = () => {
                       style={{
                         fontSize: "0.7rem",
                         fontWeight: 800,
-                        color: "#10b981",
+                        color: isLightMode ? "#6d4dff" : "#10b981",
                         textTransform: "uppercase",
                         letterSpacing: "0.05em",
                       }}
@@ -1410,7 +1437,7 @@ const AdminServicesView = () => {
                   style={{
                     fontSize: "0.62rem",
                     fontWeight: 800,
-                    color: "#22c55e",
+                    color: isLightMode ? "#6d4dff" : "#22c55e",
                     textTransform: "uppercase",
                     letterSpacing: "0.08em",
                     display: "flex",
@@ -1437,12 +1464,16 @@ const AdminServicesView = () => {
                           alignItems: "center",
                           gap: "8px",
                           padding: "8px 10px",
-                          background: "var(--dashboard-row-bg)",
+                          background: isLightMode
+                            ? "rgba(255,255,255,0.9)"
+                            : "var(--dashboard-row-bg)",
                           borderRadius: "10px",
-                          border: "1px solid var(--dashboard-card-border)",
+                          border: isLightMode
+                            ? "1px solid rgba(255,255,255,0.95)"
+                            : "1px solid var(--dashboard-card-border)",
                         }}
                       >
-                        <FileText size={13} color="#10b981" />
+                        <FileText size={13} color={isLightMode ? "#6d4dff" : "#10b981"} />
                         <span
                           style={{
                             fontSize: "0.78rem",
@@ -1478,14 +1509,18 @@ const AdminServicesView = () => {
                   style={{
                     width: "100%",
                     padding: "1.2rem",
-                    background: "#22c55e",
-                    border: "none",
+                    background: isLightMode
+                      ? "linear-gradient(135deg, #8b5cf6, #6d4dff)"
+                      : "#22c55e",
+                    border: "1px solid rgba(255,255,255,0.85)",
                     color: "white",
                     borderRadius: "18px",
                     fontWeight: 800,
                     fontSize: "1rem",
                     cursor: "pointer",
-                    boxShadow: "0 8px 24px rgba(34, 197, 94, 0.3)",
+                    boxShadow: isLightMode
+                      ? "0 12px 28px rgba(126, 87, 251, 0.22)"
+                      : "0 8px 24px rgba(34, 197, 94, 0.3)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -1507,14 +1542,18 @@ const AdminServicesView = () => {
                   style={{
                     width: "100%",
                     padding: "1.2rem",
-                    background: "#22c55e",
-                    border: "none",
+                    background: isLightMode
+                      ? "linear-gradient(135deg, #8b5cf6, #6d4dff)"
+                      : "#22c55e",
+                    border: "1px solid rgba(255,255,255,0.85)",
                     color: "white",
                     borderRadius: "18px",
                     fontWeight: 800,
                     fontSize: "1rem",
                     cursor: "pointer",
-                    boxShadow: "0 8px 24px rgba(34, 197, 94, 0.3)",
+                    boxShadow: isLightMode
+                      ? "0 12px 28px rgba(126, 87, 251, 0.22)"
+                      : "0 8px 24px rgba(34, 197, 94, 0.3)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -1535,9 +1574,13 @@ const AdminServicesView = () => {
                   style={{
                     width: "100%",
                     padding: "1.2rem",
-                    background: "rgba(34, 197, 94, 0.08)",
-                    border: "1px solid rgba(34, 197, 94, 0.2)",
-                    color: "#22c55e",
+                    background: isLightMode
+                      ? "linear-gradient(135deg, rgba(124,58,237,0.08), rgba(255,255,255,0.96))"
+                      : "rgba(34, 197, 94, 0.08)",
+                    border: isLightMode
+                      ? "1px solid rgba(255,255,255,0.95)"
+                      : "1px solid rgba(34, 197, 94, 0.2)",
+                    color: isLightMode ? "#6d4dff" : "#22c55e",
                     borderRadius: "18px",
                     fontWeight: 800,
                     fontSize: "1rem",
@@ -1571,151 +1614,169 @@ const ServiceCard = ({
   onClick,
   isLightMode = false,
   isMobile = false,
+  topBadge = null,
 }) => {
   const cat = service.category || "Advisory";
-  const config = categoryColors[cat] || categoryColors["Advisory"];
   const Icon = iconMap[cat] || Zap;
 
   return (
-    <div
-      key={idx}
-      onClick={() => onClick(service)}
-      style={{
-        background: "var(--card-gradient)",
-        borderRadius: isMobile ? "20px" : "24px",
-        border: "1px solid var(--border)",
-        display: "flex",
-        flexDirection: "column",
-        cursor: "pointer",
-        height: "100%",
-        transition: "all 0.2s ease",
-        position: "relative",
-        overflow: "hidden",
-        minHeight: isMobile ? "unset" : "360px",
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = isLightMode
-          ? "rgba(0, 0, 0, 0.2)"
-          : "rgba(255, 255, 255, 0.2)";
-        e.currentTarget.style.transform = "translateY(-4px)";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = isLightMode
-          ? "rgba(0, 0, 0, 0.1)"
-          : "rgba(255, 255, 255, 0.08)";
-        e.currentTarget.style.transform = "none";
-      }}
-    >
+    <div key={idx} style={{ position: "relative", display: "flex", flexDirection: "column" }}>
       <div
+        onClick={() => onClick(service)}
         style={{
-          height: 4,
           background: isLightMode
-            ? "rgba(0,0,0,0.08)"
-            : "rgba(255,255,255,0.05)",
-        }}
-      />
-      <div
-        style={{
-          padding: isMobile ? "1.25rem" : "1.8rem 2rem",
-          flex: 1,
+            ? "linear-gradient(180deg, rgba(227,230,236,0.98) 0%, rgba(211,216,223,0.98) 100%)"
+            : "linear-gradient(180deg, rgba(38, 42, 50, 0.98) 0%, rgba(24, 28, 35, 0.98) 100%)",
+          borderRadius: isMobile ? "20px" : "24px",
+          border: isLightMode
+            ? "1px solid rgba(198,205,214,0.98)"
+            : "1px solid rgba(110,118,132,0.22)",
           display: "flex",
           flexDirection: "column",
-          gap: isMobile ? "0.8rem" : "1.2rem",
+          cursor: "pointer",
+          height: "100%",
+          transition: "all 0.2s ease",
+          position: "relative",
+          overflow: "hidden",
+          minHeight: isMobile ? "unset" : "360px",
+          boxShadow: isLightMode
+            ? "0 18px 42px rgba(31, 41, 55, 0.07)"
+            : "0 18px 42px rgba(31, 41, 55, 0.08)",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.borderColor = isLightMode
+            ? "rgba(214,219,227,1)"
+            : "rgba(110, 118, 132, 0.34)";
+          e.currentTarget.style.transform = "translateY(-4px)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.borderColor = isLightMode
+            ? "rgba(214,219,227,0.98)"
+            : "rgba(110,118,132,0.22)";
+          e.currentTarget.style.transform = "none";
         }}
       >
+        {topBadge && (
+          <div
+            style={{
+              position: "absolute",
+              top: 12,
+              right: 12,
+              zIndex: 3,
+            }}
+          >
+            {topBadge}
+          </div>
+        )}
         <div
           style={{
+            height: 4,
+            background: "linear-gradient(90deg, rgba(148,163,184,0.22), rgba(203,213,225,0.62))",
+          }}
+        />
+        <div
+          style={{
+            padding: isMobile
+              ? "2.8rem 1.25rem 1.25rem"
+              : "3.4rem 2rem 1.8rem",
+            flex: 1,
             display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
+            flexDirection: "column",
+            gap: isMobile ? "0.8rem" : "1.2rem",
           }}
         >
           <div
             style={{
-              width: isMobile ? 40 : 44,
-              height: isMobile ? 40 : 44,
-              borderRadius: "12px",
-              background: isLightMode
-                ? "rgba(0,0,0,0.06)"
-                : "rgba(255,255,255,0.03)",
-              border: isLightMode
-                ? "1px solid rgba(0,0,0,0.12)"
-                : "1px solid rgba(255,255,255,0.05)",
               display: "flex",
+              justifyContent: "flex-start",
               alignItems: "center",
-              justifyContent: "center",
+              gap: "12px",
             }}
           >
-            <Icon
-              size={isMobile ? 18 : 20}
-              color={isLightMode ? "#111111" : "white"}
-            />
+            <div
+              style={{
+                width: isMobile ? 40 : 44,
+                height: isMobile ? 40 : 44,
+                borderRadius: "12px",
+                background: isLightMode
+                  ? "rgba(223,227,233,0.98)"
+                  : "rgba(55, 60, 70, 0.92)",
+                border: isLightMode
+                  ? "1px solid rgba(198,205,214,0.98)"
+                  : "1px solid rgba(110,118,132,0.24)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Icon size={isMobile ? 18 : 20} color={isLightMode ? "#111827" : "#d1d5db"} />
+            </div>
+            <span
+              style={{
+                background: isLightMode
+                  ? "rgba(223,227,233,0.98)"
+                  : "rgba(55, 60, 70, 0.92)",
+                border: isLightMode
+                  ? "1px solid rgba(198,205,214,0.98)"
+                  : "1px solid rgba(110,118,132,0.24)",
+                color: isLightMode ? "#111827" : "#ffffff",
+                padding: "0.35rem 0.8rem",
+                borderRadius: "99px",
+                fontSize: isMobile ? "0.68rem" : "0.78rem",
+                fontWeight: 600,
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+              }}
+            >
+              {service.category}
+            </span>
           </div>
-          <span
-            style={{
-              background: isLightMode
-                ? "rgba(0,0,0,0.06)"
-                : "rgba(255,255,255,0.03)",
-              border: isLightMode
-                ? "1px solid rgba(0,0,0,0.12)"
-                : "1px solid rgba(255,255,255,0.05)",
-              color: isLightMode ? "#111111" : "rgba(255,255,255,0.6)",
-              padding: "0.35rem 0.8rem",
-              borderRadius: "99px",
-              fontSize: isMobile ? "0.65rem" : "0.72rem",
-              fontWeight: 800,
-              letterSpacing: "0.04em",
-              textTransform: "uppercase",
-            }}
-          >
-            {service.category}
-          </span>
-        </div>
-        <div>
-          <h3
-            style={{
-              fontSize: isMobile ? "1.1rem" : "1.25rem",
-              fontWeight: 750,
-              color: isLightMode ? "#111111" : "var(--text)",
-              marginBottom: "0.5rem",
-              letterSpacing: "-0.01em",
-            }}
-          >
-            {service.title}
-          </h3>
-          <p
-            style={{
-              color: isLightMode ? "#4b5563" : "var(--text-secondary)",
-              fontSize: isMobile ? "0.82rem" : "0.88rem",
-              lineHeight: 1.6,
-              margin: 0,
-            }}
-          >
-            {service.description}
-          </p>
-        </div>
+          <div>
+            <h3
+              style={{
+                fontSize: isMobile ? "1.1rem" : "1.25rem",
+                fontWeight: 600,
+                color: isLightMode ? "#111827" : "#ffffff",
+                marginBottom: "0.5rem",
+                letterSpacing: "-0.01em",
+              }}
+            >
+              {service.title}
+            </h3>
+            <p
+              style={{
+                color: isLightMode ? "#111827" : "#ffffff",
+                fontSize: isMobile ? "0.82rem" : "0.88rem",
+                lineHeight: 1.6,
+                margin: 0,
+              }}
+            >
+              {service.description}
+            </p>
+          </div>
 
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "0.5rem",
-            marginTop: "auto",
-            paddingTop: "1rem",
-          }}
-        >
-          <span
+          <div
             style={{
-              fontSize: isMobile ? "0.75rem" : "0.8rem",
-              color: isLightMode ? "#0f172a" : "#10b981",
-              fontWeight: 700,
               display: "flex",
               alignItems: "center",
-              gap: "6px",
+              gap: "0.5rem",
+              marginTop: "auto",
+              paddingTop: "1rem",
             }}
           >
-            Learn More <ArrowRight size={14} />
-          </span>
+            <span
+              style={{
+                fontSize: isMobile ? "0.75rem" : "0.8rem",
+                color: isLightMode ? "#111827" : "#ffffff",
+                fontWeight: 600,
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+              }}
+            >
+              Learn More <ArrowRight size={14} />
+            </span>
+          </div>
         </div>
       </div>
     </div>
@@ -1727,20 +1788,21 @@ const NoServicesFound = ({ onClear }) => (
     style={{
       textAlign: "center",
       padding: "4rem 1rem",
-      background: "rgba(255,255,255,0.03)",
+      background: isLightMode ? "linear-gradient(180deg, rgba(227,230,236,0.98) 0%, rgba(211,216,223,0.98) 100%)" : "linear-gradient(180deg, rgba(38, 42, 50, 0.98) 0%, rgba(24, 28, 35, 0.98) 100%)",
       borderRadius: "24px",
-      border: "1px dashed rgba(255,255,255,0.1)",
+      border: "1px solid rgba(198,205,214,0.98)",
+      boxShadow: "0 18px 40px rgba(31, 41, 55, 0.08)",
     }}
   >
     <Search
       size={48}
-      color="rgba(255,255,255,0.1)"
+      color="#6b7280"
       style={{ marginBottom: "1rem" }}
     />
-    <h3 style={{ fontSize: "1.2rem", color: "#fff", marginBottom: "0.5rem" }}>
+    <h3 style={{ fontSize: "1.2rem", color: "#111827", marginBottom: "0.5rem" }}>
       No services found
     </h3>
-    <p style={{ color: "rgba(255,255,255,0.5)" }}>
+    <p style={{ color: "#111827" }}>
       We couldn't find any services matching your search.
     </p>
     <button
@@ -1748,9 +1810,10 @@ const NoServicesFound = ({ onClear }) => (
       className="btn btn-primary"
       style={{
         marginTop: "1rem",
-        background: "#4361ee",
-        border: "none",
+        background: "linear-gradient(135deg, #8b5cf6, #6d4dff)",
+        border: "1px solid rgba(255,255,255,0.85)",
         borderRadius: "12px",
+        boxShadow: "0 12px 24px rgba(126, 87, 251, 0.18)",
       }}
     >
       Clear Search
@@ -1791,8 +1854,11 @@ const Recommendations = () => {
       }
     }
     return {};
-  }); // { [serviceTitle]: { [docName]: { name, url } } }
+  }); // { [serviceTitle]: { [docName]: Array<{ name, url }> | { name, url } } }
   const isAdmin = storedUser?.role === "admin";
+  const [dismissedServiceRejectionSignatures, setDismissedServiceRejectionSignatures] = useState({});
+  const [isEditingService, setIsEditingService] = useState(false);
+  const [editedService, setEditedService] = useState(null);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [isLightMode, setIsLightMode] = useState(() => {
     if (typeof document !== "undefined" && document.body) {
@@ -1804,6 +1870,11 @@ const Recommendations = () => {
   const selectedServicePricing = selectedService
     ? getServicePricing(selectedService.title)
     : null;
+  const selectedServiceRecommendedFeeAmount = selectedService
+    ? (parseFeeAmount(selectedService.recommendedFees) ??
+      selectedServicePricing?.amount ??
+      1000)
+    : 1000;
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 768);
@@ -1877,6 +1948,19 @@ const Recommendations = () => {
   const getActiveDocs = useCallback(
     (service) => {
       if (!service) return [];
+
+      // If the service has documentsRequired from DB, use them
+      if (Array.isArray(service.documentsRequired) && service.documentsRequired.length > 0) {
+        return service.documentsRequired
+          .filter((docName) => normalizeText(docName) !== "gross annual value data")
+          .map(docName => ({
+            name: docName,
+            required: true, // Assuming all listed docs are required for simplicity
+            desc: `Please upload your ${docName}`
+          }));
+      }
+
+      // Fallback to registry logic
       let list = [...DOCUMENTS_REGISTRY.common];
 
       // Use userData from location state if available, else fallback to storedUser profile
@@ -1932,16 +2016,7 @@ const Recommendations = () => {
     fetchAllServices();
   }, []);
 
-  const ALLOWED_SERVICE_TITLES = [
-    "GST Registration",
-    "GSTR 1 & 3B Filing",
-    "ITR Filing (Individuals)",
-    "Company Incorporation",
-    "MCA Annual Filings"
-  ];
-
-  const ALL_SERVICES = (allDbServices.length > 0 ? allDbServices : FALLBACK_SERVICES)
-    .filter(s => ALLOWED_SERVICE_TITLES.includes(s.title));
+  const ALL_SERVICES = (allDbServices.length > 0 ? allDbServices : FALLBACK_SERVICES);
 
   useEffect(() => {
     const fetchUserLeads = async () => {
@@ -1949,14 +2024,14 @@ const Recommendations = () => {
       if (isLoggedIn && userId) {
         try {
           const apiUrl = import.meta.env.VITE_API_URL;
-          
+
           // For admin/PR/executor - fetch ALL leads without userId filter
           // For regular users - fetch only their own leads
           let url = `${apiUrl}/leads`;
           if (storedUser?.role === "user") {
             url += `?userId=${userId}`;
           }
-          
+
           const response = await axios.get(url, {
             headers: { Authorization: `Bearer ${storedUser.token}` },
           });
@@ -1967,14 +2042,76 @@ const Recommendations = () => {
         }
       }
     };
+
     fetchUserLeads();
+
+    const refreshTimer = setInterval(fetchUserLeads, 15000);
+    const handleFocus = () => fetchUserLeads();
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      clearInterval(refreshTimer);
+      window.removeEventListener("focus", handleFocus);
+    };
   }, [isLoggedIn, storedUser?._id, storedUser?.id, storedUser?.role]);
+
+  function normalizeText(value) {
+    return String(value || "")
+      .toLowerCase()
+      .replace(/&/g, " and ")
+      .replace(/[^a-z0-9]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  const getExecutorRejectionReason = useCallback((lead) => {
+    const rawMessage = String(lead?.executorMessage || lead?.prFeedback || "").trim();
+    if (!rawMessage) return "";
+
+    const cleaned = rawMessage
+      .replace(/^assignment rejected by executor:\s*/i, "")
+      .replace(/^rejected by executor:\s*/i, "")
+      .trim();
+
+    return cleaned || rawMessage;
+  }, []);
+
+  const serviceNamesMatch = useCallback((serviceTitleA, serviceTitleB) => {
+    const a = normalizeText(serviceTitleA);
+    const b = normalizeText(serviceTitleB);
+    if (!a || !b) return false;
+    return a === b || a.includes(b) || b.includes(a);
+  }, []);
+
+  const isExecutorRejectedLead = useCallback(
+    (lead) => {
+      if (!lead || lead?.status !== "Rejected") return false;
+      const execMsg = String(lead?.executorMessage || "").trim();
+      const prMsg = String(lead?.prFeedback || "").toLowerCase();
+      const adminMsg = String(lead?.adminMessage || "").toLowerCase();
+
+      return (
+        execMsg.length > 0 ||
+        prMsg.includes("executor") ||
+        prMsg.includes("assignment") ||
+        adminMsg.includes("executor") ||
+        adminMsg.includes("assignment") ||
+        prMsg.includes("rejected by executor")
+      );
+    },
+    [],
+  );
+
+  const isPrRejectedLead = useCallback(
+    (lead) => {
+      if (!lead || lead?.status !== "Rejected") return false;
+      return !isExecutorRejectedLead(lead);
+    },
+    [isExecutorRejectedLead],
+  );
 
   const getLatestLeadForService = useCallback(
     (serviceTitle) => {
-      const normalizedTarget = String(serviceTitle || "").trim().toLowerCase();
-      if (!normalizedTarget) return null;
-
       const sorted = [...userLeads].sort((a, b) => {
         const aTime = new Date(a?.updatedAt || a?.createdAt || 0).getTime();
         const bTime = new Date(b?.updatedAt || b?.createdAt || 0).getTime();
@@ -1984,44 +2121,129 @@ const Recommendations = () => {
       return (
         sorted.find(
           (lead) =>
-            String(lead?.serviceName || "").trim().toLowerCase() ===
-            normalizedTarget,
+            serviceNamesMatch(lead?.serviceName, serviceTitle),
         ) || null
       );
     },
-    [userLeads],
+    [userLeads, serviceNamesMatch],
+  );
+
+  const getRejectedLeadForService = useCallback(
+    (serviceTitle) => {
+      const sorted = [...userLeads].sort((a, b) => {
+        const aTime = new Date(a?.updatedAt || a?.createdAt || 0).getTime();
+        const bTime = new Date(b?.updatedAt || b?.createdAt || 0).getTime();
+        return bTime - aTime;
+      });
+
+      return (
+        sorted.find(
+          (lead) =>
+            serviceNamesMatch(lead?.serviceName, serviceTitle) &&
+            isPrRejectedLead(lead),
+        ) ||
+        sorted.find(
+          (lead) =>
+            serviceNamesMatch(lead?.serviceName, serviceTitle) &&
+            isExecutorRejectedLead(lead),
+        ) ||
+        null
+      );
+    },
+    [userLeads, isExecutorRejectedLead, isPrRejectedLead, serviceNamesMatch],
   );
 
   const getDocumentState = useCallback(
     (serviceTitle, docName) => {
       const lead = getLatestLeadForService(serviceTitle);
-      const serverDoc = Array.isArray(lead?.documents)
-        ? lead.documents.find(
-            (doc) => String(doc?.name || "").trim() === String(docName || "").trim(),
-          )
-        : null;
+      const serviceRejectionState = getServiceRejectionState(serviceTitle);
+      const serverDocs = Array.isArray(lead?.documents)
+        ? lead.documents.filter(
+          (doc) =>
+            normalizeText(doc?.name) === normalizeText(docName),
+        )
+        : [];
       const localDoc = uploadedDocs?.[serviceTitle]?.[docName];
+      const localDocsArr = Array.isArray(localDoc)
+        ? localDoc
+        : localDoc
+          ? [localDoc]
+          : [];
+      const serverDocsArr = Array.isArray(serverDocs) ? serverDocs : [];
+
+      if (serviceRejectionState) {
+        if (localDocsArr.length > 0) {
+          const first = localDocsArr[0];
+          return {
+            uploaded: true,
+            reuploadRequired: false,
+            message: "Reuploaded. Ready to submit.",
+            uploadedName: first?.name || docName,
+            uploadedUrl: first?.url || "",
+            publicId: first?.publicId || "",
+            uploadedNames: localDocsArr.map((d) => d?.name).filter(Boolean),
+            uploadedUrls: localDocsArr.map((d) => d?.url).filter(Boolean),
+            fullDocs: localDocsArr,
+          };
+        }
+
+        return {
+          uploaded: false,
+          reuploadRequired: true,
+          message: "Please reupload the corrected file below.",
+          uploadedName: docName,
+          uploadedUrl: "",
+          publicId: "",
+          uploadedNames: localDocsArr.map((d) => d?.name).filter(Boolean),
+          uploadedUrls: localDocsArr.map((d) => d?.url).filter(Boolean),
+          fullDocs: localDocsArr,
+        };
+      }
 
       // If user already uploaded a replacement locally, treat it as the latest state.
-      if (localDoc) {
+      if (localDocsArr.length > 0) {
+        const first = localDocsArr[0];
         return {
           uploaded: true,
           reuploadRequired: false,
           message: "",
-          uploadedName: localDoc.name || docName,
-          uploadedUrl: localDoc.url || serverDoc?.url || "",
+          uploadedName: first?.name || docName,
+          uploadedUrl: first?.url || "",
+          publicId: first?.publicId || "",
+          uploadedNames: localDocsArr.map((d) => d?.name).filter(Boolean),
+          uploadedUrls: localDocsArr.map((d) => d?.url).filter(Boolean),
+          fullDocs: localDocsArr,
         };
       }
 
-      if (serverDoc) {
+      if (serverDocsArr.length > 0) {
+        const nonRejected = [...serverDocsArr]
+          .sort((a, b) => {
+            const aTime = new Date(a?.uploadedAt || a?.createdAt || 0).getTime();
+            const bTime = new Date(b?.uploadedAt || b?.createdAt || 0).getTime();
+            return bTime - aTime;
+          })
+          .find((d) => d?.status !== "Rejected");
+        const latest =
+          [...serverDocsArr].sort((a, b) => {
+            const aTime = new Date(a?.uploadedAt || a?.createdAt || 0).getTime();
+            const bTime = new Date(b?.uploadedAt || b?.createdAt || 0).getTime();
+            return bTime - aTime;
+          })[0] || null;
+
+        const selectedDoc = nonRejected || latest;
         return {
           uploaded: true,
-          reuploadRequired: serverDoc.status === "Rejected",
+          reuploadRequired: !nonRejected && latest?.status === "Rejected",
           message:
-            String(serverDoc.rejectionMessage || "").trim() ||
+            String(latest?.rejectionMessage || "").trim() ||
             "This document was rejected. Please reupload the corrected file.",
-          uploadedName: serverDoc.name || docName,
-          uploadedUrl: serverDoc.url || "",
+          uploadedName: selectedDoc?.name || docName,
+          uploadedUrl: selectedDoc?.url || "",
+          publicId: selectedDoc?.publicId || "",
+          uploadedNames: serverDocsArr.map((d) => d?.name).filter(Boolean),
+          uploadedUrls: serverDocsArr.map((d) => d?.url).filter(Boolean),
+          fullDocs: serverDocsArr,
         };
       }
 
@@ -2031,9 +2253,142 @@ const Recommendations = () => {
         message: "",
         uploadedName: docName,
         uploadedUrl: "",
+        uploadedNames: [],
+        uploadedUrls: [],
       };
     },
     [getLatestLeadForService, uploadedDocs],
+  );
+
+  const getServiceRejectionState = useCallback(
+    (serviceTitle) => {
+      const lead =
+        getRejectedLeadForService(serviceTitle) ||
+        getLatestLeadForService(serviceTitle);
+      if (!lead || String(lead?.status || "").trim().toLowerCase() !== "rejected") {
+        return null;
+      }
+
+      if (isExecutorRejectedLead(lead)) {
+        const reason = getExecutorRejectionReason(lead);
+        return {
+          lead,
+          type: "executor",
+          status: "Rejected by Executor",
+          message: reason || "The executor rejected this service.",
+        };
+      }
+
+      const prReason = String(lead?.prFeedback || "").trim();
+      const adminReason = String(lead?.adminMessage || "").trim();
+      const displayReason = prReason || adminReason;
+
+      return {
+        lead,
+        type: "pr",
+        status: "Rejected by PR",
+        message: displayReason || "The PR rejected this service.",
+      };
+    },
+    [
+      getLatestLeadForService,
+      getRejectedLeadForService,
+      getExecutorRejectionReason,
+      isExecutorRejectedLead,
+    ],
+  );
+
+  const getServiceRejectionSignature = useCallback(
+    (serviceTitle) => {
+      const serviceRejectionState = getServiceRejectionState(serviceTitle);
+      if (!serviceRejectionState) return "";
+
+      return [
+        normalizeText(serviceTitle),
+        normalizeText(serviceRejectionState.message),
+        String(serviceRejectionState.lead?._id || serviceRejectionState.lead?.id || ""),
+      ].join("::");
+    },
+    [getServiceRejectionState],
+  );
+
+  const renderServiceCardBadge = useCallback(
+    (serviceTitle) => {
+      const serviceRejectionState = getServiceRejectionState(serviceTitle);
+      if (serviceRejectionState) {
+        const dismissed =
+          dismissedServiceRejectionSignatures[normalizeText(serviceTitle)] ===
+          getServiceRejectionSignature(serviceTitle);
+        if (dismissed) return null;
+
+        return (
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              padding: "0.38rem 0.72rem",
+              borderRadius: "999px",
+              background: "rgba(239, 68, 68, 0.14)",
+              border: "1px solid rgba(239, 68, 68, 0.32)",
+              color: "#ef4444",
+              fontWeight: 800,
+              letterSpacing: "0.05em",
+              textTransform: "uppercase",
+              fontSize: "0.7rem",
+              whiteSpace: "nowrap",
+              boxShadow: "0 10px 24px rgba(0,0,0,0.14)",
+            }}
+          >
+            {serviceRejectionState.status}
+          </div>
+        );
+      }
+
+      const latestLead = getLatestLeadForService(serviceTitle);
+      if (String(latestLead?.status || "").trim() !== "Completed") return null;
+
+      return (
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            padding: "0.38rem 0.72rem",
+            borderRadius: "999px",
+            background: "rgba(16, 185, 129, 0.14)",
+            border: "1px solid rgba(16, 185, 129, 0.32)",
+            color: "#10b981",
+            fontWeight: 800,
+            letterSpacing: "0.05em",
+            textTransform: "uppercase",
+            fontSize: "0.7rem",
+            whiteSpace: "nowrap",
+            boxShadow: "0 10px 24px rgba(0,0,0,0.14)",
+          }}
+        >
+          Completed
+        </div>
+      );
+    },
+    [
+      dismissedServiceRejectionSignatures,
+      getLatestLeadForService,
+      getServiceRejectionSignature,
+      getServiceRejectionState,
+    ],
+  );
+
+  const dismissServiceRejectionMessage = useCallback(
+    (serviceTitle) => {
+      const signature = getServiceRejectionSignature(serviceTitle);
+      if (!signature) return;
+
+      const key = normalizeText(serviceTitle);
+      setDismissedServiceRejectionSignatures((prev) => ({
+        ...prev,
+        [key]: signature,
+      }));
+    },
+    [getServiceRejectionSignature],
   );
 
   // If admin - don't return early, let them see the same User Services and Other Services view
@@ -2058,197 +2413,325 @@ const Recommendations = () => {
     activeProfile.businessStage
   );
 
-  // -- TRIGGER - exact service title lookup ---------------------------------
-  // Broad category triggers (used when user picks from Have a Business checkboxes)
-  const BROAD_TRIGGER_MAP = {
-    "GST Compliance": [
-      "GST Registration",
-      "GSTR 1 & 3B Filing",
-      "GST 2B Reconciliation",
-      "GST Notice Management",
-      "E-Way Bill & E-Invoicing",
-      "GST Health Check",
-    ],
-    "Income Tax": [
-      "ITR Filing (Individuals)",
-      "TDS Payment & Returns",
-      "IT Notice Management",
-      "Refund Postponement/Reissue",
-    ],
-    "Virtual CFO": ["Virtual CFO Service", "Virtual Accountant"],
-    Registration: [
-      "Company Incorporation",
-      "Startup Consulting",
-      "Import & Export (IEC)",
-    ],
-    "Legal Advisory": [
-      "MCA Annual Filings",
-      "Legal & Secretarial Service",
-      "Director & Professional Svc",
-      "Share Transfer & ESOP",
-    ],
-    Payroll: [
-      "EPF & ESI Management",
-      "TDS (Payroll) Compliance",
-      "Technical Service",
-    ],
-    // Focused startup flag - shows only the 3 most essential startup services
-    startingBusiness: [
-      "Company Incorporation",
-      "Startup Consulting",
-      "GST Registration",
-    ],
-  };
-
-  // Granular flags set by specific Yes/No answers - these override the broad Income Tax mapping
-  const GRANULAR_FLAG_MAP = {
-    salaried: ["ITR Filing (Individuals)"],
-    capitalGains: ["Capital Gains Tax Filing"],
-    houseProperty: ["Rental & House Property ITR"],
-    otherSources: ["ITR Filing (Individuals)"],
-  };
-
-  const broadTriggerMapLower = Object.fromEntries(
-    Object.entries(BROAD_TRIGGER_MAP).map(([k, v]) => [k.toLowerCase(), v]),
-  );
-  const granularFlagMapLower = Object.fromEntries(
-    Object.entries(GRANULAR_FLAG_MAP).map(([k, v]) => [k.toLowerCase(), v]),
-  );
-  const granularFlags = Object.keys(granularFlagMapLower);
-
-  // Selected interests from onboarding options
-  const normalizedNeeds = userNeeds
-    .filter(Boolean)
-    .map((need) => String(need).trim().toLowerCase());
-
-  // Entered interests from text-based onboarding answers
-  const interestText = [
-    activeProfile.industry,
-    activeProfile.businessStage,
-    activeProfile.path,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-
-  const inferredNeedTokens = [];
-  const keywordNeedMap = [
-    { keyword: "capital gain", needs: ["income tax", "capitalgains"] },
-    { keyword: "capital gains", needs: ["income tax", "capitalgains"] },
-    { keyword: "income tax", needs: ["income tax"] },
-    { keyword: "itr", needs: ["income tax"] },
-    { keyword: "gst", needs: ["gst compliance"] },
-    { keyword: "payroll", needs: ["payroll"] },
-    { keyword: "epf", needs: ["payroll"] },
-    { keyword: "esi", needs: ["payroll"] },
-    { keyword: "cfo", needs: ["virtual cfo"] },
-    { keyword: "account", needs: ["virtual cfo"] },
-    { keyword: "legal", needs: ["legal advisory"] },
-    { keyword: "mca", needs: ["legal advisory"] },
-    { keyword: "registration", needs: ["registration"] },
-    { keyword: "incorporation", needs: ["registration"] },
-    { keyword: "startup", needs: ["startingbusiness"] },
-    { keyword: "house property", needs: ["houseproperty"] },
-    { keyword: "rental", needs: ["houseproperty"] },
-    { keyword: "salary", needs: ["salaried"] },
-  ];
-
-  keywordNeedMap.forEach(({ keyword, needs }) => {
-    if (interestText.includes(keyword)) {
-      needs.forEach((need) => inferredNeedTokens.push(need));
-    }
-  });
-
-  const allNeedTokens = [...normalizedNeeds, ...inferredNeedTokens];
-
-  // If ANY granular income flag is present, broad income mapping is suppressed.
-  const hasGranularIncomeFlags = allNeedTokens.some((n) =>
-    granularFlags.includes(n),
-  );
-
   const personalisedTitles = new Set();
 
-  allNeedTokens.forEach((need) => {
-    if (need === "income tax" && hasGranularIncomeFlags) {
-      return;
-    }
-    const broadTitles = broadTriggerMapLower[need];
-    if (broadTitles) {
-      broadTitles.forEach((t) => personalisedTitles.add(t));
-      return;
+  // Aliases are written in business language, but we always resolve them to a
+  // title that actually exists in ALL_SERVICES (DB or fallback) to avoid
+  // "matched but not displayable" situations.
+  const SERVICE_ALIASES = {
+    "GST Registration": ["gst registration"],
+    "GSTR 1 & 3B Filing": [
+      "gstr 1 filing",
+      "gstr 1 & 3b filing",
+      "gstr 1 and 3b filing",
+      "gstr1 filing",
+    ],
+    "ITR Filing (Individuals)": ["itr filing", "income tax filing"],
+    "Company Incorporation": [
+      "company incorporation",
+      "private limited",
+      "llp",
+      "company incorporation pvt ltd llp",
+    ],
+    "Virtual CFO Service": ["virtual cfo", "virtual cfo service"],
+    "Accounts Bookkeeping": ["accounts bookkeeping", "bookkeeping", "accounts"],
+    "MCA Annual Filings": ["mca annual filings", "roc filings"],
+    "Legal & Secretarial Services": ["legal secretarial services", "legal advisory"],
+    "EPF & ESI Management": ["epf esi management", "epf esi", "payroll"],
+    "TDS Filing": ["tds filing", "tds payment returns", "tds payroll compliance"],
+    "Capital Gains": ["capital gains", "capital gains tax filing", "sale of property"],
+    "MSME (Udyam) Registration": ["msme registration", "udyam registration"],
+  };
+
+  const resolveBestServiceTitleForAlias = (aliasNormalized) => {
+    if (!aliasNormalized) return null;
+
+    const candidates = ALL_SERVICES
+      .map((service) => ({
+        title: service.title,
+        normalized: normalizeText(service.title),
+      }))
+      .filter((item) => item.normalized);
+
+    // Prefer exact normalized title matches first
+    const exact = candidates.find((c) => c.normalized === aliasNormalized);
+    if (exact) return exact.title;
+
+    // Next: require all alias tokens to exist in the service title tokens.
+    const tokens = aliasNormalized.split(" ").filter(Boolean);
+    if (tokens.length === 0) return null;
+
+    const tokenMatches = candidates.filter((c) =>
+      tokens.every((t) => c.normalized.includes(t)),
+    );
+    if (tokenMatches.length === 0) return null;
+
+    // Choose the most specific (shortest title) among matches.
+    tokenMatches.sort((a, b) => a.normalized.length - b.normalized.length);
+    return tokenMatches[0].title;
+  };
+
+  const SERVICE_LOOKUP = (() => {
+    const lookup = new Map();
+
+    const register = (title, aliases = []) => {
+      [title, ...aliases].forEach((label) => {
+        const normalized = normalizeText(label);
+        if (normalized && !lookup.has(normalized)) {
+          lookup.set(normalized, title);
+        }
+      });
+    };
+
+    ALL_SERVICES.forEach((service) => {
+      register(service.title);
+    });
+
+    Object.entries(SERVICE_ALIASES).forEach(([preferredTitle, aliases]) => {
+      // Try to resolve the preferred title to an existing service title first.
+      const preferredResolved =
+        resolveBestServiceTitleForAlias(normalizeText(preferredTitle)) ||
+        preferredTitle;
+
+      // Only register the preferred title if it actually exists in ALL_SERVICES.
+      const preferredExists = ALL_SERVICES.some(
+        (s) => normalizeText(s?.title) === normalizeText(preferredResolved),
+      );
+      if (preferredExists) {
+        register(preferredResolved);
+      }
+
+      // Register each alias directly to the best-matching existing title.
+      (aliases || []).forEach((alias) => {
+        const resolved = resolveBestServiceTitleForAlias(normalizeText(alias));
+        if (resolved) {
+          register(resolved, [alias]);
+        }
+      });
+    });
+
+    return lookup;
+  })();
+
+  const splitManualNeed = (input) =>
+    String(input || "")
+      .split(/[,;\n/]/g)
+      .flatMap((chunk) => chunk.split(/\s+and\s+/gi))
+      .map((part) => part.replace(/\s+/g, " ").trim())
+      .filter(Boolean);
+
+  const SERVICE_PHRASES = Array.from(SERVICE_LOOKUP.entries())
+    .sort((a, b) => b[0].length - a[0].length);
+
+  const findServiceTitles = (input) => {
+    const entries = splitManualNeed(input);
+    const matchedTitles = new Set();
+    const normalizedInput = normalizeText(input);
+
+    entries.forEach((entry) => {
+      const normalizedEntry = normalizeText(entry);
+      if (!normalizedEntry) return;
+      const matchedTitle = SERVICE_LOOKUP.get(normalizedEntry);
+      if (matchedTitle) {
+        matchedTitles.add(matchedTitle);
+      }
+    });
+
+    SERVICE_PHRASES.forEach(([phrase, title]) => {
+      if (!phrase || !title) return;
+      if (matchedTitles.has(title)) return;
+      if (normalizedInput.includes(phrase)) {
+        matchedTitles.add(title);
+      }
+    });
+
+    return matchedTitles;
+  };
+
+  const getManualNeedServices = (input) => {
+    const entries = splitManualNeed(input);
+    const normalizedEntries = entries
+      .map((raw) => ({ raw, normalized: normalizeText(raw) }))
+      .filter((e) => e.normalized);
+
+    const matchedTitles = findServiceTitles(input);
+    const matchedServices = ALL_SERVICES.filter((s) => matchedTitles.has(s.title));
+
+    const matchedNormalizedTitles = new Set(
+      matchedServices.map((s) => normalizeText(s.title)),
+    );
+
+    const customServices = normalizedEntries
+      .filter((e) => {
+        const resolvedTitle = SERVICE_LOOKUP.get(e.normalized);
+        if (resolvedTitle) return false;
+        if (matchedNormalizedTitles.has(e.normalized)) return false;
+        return true;
+      })
+      .map((e) => ({
+        title: e.raw,
+        description:
+          "This is a service you requested during onboarding. Open it to share details and documents with our team.",
+        category: "Advisory",
+        trigger: "Requested",
+      }));
+
+    // Preserve the user's order as much as possible:
+    // 1) catalog matches resolved from entries (in entry order)
+    // 2) any remaining catalog matches (from phrase scan)
+    // 3) custom requested cards for unmatched entries
+    const orderedMatched = [];
+    const usedTitles = new Set();
+
+    normalizedEntries.forEach((e) => {
+      const resolvedTitle = SERVICE_LOOKUP.get(e.normalized);
+      if (!resolvedTitle) return;
+
+      const svc = ALL_SERVICES.find(
+        (s) => normalizeText(s.title) === normalizeText(resolvedTitle),
+      );
+      if (svc && !usedTitles.has(svc.title)) {
+        orderedMatched.push(svc);
+        usedTitles.add(svc.title);
+      }
+    });
+
+    matchedServices.forEach((svc) => {
+      if (!usedTitles.has(svc.title)) {
+        orderedMatched.push(svc);
+        usedTitles.add(svc.title);
+      }
+    });
+
+    return [...orderedMatched, ...customServices];
+  };
+
+  const selectedPathRules = {
+    filing: {
+      flags: {
+        // Each entry is a user-facing alias; we resolve it to an existing
+        // ALL_SERVICES title via SERVICE_LOOKUP / resolver.
+        salaried: ["itr filing", "income tax filing"],
+        capitalGains: ["capital gains", "capital gains tax filing"],
+        houseProperty: ["house property", "rental income"],
+        otherSources: ["other income", "interest income", "dividend income"],
+      },
+      // Exactly 2 services when user selected "No" for all flags
+      fallback: ["itr filing", "tds filing"],
+    },
+    capital: {
+      flags: {
+        capitalGains: ["capital gains", "capital gains tax filing"],
+        houseProperty: ["sale of property", "house property"],
+        otherSources: ["other income", "interest income", "dividend income"],
+      },
+      fallback: ["capital gains", "sale of property"],
+    },
+  };
+
+  const addManualNeedMatches = (targetSet, input) => {
+    findServiceTitles(input).forEach((title) => targetSet.add(title));
+  };
+
+  if (activeProfile.path === "filing" || activeProfile.path === "capital") {
+    const pathRules = selectedPathRules[activeProfile.path];
+    const hasAnyYes = Object.keys(pathRules.flags).some(
+      (flagKey) => activeProfile[flagKey] === true,
+    );
+
+    if (hasAnyYes) {
+      // If the user said "Yes" to any option, include ALL services implied by
+      // every "Yes" answer (no limiting).
+      Object.keys(pathRules.flags).forEach((flagKey) => {
+        if (activeProfile[flagKey] === true) {
+          pathRules.flags[flagKey].forEach((alias) => {
+            // Resolve alias to an existing catalog service title
+            const normalizedAlias = normalizeText(alias);
+            const direct = SERVICE_LOOKUP.get(normalizedAlias);
+            if (direct) {
+              personalisedTitles.add(direct);
+              return;
+            }
+            const resolved = resolveBestServiceTitleForAlias(normalizedAlias);
+            if (resolved) personalisedTitles.add(resolved);
+          });
+        }
+      });
+    } else {
+      // If the user selected "No" for all options, show exactly 2 services
+      // for the chosen path (filing vs capital).
+      const two = [];
+      const used = new Set();
+
+      const addUpToTwoFromAlias = (alias) => {
+        if (two.length >= 2) return;
+        const normalizedAlias = normalizeText(alias);
+        const direct = SERVICE_LOOKUP.get(normalizedAlias);
+        const resolved = direct || resolveBestServiceTitleForAlias(normalizedAlias);
+        if (resolved && !used.has(resolved)) {
+          used.add(resolved);
+          two.push(resolved);
+        }
+      };
+
+      // Primary defaults based on the path
+      pathRules.fallback.forEach((alias) => addUpToTwoFromAlias(alias));
+
+      // Safety net: if matching yields < 2 (e.g., DB service names differ),
+      // pick two obvious services from the catalog by keyword.
+      if (two.length < 2) {
+        const keyword =
+          activeProfile.path === "capital" ? "capital gains" : "itr filing";
+        ALL_SERVICES.forEach((svc) => {
+          if (two.length >= 2) return;
+          const text = normalizeText(
+            [svc.title, svc.description, svc.trigger, svc.category]
+              .filter(Boolean)
+              .join(" "),
+          );
+          if (text.includes(keyword)) {
+            const t = svc.title;
+            if (!used.has(t)) {
+              used.add(t);
+              two.push(t);
+            }
+          }
+        });
+      }
+
+      two.slice(0, 2).forEach((t) => personalisedTitles.add(t));
     }
 
-    const granularTitles = granularFlagMapLower[need];
-    if (granularTitles) {
-      granularTitles.forEach((t) => personalisedTitles.add(t));
-    }
-  });
+  } else if (
+    activeProfile.path === "starting" ||
+    activeProfile.path === "having"
+  ) {
+    // Starting/Having now rely only on the typed "required services" field.
+    addManualNeedMatches(personalisedTitles, activeProfile.manualNeed);
+  }
 
-  ALL_SERVICES.forEach((service) => {
-    const trigger = String(service.trigger || "")
-      .trim()
-      .toLowerCase();
-    const title = String(service.title || "")
-      .trim()
-      .toLowerCase();
-    if (allNeedTokens.includes(trigger) || allNeedTokens.includes(title)) {
-      personalisedTitles.add(service.title);
-    }
-  });
-
-  // Backfill granular flags from profile booleans if needs array is incomplete
-  if (activeProfile.salaried) {
-    GRANULAR_FLAG_MAP.salaried.forEach((title) =>
-      personalisedTitles.add(title),
-    );
-  }
-  if (activeProfile.capitalGains) {
-    GRANULAR_FLAG_MAP.capitalGains.forEach((title) =>
-      personalisedTitles.add(title),
-    );
-  }
-  if (activeProfile.houseProperty) {
-    GRANULAR_FLAG_MAP.houseProperty.forEach((title) =>
-      personalisedTitles.add(title),
-    );
-  }
-  if (activeProfile.otherSources) {
-    GRANULAR_FLAG_MAP.otherSources.forEach((title) =>
-      personalisedTitles.add(title),
-    );
+  // Path-specific defaults to ensure "Personalised Services" is not empty
+  if (personalisedTitles.size === 0 && activeProfile.path) {
+    // Leave empty when the user hasn't typed any required services.
+    // This keeps the personalised section strictly user-driven.
   }
 
   // Apply search filter
-  const filterFn = (s) =>
-    searchQuery.trim() === "" ||
-    s.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    s.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    s.category.toLowerCase().includes(searchQuery.toLowerCase());
-
-  const personalisedServices = ALL_SERVICES.filter((s) =>
-    personalisedTitles.has(s.title),
-  );
-
-  // Strict onboarding behavior: if profile exists, top section shows only profile-related services.
-  // No fallback-to-generic inside personalised section for onboarded users.
-  let myServices;
-  if (searchQuery.trim() !== "") {
-    myServices = ALL_SERVICES.filter(filterFn);
-  } else if (hasOnboardingProfile) {
-    myServices = personalisedServices;
-  } else if (recommendations && recommendations.length > 0) {
-    const recTitles = new Set(recommendations.map((r) => r.title));
-    myServices = ALL_SERVICES.filter((s) => recTitles.has(s.title));
-  } else {
-    myServices = ALL_SERVICES.filter((s) =>
-      [
-        "ITR Filing (Individuals)",
-        "GST Registration",
-        "Virtual CFO Service",
-        "Company Incorporation",
-      ].includes(s.title),
+  const filterFn = (s) => {
+    const query = searchQuery.toLowerCase().trim();
+    if (query === "") return true;
+    return (
+      s.title.toLowerCase().includes(query) ||
+      (s.description && s.description.toLowerCase().includes(query)) ||
+      (s.category && s.category.toLowerCase().includes(query)) ||
+      (s.trigger && s.trigger.toLowerCase().includes(query))
     );
-  }
+  };
+
+  const personalisedServices =
+    activeProfile.path === "starting" || activeProfile.path === "having"
+      ? getManualNeedServices(activeProfile.manualNeed)
+      : ALL_SERVICES.filter((s) => personalisedTitles.has(s.title));
 
   const submittedServiceLeads = (() => {
     const sorted = [...userLeads].sort((a, b) => {
@@ -2271,11 +2754,33 @@ const Recommendations = () => {
   const submittedServices = submittedServiceLeads
     .map((lead) => {
       const serviceName = String(lead?.serviceName || "").trim();
-      const matchedService = ALL_SERVICES.find(
-        (service) =>
-          String(service?.title || "").trim().toLowerCase() ===
-          serviceName.toLowerCase(),
-      );
+      const normalizedLead = normalizeText(serviceName);
+
+      const matchedService =
+        // 1) Exact match by normalized title
+        ALL_SERVICES.find(
+          (service) =>
+            normalizeText(String(service?.title || "")) === normalizedLead,
+        ) ||
+        // 2) Alias-based match (so "TDS Filing" maps to the real catalog entry)
+        (() => {
+          const resolved =
+            SERVICE_LOOKUP.get(normalizedLead) ||
+            resolveBestServiceTitleForAlias(normalizedLead);
+          if (!resolved) return null;
+          return ALL_SERVICES.find(
+            (service) =>
+              normalizeText(String(service?.title || "")) ===
+              normalizeText(resolved),
+          );
+        })() ||
+        // 3) Token containment as a last resort
+        ALL_SERVICES.find((service) => {
+          const normalizedTitle = normalizeText(String(service?.title || ""));
+          if (!normalizedTitle) return false;
+          const tokens = normalizedLead.split(" ").filter(Boolean);
+          return tokens.length > 0 && tokens.every((t) => normalizedTitle.includes(t));
+        });
 
       if (matchedService) return matchedService;
 
@@ -2291,29 +2796,76 @@ const Recommendations = () => {
 
   const hasSubmittedServices = isLoggedIn && submittedServices.length > 0;
 
+  // Strict onboarding behavior: if profile exists, top section shows only profile-related services.
+  // No fallback-to-generic inside personalised section for onboarded users.
+  let myServices;
   const isSearching = searchQuery.trim() !== "";
 
-  if (hasSubmittedServices) {
-    const submittedFilterFn = (s) =>
-      searchQuery.trim() === "" ||
-      s.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      String(s.description || "")
-        .toLowerCase()
-        .includes(searchQuery.toLowerCase()) ||
-      String(s.category || "").toLowerCase().includes(searchQuery.toLowerCase());
-
-    myServices = submittedServices.filter(submittedFilterFn);
+  if (isSearching) {
+    // When searching, look through ALL available services + any custom submitted ones
+    const searchPool = new Map();
+    ALL_SERVICES.forEach(s => searchPool.set(s.title, s));
+    submittedServices.forEach(s => {
+      if (!searchPool.has(s.title)) searchPool.set(s.title, s);
+    });
+    myServices = Array.from(searchPool.values()).filter(filterFn);
+  } else if (hasSubmittedServices) {
+    // Priority 1: If logged in and has active services, show them first
+    myServices = submittedServices;
+  } else if (hasOnboardingProfile) {
+    // Priority 2: Personalised services from onboarding
+    myServices = personalisedServices;
+  } else if (recommendations && recommendations.length > 0) {
+    // Priority 3: Recommendations from state
+    const recTitles = new Set(recommendations.map((r) => r.title));
+    myServices = ALL_SERVICES.filter((s) => recTitles.has(s.title));
+  } else {
+    // Default fallback
+    myServices = ALL_SERVICES.filter((s) =>
+      [
+        "ITR Filing (Individuals)",
+        "GST Registration",
+        "Virtual CFO Service",
+        "Company Incorporation",
+      ].includes(s.title),
+    );
   }
+
+  // Moved above for reference scope
+
+  // isSearching is already defined above
+  // The redundant submittedServices filtering block is removed as it's now handled in the main myServices logic.
 
   const displayedMyServiceTitles = new Set(myServices.map((s) => s.title));
 
   // Everything else goes to "Other Services"
   const otherServices = isSearching
-    ? ALL_SERVICES.filter((s) => !filterFn(s))
+    ? []
     : ALL_SERVICES.filter((s) => !displayedMyServiceTitles.has(s.title));
 
+  const CATEGORY_ORDER = [
+    "GST COMPLIANCE",
+    "MCA & COMPANY COMPLIANCE",
+    "EPF, ESI & PAYROLL COMPLIANCE",
+    "INCOME TAX & ITR FILING",
+    "TRUST & NGO COMPLIANCE",
+    "VIRTUAL CFO & ACCOUNTING SERVICES"
+  ];
+
+  const groupedOtherServices = otherServices.reduce((acc, s) => {
+    const cat = s.category || "VIRTUAL CFO & ACCOUNTING SERVICES";
+    if (!acc[cat]) acc[cat] = [];
+    acc[cat].push(s);
+    return acc;
+  }, {});
+
+  const ALL_OTHER_CATS = Object.keys(groupedOtherServices).filter(
+    (cat) => !CATEGORY_ORDER.includes(cat)
+  );
+  const FINAL_CATEGORY_ORDER = [...CATEGORY_ORDER, ...ALL_OTHER_CATS];
+
   const handleSearch = () => {
-    // Searching is now handled dynamically as user types
+    // Search updates live as the user types.
   };
 
   const isFreshOnboarding =
@@ -2354,7 +2906,7 @@ const Recommendations = () => {
               style={{
                 fontFamily: "var(--font-display)",
                 fontSize: "clamp(2rem, 4vw, 3rem)",
-                fontWeight: 600,
+                fontWeight: 500,
                 letterSpacing: "0.05em",
                 marginBottom: "1.2rem",
                 color: "var(--text)",
@@ -2364,16 +2916,15 @@ const Recommendations = () => {
                 "Search Results"
               ) : hasSubmittedServices ? (
                 <>
-                  Your <span style={{ color: "#10b981" }}>Services</span>
+                  Your Services
                 </>
-              ) : userNeeds.length > 0 ? (
+              ) : hasOnboardingProfile || (recommendations?.length > 0) ? (
                 <>
-                  Your <span style={{ color: "#10b981" }}>Personalised</span>{" "}
-                  Services
+                  Your Personalised Services
                 </>
               ) : (
                 <>
-                  Your <span style={{ color: "#10b981" }}>Service Roadmap</span>
+                  Your Service Roadmap
                 </>
               )}
             </h1>
@@ -2392,7 +2943,9 @@ const Recommendations = () => {
                 ? `Showing services matching "${searchQuery}"`
                 : hasSubmittedServices
                   ? "These are the services you already submitted. Open any service to track and update documents."
-                : "Based on your business profile, we've curated the most impactful services to accelerate your growth and ensure compliance."}
+                  : hasOnboardingProfile
+                    ? "Based on your onboarding answers, we've curated only the services that match your selected path and follow-up responses."
+                    : "Based on your business profile, we've curated the most impactful services to accelerate your growth and ensure compliance."}
             </p>
 
             <div
@@ -2409,15 +2962,23 @@ const Recommendations = () => {
                   width: "100%",
                   alignItems: "center",
                   gap: "10px",
-                  background: "var(--bg-card)",
-                  border: "1px solid var(--border)",
-                  padding: "0.5rem 0.5rem 0.5rem 1.2rem",
+                  background: isLightMode
+                    ? "linear-gradient(180deg, rgba(214,219,227,0.98) 0%, rgba(198,205,214,0.98) 100%)"
+                    : "transparent",
+                  border: isLightMode
+                    ? "1px solid rgba(181,189,199,0.98)"
+                    : "1px solid rgba(110,118,132,0.22)",
+                  padding: "0.65rem 0.65rem 0.65rem 1.15rem",
                   borderRadius: "16px",
+                  boxShadow: isLightMode
+                    ? "0 16px 32px rgba(31, 41, 55, 0.06)"
+                    : "0 16px 32px rgba(31, 41, 55, 0.08)",
                 }}
               >
-                <Search size={18} color="var(--text-muted)" />
+                <Search size={18} color={isLightMode ? "#111827" : "#6b7280"} />
                 <input
                   type="text"
+                  className="service-search-input"
                   placeholder="Search specific services..."
                   value={searchQuery}
                   onChange={(e) => {
@@ -2425,12 +2986,13 @@ const Recommendations = () => {
                   }}
                   onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                   style={{
-                    background: "none",
+                    background: "transparent",
                     border: "none",
-                    color: "var(--text)",
+                    color: isLightMode ? "#111827" : "#ffffff",
                     outline: "none",
                     width: "100%",
                     fontSize: "0.95rem",
+                    fontWeight: 600,
                   }}
                 />
                 {searchQuery && (
@@ -2441,9 +3003,7 @@ const Recommendations = () => {
                     style={{
                       background: "none",
                       border: "none",
-                      color: isLightMode
-                        ? "rgba(0,0,0,0.55)"
-                        : "rgba(255,255,255,0.3)",
+                      color: isLightMode ? "#111827" : "rgba(17,24,39,0.55)",
                       cursor: "pointer",
                       padding: "0.5rem",
                       display: "flex",
@@ -2455,15 +3015,22 @@ const Recommendations = () => {
                 <button
                   onClick={handleSearch}
                   style={{
-                    background: "#4361ee",
-                    border: "none",
-                    color: "white",
+                    background: isLightMode
+                      ? "linear-gradient(135deg, #d3d8e0, #bcc4ce)"
+                      : "linear-gradient(135deg, #4b5563, #374151)",
+                    border: isLightMode
+                      ? "1px solid rgba(148,163,184,0.48)"
+                      : "1px solid rgba(255,255,255,0.12)",
+                    color: isLightMode ? "#111827" : "#ffffff",
                     padding: "0.6rem 1.2rem",
                     borderRadius: "12px",
                     cursor: "pointer",
                     fontWeight: 700,
                     fontSize: "0.85rem",
                     transition: "all 0.2s",
+                    boxShadow: isLightMode
+                      ? "0 10px 24px rgba(31, 41, 55, 0.10)"
+                      : "0 10px 24px rgba(0, 0, 0, 0.25)",
                   }}
                 >
                   Search
@@ -2496,7 +3063,7 @@ const Recommendations = () => {
                 <h2
                   style={{
                     fontSize: isMobile ? "1.4rem" : "1.75rem",
-                    fontWeight: 600,
+                    fontWeight: 500,
                     color: "var(--text)",
                     margin: 0,
                     letterSpacing: "-0.01em",
@@ -2506,9 +3073,9 @@ const Recommendations = () => {
                     ? "Matched Services"
                     : hasSubmittedServices
                       ? "User Services"
-                    : userNeeds.length > 0 || recommendations?.length > 0
-                      ? "Your Personalised Services"
-                      : "Recommended Services"}
+                      : hasOnboardingProfile || recommendations?.length > 0
+                        ? "Your Personalised Services"
+                        : "Recommended Services"}
                 </h2>
               </div>
               <div
@@ -2530,58 +3097,93 @@ const Recommendations = () => {
                     onClick={setSelectedService}
                     isLightMode={isLightMode}
                     isMobile={isMobile}
+                    topBadge={renderServiceCardBadge(service.title)}
                   />
                 ))}
               </div>
             </div>
 
-            {/* Other Services Section */}
-            <div>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "1rem",
-                  marginBottom: isMobile ? "1.5rem" : "2rem",
-                }}
-              >
-                <h2
+            {!isSearching && (
+              <div>
+                <div
                   style={{
-                    fontSize: isMobile ? "1.4rem" : "1.75rem",
-                    fontWeight: 600,
-                    color: "var(--text)",
-                    margin: 0,
-                    letterSpacing: "-0.01em",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "1rem",
+                    marginBottom: isMobile ? "2rem" : "3rem",
+                    borderBottom: `1px solid ${isLightMode ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.06)"}`,
+                    paddingBottom: "1.5rem"
                   }}
                 >
-                  {isSearching
-                    ? "Other Services (Not Matching)"
-                    : "Other Services"}
-                </h2>
+                  <h2
+                    style={{
+                      fontSize: isMobile ? "1.5rem" : "2rem",
+                      fontWeight: 500,
+                      color: "var(--text)",
+                      margin: 0,
+                      letterSpacing: "-0.02em",
+                    }}
+                  >
+                    Explore All Other Services
+                  </h2>
+                </div>
+
+                {/* Grouped Grid */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "4rem" }}>
+                  {FINAL_CATEGORY_ORDER.map((category) => {
+                    const services = groupedOtherServices[category];
+                    if (!services || services.length === 0) return null;
+
+                    return (
+                      <div key={category}>
+                        <div style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "1rem",
+                          marginBottom: "1.5rem"
+                        }}>
+                          <h3 style={{
+                            fontSize: isMobile ? "1rem" : "1.2rem",
+                            color: "var(--text)",
+                            margin: 0,
+                            textTransform: "uppercase",
+                            letterSpacing: "0.1em",
+                            fontWeight: 600,
+                            display: "inline-block"
+                          }}>
+                            {category}
+                          </h3>
+                        </div>
+
+                        <div
+                          className="recommendations-grid"
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: isMobile
+                              ? "1fr"
+                              : "repeat(auto-fill, minmax(320px, 1fr))",
+                            gap: isMobile ? "1.25rem" : "2rem",
+                            justifyContent: "center",
+                          }}
+                        >
+                          {services.map((service, idx) => (
+                            <ServiceCard
+                              key={`${category}-${idx}`}
+                              service={service}
+                              idx={idx}
+                              onClick={setSelectedService}
+                              isLightMode={isLightMode}
+                              isMobile={isMobile}
+                              topBadge={renderServiceCardBadge(service.title)}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-              <div
-                className="recommendations-grid"
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: isMobile
-                    ? "1fr"
-                    : "repeat(auto-fill, minmax(320px, 1fr))",
-                  gap: isMobile ? "1.25rem" : "2rem",
-                  justifyContent: "center",
-                }}
-              >
-                {otherServices.map((service, idx) => (
-                  <ServiceCard
-                    key={`other-${idx}`}
-                    service={service}
-                    idx={idx}
-                    onClick={setSelectedService}
-                    isLightMode={isLightMode}
-                    isMobile={isMobile}
-                  />
-                ))}
-              </div>
-            </div>
+            )}
 
             {myServices.length === 0 && otherServices.length === 0 && (
               <NoServicesFound onClear={() => setSearchQuery("")} />
@@ -2596,10 +3198,32 @@ const Recommendations = () => {
       <AnimatePresence>
         {selectedService && (() => {
           const cat = selectedService.category || "Advisory";
-          const catConfig = categoryColors[cat] || categoryColors["Advisory"];
           const CatIcon = iconMap[cat] || Zap;
+          const serviceRejectionState = getServiceRejectionState(selectedService.title);
+          const serviceRejectionSignature = getServiceRejectionSignature(selectedService.title);
+          const serviceRejectionDismissed =
+            dismissedServiceRejectionSignatures[normalizeText(selectedService.title)] ===
+            serviceRejectionSignature;
           const docs = getActiveDocs(selectedService);
           const required = docs.filter((d) => d.required);
+          const localUploadsForService = uploadedDocs[selectedService.title] || {};
+          const hasAnyReuploadedDocs = Object.values(localUploadsForService).some((value) => {
+            const arr = Array.isArray(value) ? value : value ? [value] : [];
+            return arr.filter(Boolean).length > 0;
+          });
+          const hasAllRequiredDocsReuploaded =
+            serviceRejectionState &&
+            required.length > 0 &&
+            required.every((doc) => {
+              const value = localUploadsForService[doc.name];
+              const arr = Array.isArray(value) ? value : value ? [value] : [];
+              return arr.filter(Boolean).length > 0;
+            });
+          const serviceReuploadReady =
+            !!serviceRejectionState && hasAllRequiredDocsReuploaded;
+          const showServiceRejectionBanner = serviceRejectionState && !serviceRejectionDismissed;
+          const showReadyForReviewBanner =
+            serviceReuploadReady && !serviceRejectionDismissed;
           const uploadedCount = required.filter(
             (d) => getDocumentState(selectedService.title, d.name).uploaded
           ).length;
@@ -2610,6 +3234,29 @@ const Recommendations = () => {
           const progressPct = required.length > 0
             ? Math.round((uploadedCount / required.length) * 100)
             : 100;
+
+          const fees = (() => {
+            const marketFeesRaw = String(selectedService.marketFees || "").trim();
+            const recommendedFeesRaw = String(
+              selectedService.recommendedFees || "",
+            ).trim();
+            if (marketFeesRaw || recommendedFeesRaw) {
+              return {
+                market: marketFeesRaw,
+                recommended: recommendedFeesRaw,
+              };
+            }
+
+            const pricing = getServicePricing(selectedService.title);
+            const amount = Number(pricing?.amount || 0);
+            const recommended = String(pricing?.displayPrice || "").trim();
+            const market =
+              Number.isFinite(amount) && amount > 0
+                ? formatInr(Math.round(amount * 1.4))
+                : "";
+
+            return { market, recommended };
+          })();
 
           return (
             <motion.div
@@ -2648,28 +3295,27 @@ const Recommendations = () => {
                     ? `calc(100dvh - ${mobileNavbarOffset})`
                     : "calc(100vh - clamp(7rem, 12vh, 8.5rem))",
                   borderRadius: isMobile ? "24px 24px 0 0" : "28px",
-                  border: `1px solid ${isLightMode ? "rgba(0,0,0,0.1)" : "rgba(255,255,255,0.08)"}`,
+                  border: isLightMode ? "1px solid rgba(181,189,199,0.98)" : "1px solid rgba(255,255,255,0.08)",
                   overflow: "hidden",
                   display: "flex",
                   flexDirection: "column",
-                  boxShadow: isLightMode
-                    ? "0 32px 80px rgba(0,0,0,0.18)"
-                    : "0 32px 80px rgba(0,0,0,0.7)",
+                  boxShadow: "0 32px 80px rgba(31,41,55,0.18)",
                   background: isLightMode
-                    ? "#ffffff"
-                    : "linear-gradient(160deg, #111318 0%, #0d0f13 100%)",
+                    ? "linear-gradient(180deg, rgba(214,219,227,0.99) 0%, rgba(198,205,214,0.99) 100%)"
+                    : "linear-gradient(180deg, rgba(38, 42, 50, 0.99) 0%, rgba(24, 28, 35, 0.99) 100%)",
                 }}
               >
                 {/* -- HEADER -- */}
                 <div
                   style={{
                     padding: isMobile ? "1.25rem 1.25rem 1rem" : "1.6rem 2rem 1.25rem",
-                    borderBottom: `1px solid ${isLightMode ? "rgba(0,0,0,0.08)" : "rgba(255,255,255,0.06)"}`,
+                    borderBottom: isLightMode ? "1px solid rgba(181,189,199,0.98)" : "1px solid rgba(255,255,255,0.06)",
                     display: "flex",
                     alignItems: "flex-start",
                     justifyContent: "space-between",
                     gap: "1rem",
                     flexShrink: 0,
+                    background: "transparent",
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: isMobile ? "0.85rem" : "1rem", flex: 1, minWidth: 0 }}>
@@ -2679,30 +3325,33 @@ const Recommendations = () => {
                         width: isMobile ? 42 : 50,
                         height: isMobile ? 42 : 50,
                         borderRadius: "14px",
-                        background: catConfig.bg,
-                        border: `1px solid ${catConfig.color}30`,
+                        background: isLightMode
+                          ? "rgba(210,215,222,0.98)"
+                          : "rgba(55,60,70,0.92)",
+                        border: isLightMode
+                          ? "1px solid rgba(181,189,199,0.98)"
+                          : "1px solid rgba(110,118,132,0.24)",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
                         flexShrink: 0,
                       }}
                     >
-                      <CatIcon size={isMobile ? 18 : 22} color={catConfig.color} />
+                      <CatIcon size={isMobile ? 18 : 22} color={isLightMode ? "#111827" : "#d1d5db"} />
                     </div>
                     <div style={{ minWidth: 0 }}>
                       <div
                         style={{
                           display: "inline-flex",
                           alignItems: "center",
-                          padding: "2px 10px",
-                          background: catConfig.bg,
-                          color: catConfig.color,
-                          borderRadius: "100px",
-                          fontSize: "0.6rem",
-                          fontWeight: 800,
-                          letterSpacing: "0.08em",
+                          padding: "0",
+                          color: isLightMode ? "#111827" : "#ffffff",
+                          borderRadius: "0",
+                          fontSize: "0.75rem",
+                          fontWeight: 600,
+                          letterSpacing: "0.1em",
                           textTransform: "uppercase",
-                          marginBottom: "4px",
+                          marginBottom: "6px",
                         }}
                       >
                         {selectedService.category}
@@ -2711,7 +3360,7 @@ const Recommendations = () => {
                         style={{
                           fontSize: isMobile ? "1.05rem" : "1.35rem",
                           fontWeight: 700,
-                          color: isLightMode ? "#0f172a" : "#fff",
+                          color: isLightMode ? "#111827" : "#ffffff",
                           margin: 0,
                           letterSpacing: "-0.02em",
                           lineHeight: 1.2,
@@ -2722,14 +3371,74 @@ const Recommendations = () => {
                       >
                         {selectedService.title}
                       </h2>
+                      {showServiceRejectionBanner && (
+                        <div style={{ marginTop: "0.55rem", display: "flex", flexDirection: "column", gap: "0.2rem" }}>
+                          <div
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              padding: "0.3rem 0.65rem",
+                              borderRadius: "999px",
+                              background: "rgba(239, 68, 68, 0.12)",
+                              border: "1px solid rgba(239, 68, 68, 0.26)",
+                              color: "#ef4444",
+                              fontSize: "0.72rem",
+                              fontWeight: 900,
+                              letterSpacing: "0.04em",
+                              textTransform: "uppercase",
+                              width: "fit-content",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {serviceRejectionState.status}
+                          </div>
+                          <div
+                            style={{
+                              color: isLightMode ? "#7f1d1d" : "#fecaca",
+                              fontSize: "0.78rem",
+                              lineHeight: 1.45,
+                              fontWeight: 500,
+                            }}
+                          >
+                            {serviceRejectionState.message}
+                          </div>
+                        </div>
+                      )}
+                      {showReadyForReviewBanner && (
+                        <span
+                          style={{
+                            marginTop: "0.5rem",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            padding: "0.4rem 0.75rem",
+                            borderRadius: "999px",
+                            background: "rgba(245,158,11,0.12)",
+                            border: "1px solid rgba(245,158,11,0.22)",
+                            color: "#fbbf24",
+                            fontSize: "0.72rem",
+                            fontWeight: 800,
+                            letterSpacing: "0.04em",
+                            textTransform: "uppercase",
+                            width: "fit-content",
+                          }}
+                        >
+                          <Clock size={12} />
+                          Ready for Review
+                        </span>
+                      )}
                     </div>
                   </div>
                   <button
                     onClick={() => setSelectedService(null)}
                     style={{
-                      background: isLightMode ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.06)",
-                      border: `1px solid ${isLightMode ? "rgba(0,0,0,0.1)" : "rgba(255,255,255,0.08)"}`,
-                      color: isLightMode ? "#374151" : "rgba(255,255,255,0.7)",
+                      background: isLightMode
+                        ? "rgba(210,215,222,0.98)"
+                        : "rgba(55,60,70,0.92)",
+                      border: isLightMode
+                        ? "1px solid rgba(181,189,199,0.98)"
+                        : "1px solid rgba(110,118,132,0.24)",
+                      color: isLightMode ? "#111827" : "#ffffff",
                       cursor: "pointer",
                       width: "34px",
                       height: "34px",
@@ -2741,10 +3450,14 @@ const Recommendations = () => {
                       transition: "all 0.15s",
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.background = isLightMode ? "rgba(0,0,0,0.1)" : "rgba(255,255,255,0.1)";
+                      e.currentTarget.style.background = isLightMode
+                        ? "rgba(223,227,233,0.98)"
+                        : "rgba(66,72,82,0.95)";
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.background = isLightMode ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.06)";
+                      e.currentTarget.style.background = isLightMode
+                        ? "rgba(210,215,222,0.98)"
+                        : "rgba(55,60,70,0.92)";
                     }}
                   >
                     <X size={16} />
@@ -2762,124 +3475,369 @@ const Recommendations = () => {
                 >
 
                   {/* Description */}
-                  <p
-                    style={{
-                      color: isLightMode ? "#4b5563" : "rgba(255,255,255,0.55)",
-                      fontSize: isMobile ? "0.88rem" : "0.92rem",
-                      lineHeight: 1.7,
-                      margin: "0 0 1.5rem",
-                    }}
-                  >
-                    {selectedService.description}
-                  </p>
-
-                  {/* -- Pricing & Turnaround Bar -- */}
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 1fr",
-                      gap: "0.75rem",
-                      marginBottom: "1.75rem",
-                    }}
-                  >
-                    {/* Fee */}
-                    <div
+                  {isAdmin && isEditingService ? (
+                    <div style={{ marginBottom: "1.5rem" }}>
+                      <label style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--text-muted)", display: "block", marginBottom: "8px" }}>Service Description</label>
+                      <textarea
+                        value={editedService?.description || ""}
+                        onChange={(e) => setEditedService({ ...editedService, description: e.target.value })}
+                        style={{
+                          width: "100%",
+                          padding: "0.8rem",
+                          background: "var(--bg-card)",
+                          border: "1px solid var(--border)",
+                          borderRadius: "12px",
+                          color: "var(--text)",
+                          fontSize: "0.9rem",
+                          minHeight: "100px",
+                          outline: "none"
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <p
                       style={{
-                        padding: isMobile ? "1rem" : "1.1rem 1.25rem",
-                        background: isLightMode ? "#f8fafc" : "rgba(255,255,255,0.03)",
-                        border: `1px solid ${isLightMode ? "#e2e8f0" : "rgba(255,255,255,0.07)"}`,
-                        borderRadius: "16px",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "4px",
+                        color: isLightMode ? "#4b5563" : "#ffffff",
+                        fontSize: isMobile ? "0.88rem" : "0.92rem",
+                        lineHeight: 1.7,
+                        margin: "0 0 1.5rem",
                       }}
                     >
-                      <span
+                      {selectedService.description}
+                    </p>
+                  )}
+
+                  {showServiceRejectionBanner ? (
+                    <div
+                      style={{
+                        marginBottom: "1rem",
+                        padding: isMobile ? "0.95rem 1rem" : "1rem 1.15rem",
+                        borderRadius: "16px",
+                        background: "rgba(239,68,68,0.08)",
+                        border: "1px solid rgba(239,68,68,0.2)",
+                        color: "#fecaca",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "0.35rem",
+                        position: "relative",
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => dismissServiceRejectionMessage(selectedService.title)}
+                        aria-label="Dismiss rejection message"
                         style={{
-                          fontSize: "0.62rem",
-                          fontWeight: 700,
-                          textTransform: "uppercase",
-                          letterSpacing: "0.08em",
-                          color: isLightMode ? "#94a3b8" : "rgba(255,255,255,0.35)",
+                          position: "absolute",
+                          top: "0.7rem",
+                          right: "0.7rem",
+                          width: "30px",
+                          height: "30px",
+                          borderRadius: "999px",
+                          border: "1px solid rgba(239,68,68,0.35)",
+                          background: "rgba(0,0,0,0.14)",
+                          color: "#fecaca",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          cursor: "pointer",
+                          padding: 0,
                         }}
                       >
-                        Expert Fee
-                      </span>
+                        <X size={14} />
+                      </button>
+                      <div
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          padding: "0.32rem 0.7rem",
+                          borderRadius: "999px",
+                          background: "rgba(239, 68, 68, 0.12)",
+                          border: "1px solid rgba(239, 68, 68, 0.26)",
+                          color: "#ef4444",
+                          fontWeight: 800,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.06em",
+                          fontSize: "0.72rem",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {serviceRejectionState.status}
+                      </div>
+                      <div
+                        style={{
+                          color: isLightMode ? "#7f1d1d" : "#fecaca",
+                          fontSize: "0.88rem",
+                          lineHeight: 1.6,
+                          fontWeight: 500,
+                        }}
+                      >
+                        <div style={{ marginBottom: "0.35rem" }}>
+                          {hasAllRequiredDocsReuploaded
+                            ? "All required documents have been reuploaded. Submit them for review."
+                            : hasAnyReuploadedDocs
+                              ? "Some documents have been reuploaded. Please complete the remaining files."
+                              : "Please reupload the corrected documents below to resubmit."}
+                        </div>
+                        <div style={{ color: isLightMode ? "#991b1b" : "#fca5a5" }}>
+                          Message: {serviceRejectionState.message}
+                        </div>
+                      </div>
+                    </div>
+                  ) : showReadyForReviewBanner ? (
+                    <div
+                      style={{
+                        marginBottom: "1rem",
+                        padding: "1rem 1.1rem",
+                        borderRadius: "16px",
+                        background: isLightMode
+                          ? "rgba(245,158,11,0.08)"
+                          : "rgba(245,158,11,0.08)",
+                        border: "1px solid rgba(245,158,11,0.22)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          color: "#fbbf24",
+                          fontWeight: 800,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.06em",
+                          fontSize: "0.72rem",
+                        }}
+                      >
+                        <Clock size={16} />
+                        Ready for Review
+                      </div>
+                      <div
+                        style={{
+                          color: isLightMode ? "#92400e" : "#fde68a",
+                          fontSize: "0.88rem",
+                          lineHeight: 1.6,
+                          fontWeight: 500,
+                          marginTop: "0.35rem",
+                        }}
+                      >
+                        All required documents have been reuploaded. Submit them for review.
+                        <div style={{ color: isLightMode ? "#b45309" : "#fcd34d", marginTop: "0.35rem" }}>
+                          Message: {serviceRejectionState.message}
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {/* -- Turnaround Bar -- */}
+                  <div
+                    style={{
+                      padding: isMobile ? "1rem" : "1.1rem 1.25rem",
+                      background: isLightMode
+                        ? "linear-gradient(180deg, rgba(242,244,248,0.98) 0%, rgba(226,230,236,0.98) 100%)"
+                        : "rgba(255,255,255,0.03)",
+                      border: `1px solid ${isLightMode ? "rgba(214,219,227,0.98)" : "rgba(255,255,255,0.07)"}`,
+                      borderRadius: "16px",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "4px",
+                      marginBottom: "1rem",
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: "0.62rem",
+                        fontWeight: 700,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.08em",
+                        color: isLightMode ? "#111827" : "#ffffff",
+                      }}
+                    >
+                      Turnaround
+                    </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <Clock size={14} color="#10b981" />
                       <span
                         style={{
-                          fontSize: isMobile ? "1rem" : "1.15rem",
-                          fontWeight: 800,
-                          color: "#10b981",
+                          fontSize: isMobile ? "1.1rem" : "1.2rem",
+                          fontWeight: 600,
+                          color: isLightMode ? "#111827" : "#fff",
                           letterSpacing: "-0.01em",
                         }}
                       >
-                        {selectedServicePricing?.displayPrice || "Rs. 1,000"}
+                        2 Working Days
                       </span>
-                    </div>
-                    {/* Turnaround */}
-                    <div
-                      style={{
-                        padding: isMobile ? "1rem" : "1.1rem 1.25rem",
-                        background: isLightMode ? "#f8fafc" : "rgba(255,255,255,0.03)",
-                        border: `1px solid ${isLightMode ? "#e2e8f0" : "rgba(255,255,255,0.07)"}`,
-                        borderRadius: "16px",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "4px",
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: "0.62rem",
-                          fontWeight: 700,
-                          textTransform: "uppercase",
-                          letterSpacing: "0.08em",
-                          color: isLightMode ? "#94a3b8" : "rgba(255,255,255,0.35)",
-                        }}
-                      >
-                        Turnaround
-                      </span>
-                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                        <Clock size={14} color="#10b981" />
-                        <span
-                          style={{
-                            fontSize: isMobile ? "1rem" : "1.05rem",
-                            fontWeight: 800,
-                            color: isLightMode ? "#0f172a" : "#fff",
-                            letterSpacing: "-0.01em",
-                          }}
-                        >
-                          2-4 Days
-                        </span>
-                      </div>
                     </div>
                   </div>
 
-                  {/* -- View Only Notice for Non-Users -- */}
-                  {storedUser?.role && storedUser?.role !== "user" && (
+                  {/* -- Market & Recommended Fees -- */}
+                  {isAdmin && isEditingService ? (
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: "0.75rem",
+                        marginBottom: "1.75rem",
+                      }}
+                    >
+                      <div>
+                        <label style={{ fontSize: "0.65rem", fontWeight: 700, color: "#d97706", display: "block", marginBottom: "4px" }}>Market Fees</label>
+                        <input
+                          type="text"
+                          value={editedService?.marketFees || ""}
+                          onChange={(e) => setEditedService({ ...editedService, marketFees: e.target.value })}
+                          style={{
+                            width: "100%",
+                            padding: "0.6rem",
+                            background: "var(--bg-card)",
+                            border: "1px solid var(--border)",
+                            borderRadius: "10px",
+                            color: "var(--text)",
+                            fontSize: "0.8rem",
+                            outline: "none"
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: "0.65rem", fontWeight: 700, color: "#059669", display: "block", marginBottom: "4px" }}>Recommended Fees</label>
+                        <input
+                          type="text"
+                          value={editedService?.recommendedFees || ""}
+                          onChange={(e) => setEditedService({ ...editedService, recommendedFees: e.target.value })}
+                          style={{
+                            width: "100%",
+                            padding: "0.6rem",
+                            background: "var(--bg-card)",
+                            border: "1px solid var(--border)",
+                            borderRadius: "10px",
+                            color: "var(--text)",
+                            fontSize: "0.8rem",
+                            outline: "none"
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    (fees.market || fees.recommended) && (
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "1fr 1fr",
+                          gap: "0.75rem",
+                          marginBottom: "1.75rem",
+                        }}
+                      >
+                        {fees.market && (
+                          <div
+                            style={{
+                              padding: "0.8rem 1rem",
+                              background: isLightMode
+                                ? "linear-gradient(180deg, rgba(242,244,248,0.98) 0%, rgba(226,230,236,0.98) 100%)"
+                                : "rgba(245, 158, 11, 0.05)",
+                              border: isLightMode
+                                ? "1px solid rgba(214,219,227,0.98)"
+                                : "1px solid rgba(245, 158, 11, 0.1)",
+                              borderRadius: "14px",
+                            }}
+                          >
+                            <span style={{ fontSize: "0.6rem", fontWeight: 600, color: isLightMode ? "#111827" : "#d97706", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: "4px" }}>Market Fees</span>
+                            <span style={{ fontSize: "0.95rem", fontWeight: 500, color: "var(--text)" }}>{fees.market}</span>
+                          </div>
+                        )}
+                        {fees.recommended && (
+                          <div
+                            style={{
+                              padding: "0.8rem 1rem",
+                              background: isLightMode
+                                ? "linear-gradient(180deg, rgba(242,244,248,0.98) 0%, rgba(226,230,236,0.98) 100%)"
+                                : "rgba(16, 185, 129, 0.05)",
+                              border: isLightMode
+                                ? "1px solid rgba(214,219,227,0.98)"
+                                : "1px solid rgba(16, 185, 129, 0.1)",
+                              borderRadius: "14px",
+                            }}
+                          >
+                            <span style={{ fontSize: "0.6rem", fontWeight: 600, color: isLightMode ? "#111827" : "#059669", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: "4px" }}>Recommended Fees</span>
+                            <span style={{ fontSize: "0.95rem", fontWeight: 500, color: "var(--text)" }}>{fees.recommended}</span>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  )}
+
+                  {/* -- Admin Management Bar -- */}
+                  {false && (
                     <div
                       style={{
                         display: "flex",
                         alignItems: "center",
+                        justifyContent: "space-between",
                         gap: "10px",
                         padding: "1rem",
-                        background: "rgba(67, 97, 238, 0.08)",
-                        border: "1px solid rgba(67, 97, 238, 0.2)",
+                        background: isLightMode
+                          ? "linear-gradient(180deg, rgba(242,244,248,0.98) 0%, rgba(226,230,236,0.98) 100%)"
+                          : "rgba(67, 97, 238, 0.08)",
+                        border: isLightMode
+                          ? "1px solid rgba(214,219,227,0.98)"
+                          : "1px solid rgba(67, 97, 238, 0.2)",
                         borderRadius: "12px",
-                        marginBottom: "1rem",
+                        marginBottom: "1.5rem",
                       }}
                     >
-                      <ShieldAlert size={16} color="#4361ee" style={{ flexShrink: 0 }} />
-                      <span
-                        style={{
-                          fontSize: "0.8rem",
-                          fontWeight: 600,
-                          color: "#4361ee",
-                          lineHeight: 1.4,
-                        }}
-                      >
-                        View only - Users can upload documents and confirm their interest in this service
-                      </span>
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        <ShieldAlert size={16} color={isLightMode ? "#111827" : "#4361ee"} style={{ flexShrink: 0 }} />
+                        <span
+                          style={{
+                            fontSize: "0.8rem",
+                            fontWeight: 700,
+                            color: isLightMode ? "#111827" : "#4361ee",
+                          }}
+                        >
+                          Service Management
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", gap: "8px" }}>
+                        {isEditingService ? (
+                          <>
+                            <button
+                              onClick={async () => {
+                                try {
+                                  const apiUrl = import.meta.env.VITE_API_URL;
+                                  const token = JSON.parse(localStorage.getItem("user"))?.token;
+                                  await axios.patch(`${apiUrl}/services/${selectedService._id}`, editedService, {
+                                    headers: { Authorization: `Bearer ${token}` }
+                                  });
+                                  toast.success("Service updated successfully");
+                                  setIsEditingService(false);
+                                  setSelectedService({ ...selectedService, ...editedService });
+                                  // Refresh all services
+                                  const refreshRes = await axios.get(`${apiUrl}/services`);
+                                  setAllDbServices(refreshRes.data);
+                                } catch (err) {
+                                  toast.error("Failed to update service");
+                                }
+                              }}
+                              style={{ padding: "6px 14px", background: "#10b981", border: "none", color: "#fff", borderRadius: "8px", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer" }}
+                            >
+                              Save
+                            </button>
+                            <button
+                              onClick={() => setIsEditingService(false)}
+                              style={{ padding: "6px 14px", background: "rgba(0,0,0,0.05)", border: "1px solid rgba(0,0,0,0.1)", color: "var(--text)", borderRadius: "8px", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer" }}
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setEditedService({ ...selectedService });
+                              setIsEditingService(true);
+                            }}
+                            style={{ padding: "6px 14px", background: "#4361ee", border: "none", color: "#fff", borderRadius: "8px", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer" }}
+                          >
+                            Edit Service
+                          </button>
+                        )}
+                      </div>
                     </div>
                   )}
 
@@ -2903,11 +3861,11 @@ const Recommendations = () => {
                       <div>
                         <div
                           style={{
-                            fontSize: "0.65rem",
-                            fontWeight: 800,
+                            fontSize: "0.68rem",
+                            fontWeight: 600,
                             textTransform: "uppercase",
                             letterSpacing: "0.1em",
-                            color: isLightMode ? "#94a3b8" : "rgba(255,255,255,0.35)",
+                            color: isLightMode ? "#94a3b8" : "#ffffff",
                             marginBottom: "2px",
                           }}
                         >
@@ -2915,9 +3873,9 @@ const Recommendations = () => {
                         </div>
                         <div
                           style={{
-                            fontSize: isMobile ? "0.95rem" : "1rem",
-                            fontWeight: 700,
-                            color: isLightMode ? "#0f172a" : "#fff",
+                            fontSize: isMobile ? "0.95rem" : "1.1rem",
+                            fontWeight: 600,
+                            color: isLightMode ? "#1f1147" : "#fff",
                           }}
                         >
                           {uploadedCount}/{required.length} Uploaded
@@ -2929,7 +3887,7 @@ const Recommendations = () => {
                           style={{
                             width: isMobile ? "80px" : "100px",
                             height: "5px",
-                            background: isLightMode ? "#e2e8f0" : "rgba(255,255,255,0.08)",
+                            background: isLightMode ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.08)",
                             borderRadius: "99px",
                             overflow: "hidden",
                           }}
@@ -2938,7 +3896,9 @@ const Recommendations = () => {
                             style={{
                               width: `${progressPct}%`,
                               height: "100%",
-                              background: progressPct === 100 ? "#10b981" : "#4361ee",
+                              background: progressPct === 100
+                                ? (isLightMode ? "#6d4dff" : "#10b981")
+                                : (isLightMode ? "#8b5cf6" : "#4361ee"),
                               borderRadius: "99px",
                               transition: "width 0.4s ease",
                             }}
@@ -2948,7 +3908,9 @@ const Recommendations = () => {
                           style={{
                             fontSize: "0.72rem",
                             fontWeight: 700,
-                            color: progressPct === 100 ? "#10b981" : (isLightMode ? "#64748b" : "rgba(255,255,255,0.4)"),
+                            color: progressPct === 100
+                              ? (isLightMode ? "#6d4dff" : "#10b981")
+                              : (isLightMode ? "#6d4dff" : "rgba(255,255,255,0.4)"),
                           }}
                         >
                           {progressPct}%
@@ -2987,21 +3949,16 @@ const Recommendations = () => {
                       {(() => {
                         return docs.map((doc, idx) => {
                           const state = getDocumentState(selectedService.title, doc.name);
-                          const statusColor = state.reuploadRequired
-                            ? "#ef4444"
-                            : state.uploaded
-                            ? "#10b981"
-                            : isLightMode ? "#94a3b8" : "rgba(255,255,255,0.25)";
                           const cardBg = state.reuploadRequired
                             ? isLightMode ? "#fef2f2" : "rgba(239,68,68,0.05)"
                             : state.uploaded
-                            ? isLightMode ? "#f0fdf4" : "rgba(16,185,129,0.04)"
-                            : isLightMode ? "#f8fafc" : "rgba(255,255,255,0.02)";
+                              ? isLightMode ? "#f0fdf4" : "rgba(16,185,129,0.04)"
+                              : isLightMode ? "#f8fafc" : "rgba(255,255,255,0.02)";
                           const cardBorder = state.reuploadRequired
                             ? isLightMode ? "#fca5a5" : "rgba(239,68,68,0.18)"
                             : state.uploaded
-                            ? isLightMode ? "#86efac" : "rgba(16,185,129,0.15)"
-                            : isLightMode ? "#e2e8f0" : "rgba(255,255,255,0.06)";
+                              ? isLightMode ? "#86efac" : "rgba(16,185,129,0.15)"
+                              : isLightMode ? "#e2e8f0" : "rgba(255,255,255,0.03)";
 
                           return (
                             <div
@@ -3025,10 +3982,12 @@ const Recommendations = () => {
                                   height: 34,
                                   borderRadius: "9px",
                                   background: state.reuploadRequired
-                                    ? "rgba(239,68,68,0.1)"
+                                    ? "rgba(239,68,68,0.08)"
                                     : state.uploaded
-                                    ? "rgba(16,185,129,0.1)"
-                                    : isLightMode ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.04)",
+                                      ? "rgba(16,185,129,0.08)"
+                                      : isLightMode
+                                        ? "rgba(214,219,227,0.22)"
+                                        : "rgba(255,255,255,0.04)",
                                   display: "flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -3040,7 +3999,7 @@ const Recommendations = () => {
                                 ) : state.uploaded ? (
                                   <Check size={15} color="#10b981" />
                                 ) : (
-                                  <FileText size={15} color={isLightMode ? "#94a3b8" : "rgba(255,255,255,0.25)"} />
+                                  <FileText size={15} color={isLightMode ? "#111827" : "#ffffff"} />
                                 )}
                               </div>
 
@@ -3052,7 +4011,7 @@ const Recommendations = () => {
                                       margin: 0,
                                       fontSize: isMobile ? "0.8rem" : "0.84rem",
                                       fontWeight: 700,
-                                      color: isLightMode ? "#0f172a" : "#fff",
+                                      color: isLightMode ? "#111827" : "#fff",
                                       overflow: "hidden",
                                       textOverflow: "ellipsis",
                                       whiteSpace: "nowrap",
@@ -3066,10 +4025,10 @@ const Recommendations = () => {
                                       padding: "2px 6px",
                                       background: doc.required
                                         ? "rgba(239,68,68,0.1)"
-                                        : isLightMode ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.06)",
+                                        : isLightMode ? "rgba(214,219,227,0.22)" : "rgba(255,255,255,0.06)",
                                       color: doc.required
                                         ? "#ef4444"
-                                        : isLightMode ? "#94a3b8" : "rgba(255,255,255,0.35)",
+                                        : isLightMode ? "#111827" : "#ffffff",
                                       borderRadius: "5px",
                                       fontWeight: 800,
                                       textTransform: "uppercase",
@@ -3087,8 +4046,8 @@ const Recommendations = () => {
                                     color: state.reuploadRequired
                                       ? "#ef4444"
                                       : state.uploaded
-                                      ? "#10b981"
-                                      : isLightMode ? "#64748b" : "rgba(255,255,255,0.35)",
+                                        ? "#10b981"
+                                        : isLightMode ? "#111827" : "#ffffff",
                                     overflow: "hidden",
                                     textOverflow: "ellipsis",
                                     whiteSpace: "nowrap",
@@ -3096,105 +4055,153 @@ const Recommendations = () => {
                                   }}
                                 >
                                   {state.reuploadRequired
-                                    ? `⚠ ${state.message}`
+                                    ? state.message
                                     : state.uploaded
-                                    ? `✓ ${state.uploadedName}`
-                                    : doc.desc || "Upload this document to proceed"}
+                                      ? `✓ ${state.uploadedName}`
+                                      : doc.desc || "Upload this document to proceed"}
                                 </p>
                               </div>
 
                               {/* Upload Button - Only Visible to Users */}
-                              {(!storedUser?.role || storedUser?.role === "user") && (
-                              <label
-                                style={{
-                                  cursor: uploadingDoc ? "not-allowed" : "pointer",
-                                  padding: isMobile ? "6px 12px" : "7px 14px",
-                                  background: state.reuploadRequired
-                                    ? "#ef4444"
-                                    : state.uploaded
-                                    ? isLightMode ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.06)"
-                                    : "#10b981",
-                                  color: state.uploaded && !state.reuploadRequired
-                                    ? isLightMode ? "#374151" : "rgba(255,255,255,0.7)"
-                                    : "#fff",
-                                  borderRadius: "9px",
-                                  fontSize: "0.72rem",
-                                  fontWeight: 700,
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: "5px",
-                                  transition: "all 0.2s",
-                                  flexShrink: 0,
-                                  border: state.uploaded && !state.reuploadRequired
-                                    ? `1px solid ${isLightMode ? "rgba(0,0,0,0.12)" : "rgba(255,255,255,0.1)"}`
-                                    : "1px solid transparent",
-                                  opacity: (uploadingDoc && uploadingDoc !== doc.name) ? 0.4 : 1,
-                                  pointerEvents: uploadingDoc ? "none" : "auto",
-                                  whiteSpace: "nowrap",
-                                }}
-                              >
-                                {uploadingDoc === doc.name ? (
-                                  <Loader2 size={11} className="animate-spin" />
-                                ) : (
-                                  <Upload size={11} />
-                                )}
-                                {uploadingDoc === doc.name
-                                  ? "Uploading"
-                                  : state.reuploadRequired
-                                  ? "Reupload"
-                                  : state.uploaded
-                                  ? "Change"
-                                  : "Upload"}
-                                <input
-                                  type="file"
-                                  accept=".pdf"
-                                  hidden
-                                  disabled={!!uploadingDoc}
-                                  onChange={async (e) => {
-                                    const file = e.target.files[0];
-                                    if (file) {
-                                      if (file.type !== "application/pdf") {
+                              {true && (
+                                <label
+                                  style={{
+                                    cursor: uploadingDoc ? "not-allowed" : "pointer",
+                                    padding: isMobile ? "6px 12px" : "7px 14px",
+                                    background: state.reuploadRequired
+                                      ? "#ef4444"
+                                      : state.uploaded
+                                        ? isLightMode ? "rgba(232,236,242,0.96)" : "rgba(255,255,255,0.03)"
+                                        : "#10b981",
+                                    color: state.uploaded && !state.reuploadRequired
+                                      ? isLightMode ? "#111827" : "rgba(255,255,255,0.7)"
+                                      : "#fff",
+                                    borderRadius: "9px",
+                                    fontSize: "0.72rem",
+                                    fontWeight: 700,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "5px",
+                                    transition: "all 0.2s",
+                                    flexShrink: 0,
+                                    border: state.uploaded && !state.reuploadRequired
+                                      ? `1px solid ${isLightMode ? "rgba(214,219,227,0.98)" : "rgba(255,255,255,0.04)"}`
+                                      : "1px solid transparent",
+                                    opacity: (uploadingDoc && uploadingDoc !== doc.name) ? 0.4 : 1,
+                                    pointerEvents: uploadingDoc ? "none" : "auto",
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
+                                  {uploadingDoc === doc.name ? (
+                                    <Loader2 size={11} className="animate-spin" />
+                                  ) : (
+                                    <Upload size={11} />
+                                  )}
+                                  {uploadingDoc === doc.name
+                                    ? "Uploading"
+                                    : state.reuploadRequired
+                                      ? "Reupload"
+                                      : state.uploaded
+                                        ? "Change"
+                                        : "Upload"}
+                                  <input
+                                    type="file"
+                                    accept=".pdf"
+                                    multiple
+                                    hidden
+                                    disabled={!!uploadingDoc}
+                                    onChange={async (e) => {
+                                      const files = Array.from(e.target.files || []);
+                                      // Allow selecting the same file again later
+                                      e.target.value = "";
+                                      if (files.length === 0) return;
+
+                                      const nonPdf = files.find(
+                                        (f) => f?.type !== "application/pdf",
+                                      );
+                                      if (nonPdf) {
                                         toast.error("Please upload only PDF documents");
                                         return;
                                       }
+
                                       setUploadingDoc(doc.name);
-                                      const loadingToast = toast.loading(`Uploading ${doc.name}...`);
+                                      const loadingToast = toast.loading(
+                                        `Uploading ${doc.name}...`,
+                                      );
+
                                       try {
                                         const apiUrl = import.meta.env.VITE_API_URL;
-                                        const formData = new FormData();
-                                        formData.append("file", file);
-                                        const user = JSON.parse(localStorage.getItem("user"));
+                                        const user = JSON.parse(
+                                          localStorage.getItem("user"),
+                                        );
                                         const token = user?.token;
                                         if (!token) {
-                                          toast.error("Please log in to upload documents", { id: loadingToast });
-                                          setUploadingDoc(null);
+                                          toast.error(
+                                            "Please log in to upload documents",
+                                            { id: loadingToast },
+                                          );
                                           return;
                                         }
-                                        const uploadRes = await axios.post(
-                                          `${apiUrl}/leads/upload`,
-                                          formData,
-                                          { headers: { Authorization: `Bearer ${token}` } }
-                                        );
-                                        if (uploadRes.data.success) {
-                                          setUploadedDocs((prev) => ({
-                                            ...prev,
-                                            [selectedService.title]: {
-                                              ...(prev[selectedService.title] || {}),
-                                              [doc.name]: { name: file.name, url: uploadRes.data.url },
+
+                                        for (const file of files) {
+                                          const formData = new FormData();
+                                          formData.append("file", file);
+                                          const uploadRes = await axios.post(
+                                            `${apiUrl}/leads/upload`,
+                                            formData,
+                                            {
+                                              headers: {
+                                                Authorization: `Bearer ${token}`,
+                                              },
                                             },
-                                          }));
-                                          toast.success(`Uploaded ${doc.name}`, { id: loadingToast });
+                                          );
+
+                                          if (uploadRes.data.success) {
+                                            setUploadedDocs((prev) => {
+                                              const prevSvc =
+                                                prev[selectedService.title] ||
+                                                {};
+                                              const existing =
+                                                prevSvc[doc.name] || [];
+                                              const existingArr = Array.isArray(
+                                                existing,
+                                              )
+                                                ? existing
+                                                : [existing];
+
+                                              return {
+                                                ...prev,
+                                                [selectedService.title]: {
+                                                  ...prevSvc,
+                                                  [doc.name]: [
+                                                    ...existingArr,
+                                                    {
+                                                      name: file.name,
+                                                      url: uploadRes.data.url,
+                                                      publicId: uploadRes.data.filename,
+                                                    },
+                                                  ],
+                                                },
+                                              };
+                                            });
+                                          }
                                         }
+
+                                        toast.success(
+                                          `Uploaded ${files.length} file(s) for ${doc.name}`,
+                                          { id: loadingToast },
+                                        );
                                       } catch (error) {
                                         console.error("Upload error:", error);
-                                        toast.error(`Upload failed for ${doc.name}`, { id: loadingToast });
+                                        toast.error(`Upload failed for ${doc.name}`, {
+                                          id: loadingToast,
+                                        });
                                       } finally {
                                         setUploadingDoc(null);
                                       }
-                                    }
-                                  }}
-                                />
-                              </label>
+                                    }}
+                                  />
+                                </label>
                               )}
                             </div>
                           );
@@ -3206,103 +4213,183 @@ const Recommendations = () => {
 
                 {/* -- STICKY FOOTER -- */}
                 {(!storedUser?.role || storedUser?.role === "user") && (
-                <div
-                  style={{
-                    padding: isMobile ? "1rem 1.25rem" : "1.25rem 2rem",
-                    borderTop: `1px solid ${isLightMode ? "rgba(0,0,0,0.08)" : "rgba(255,255,255,0.06)"}`,
-                    background: isLightMode ? "#f8fafc" : "rgba(255,255,255,0.015)",
-                    flexShrink: 0,
-                  }}
-                >
-                  <button
-                    onClick={async () => {
-                      if (!isComplete) {
-                        toast.error("Complete all required uploads to proceed.");
-                        return;
-                      }
-                      setIsSubmitting(true);
-                      try {
-                        const user = JSON.parse(localStorage.getItem("user"));
-                        const apiUrl = import.meta.env.VITE_API_URL;
-                        const existingLead = getLatestLeadForService(selectedService.title);
-                        const docList = docs
-                          .map((doc) => {
-                            const state = getDocumentState(selectedService.title, doc.name);
-                            if (!state.uploadedUrl) return null;
-                            return { name: doc.name, url: state.uploadedUrl, status: "Pending", uploadedAt: new Date() };
-                          })
-                          .filter(Boolean);
-
-                        if (existingLead?._id) {
-                          const localUploadsForService = uploadedDocs[selectedService.title] || {};
-                          const updatedDocuments = Object.entries(localUploadsForService).map(([docName, value]) => ({
-                            name: docName, url: value?.url, type: "Client", status: "Pending", uploadedAt: new Date(),
-                          }));
-                          const rejectedDocNames = new Set(
-                            (existingLead.documents || []).filter((d) => d?.status === "Rejected").map((d) => String(d?.name || "").trim())
-                          );
-                          const reuploadedDocumentNames = Object.keys(localUploadsForService).filter((n) => rejectedDocNames.has(String(n || "").trim()));
-                          const patchPayload = { status: "PendingReview", reuploadedDocumentNames };
-                          if (updatedDocuments.length > 0) {
-                            patchPayload.$push = { documents: { $each: updatedDocuments } };
-                          }
-                          await axios.patch(`${apiUrl}/leads/${existingLead._id}`, patchPayload, { headers: { Authorization: `Bearer ${user.token}` } });
-                        } else {
-                          await axios.post(
-                            `${apiUrl}/leads`,
-                            { user: user?._id || user?.id || null, name: user?.name, email: user?.email, serviceName: selectedService.title, cost: selectedServicePricing?.amount || 1000, documents: docList },
-                            { headers: { Authorization: `Bearer ${user.token}` } }
-                          );
-                        }
-                        const refreshedLeads = await axios.get(`${apiUrl}/leads?userId=${user?._id || user?.id}`, { headers: { Authorization: `Bearer ${user.token}` } });
-                        setUserLeads(refreshedLeads.data || []);
-                        setUploadedDocs((prev) => { const n = { ...prev }; delete n[selectedService.title]; return n; });
-                        toast.success(existingLead?._id ? "Documents resubmitted for PR review." : "Interest recorded! Check your dashboard for updates.", { id: "service-confirmation" });
-                        setSelectedService(null);
-                        navigate("/dashboard");
-                      } catch (error) {
-                        toast.error("Submission failed. Try again later.");
-                      } finally {
-                        setIsSubmitting(false);
-                      }
-                    }}
-                    disabled={!isComplete || isSubmitting}
+                  <div
                     style={{
-                      width: "100%",
-                      padding: isMobile ? "0.9rem" : "1rem",
-                      background: isComplete
-                        ? "linear-gradient(135deg, #059669, #10b981)"
-                        : isLightMode ? "#f1f5f9" : "rgba(255,255,255,0.04)",
-                      color: isComplete ? "#fff" : isLightMode ? "#94a3b8" : "rgba(255,255,255,0.2)",
-                      border: isComplete ? "none" : `1px solid ${isLightMode ? "#e2e8f0" : "rgba(255,255,255,0.06)"}`,
-                      borderRadius: "12px",
-                      fontWeight: 700,
-                      fontSize: "0.92rem",
-                      cursor: isComplete ? "pointer" : "not-allowed",
-                      transition: "all 0.3s",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: "8px",
-                      boxShadow: isComplete ? "0 4px 20px rgba(16,185,129,0.3)" : "none",
-                      letterSpacing: "-0.01em",
-                    }}
-                    onMouseEnter={(e) => {
-                      if (isComplete) e.currentTarget.style.transform = "translateY(-1px)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = "none";
+                      padding: isMobile ? "1rem 1.25rem" : "1.25rem 2rem",
+                      borderTop: `1px solid ${isLightMode ? "rgba(0,0,0,0.08)" : "rgba(255,255,255,0.06)"}`,
+                      background: isLightMode ? "#f8fafc" : "rgba(255,255,255,0.015)",
+                      flexShrink: 0,
                     }}
                   >
-                    {isSubmitting ? (
-                      <><Loader2 size={16} className="animate-spin" /> Submitting...</>
-                    ) : isComplete ? (
-                      <>Confirm & Submit <ArrowRight size={16} /></>
-                    ) : (
-                      <>Upload Required Files to Unlock</>
-                    )}
-                  </button>
-                </div>
+                    <button
+                      onClick={async () => {
+                        if (!isComplete) {
+                          toast.error("Complete all required uploads to proceed.");
+                          return;
+                        }
+                        setIsSubmitting(true);
+                        try {
+                          const user = JSON.parse(localStorage.getItem("user"));
+                          const apiUrl = import.meta.env.VITE_API_URL;
+                          const existingLead = getLatestLeadForService(selectedService.title);
+                          const docList = docs
+                            .flatMap((doc) => {
+                              const state = getDocumentState(
+                                selectedService.title,
+                                doc.name,
+                              );
+
+                              // Use the full document objects if available, otherwise fallback to the single url
+                              const sources = (Array.isArray(state.fullDocs) && state.fullDocs.length > 0)
+                                ? state.fullDocs
+                                : state.uploadedUrl
+                                  ? [{ url: state.uploadedUrl, name: state.uploadedName, publicId: state.publicId }]
+                                  : [];
+
+                              return sources
+                                .filter(s => !!s?.url)
+                                .map((item) => ({
+                                  name: doc.name,
+                                  url: item.url,
+                                  publicId: item.publicId,
+                                  status: "Pending",
+                                  uploadedAt: new Date(),
+                                }));
+                            })
+                            .filter((d) => !!d?.url);
+
+                          if (existingLead?._id) {
+                            const localUploadsForService = uploadedDocs[selectedService.title] || {};
+                            const updatedDocuments = Object.entries(localUploadsForService)
+                              .flatMap(([docName, value]) => {
+                                const arr = Array.isArray(value)
+                                  ? value
+                                  : value
+                                    ? [value]
+                                    : [];
+                                return arr
+                                  .filter(Boolean)
+                                  .map((v) => ({
+                                    name: docName,
+                                    url: v?.url,
+                                    publicId: v?.publicId,
+                                    type: "Client",
+                                    status: "Pending",
+                                    uploadedAt: new Date(),
+                                  }));
+                              })
+                              .filter((d) => !!d?.url);
+                            const isServiceRejected = String(existingLead.status || "").toLowerCase() === "rejected";
+                            const rejectedDocNames = new Set(
+                              (existingLead.documents || []).filter((d) => d?.status === "Rejected").map((d) => String(d?.name || "").trim())
+                            );
+                            const reuploadedDocumentNames = Object.keys(localUploadsForService).filter((n) => rejectedDocNames.has(String(n || "").trim()));
+
+                            const patchPayload = {
+                              reuploadedDocumentNames,
+                              // If it was rejected (by PR or Executor), move back to PendingReview
+                              ...(isServiceRejected ? {
+                                status: "PendingReview",
+                                executorMessage: "",
+                                prFeedback: ""
+                              } : {})
+                            };
+                            if (updatedDocuments.length > 0) {
+                              patchPayload.$push = { documents: { $each: updatedDocuments } };
+                            }
+                            await axios.patch(`${apiUrl}/leads/${existingLead._id}`, patchPayload, { headers: { Authorization: `Bearer ${user.token}` } });
+                          } else {
+                            await axios.post(
+                              `${apiUrl}/leads`,
+                              {
+                                user: user?._id || user?.id || null,
+                                name: user?.name,
+                                email: user?.email,
+                                serviceName: selectedService.title,
+                                cost: selectedServiceRecommendedFeeAmount,
+                                recommendedFeeAmount: selectedServiceRecommendedFeeAmount,
+                                recommendedFees: selectedService.recommendedFees || "",
+                                documents: docList,
+                                status: docList.length > 0 ? "PendingReview" : "Open",
+                              },
+                              { headers: { Authorization: `Bearer ${user.token}` } }
+                            );
+                          }
+                          const refreshedLeads = await axios.get(`${apiUrl}/leads?userId=${user?._id || user?.id}`, { headers: { Authorization: `Bearer ${user.token}` } });
+                          setUserLeads(refreshedLeads.data || []);
+                          setUploadedDocs((prev) => { const n = { ...prev }; delete n[selectedService.title]; return n; });
+                          const refreshStamp = String(Date.now());
+                          localStorage.setItem("pr-dashboard-refresh", refreshStamp);
+                          window.dispatchEvent(new Event("pr-dashboard-refresh"));
+                          toast.success(existingLead?._id ? "Documents resubmitted for PR review." : "Interest recorded! Check your dashboard for updates.", { id: "service-confirmation" });
+                          setSelectedService(null);
+                          navigate("/dashboard");
+                        } catch (error) {
+                          toast.error("Submission failed. Try again later.");
+                        } finally {
+                          setIsSubmitting(false);
+                        }
+                      }}
+                      disabled={(() => {
+                        if (!isComplete || isSubmitting) return true;
+                        const existingLead = getLatestLeadForService(selectedService.title);
+                        if (!existingLead?._id) return false;
+                        const localUploadsForService = uploadedDocs[selectedService.title] || {};
+                        return Object.keys(localUploadsForService).length === 0;
+                      })()}
+                      style={{
+                        width: "100%",
+                        padding: isMobile ? "0.9rem" : "1rem",
+                        background: isComplete
+                          ? "linear-gradient(135deg, #059669, #10b981)"
+                          : isLightMode
+                            ? "linear-gradient(180deg, rgba(242,244,248,0.98) 0%, rgba(226,230,236,0.98) 100%)"
+                            : "rgba(255,255,255,0.04)",
+                        color: isComplete ? "#fff" : isLightMode ? "#111827" : "rgba(255,255,255,0.2)",
+                        border: isComplete ? "none" : `1px solid ${isLightMode ? "rgba(214,219,227,0.98)" : "rgba(255,255,255,0.06)"}`,
+                        borderRadius: "12px",
+                        fontWeight: 700,
+                        fontSize: "0.92rem",
+                        cursor: (() => {
+                          const disabled = (() => {
+                            if (!isComplete || isSubmitting) return true;
+                            const existingLead = getLatestLeadForService(selectedService.title);
+                            if (!existingLead?._id) return false;
+                            const localUploadsForService = uploadedDocs[selectedService.title] || {};
+                            return Object.keys(localUploadsForService).length === 0;
+                          })();
+                          return disabled ? "not-allowed" : "pointer";
+                        })(),
+                        transition: "all 0.3s",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "8px",
+                        boxShadow: isComplete ? "0 4px 20px rgba(16,185,129,0.3)" : "none",
+                        letterSpacing: "-0.01em",
+                      }}
+                      onMouseEnter={(e) => {
+                        if (isComplete) e.currentTarget.style.transform = "translateY(-1px)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = "none";
+                      }}
+                    >
+                      {isSubmitting ? (
+                        <><Loader2 size={16} className="animate-spin" /> Submitting...</>
+                      ) : !isComplete ? (
+                        <>Upload Required Files to Unlock</>
+                      ) : (() => {
+                        const existingLead = getLatestLeadForService(selectedService.title);
+                        const localUploadsForService = uploadedDocs[selectedService.title] || {};
+                        const hasLocalReupload = Object.keys(localUploadsForService).length > 0;
+                        if (existingLead?._id && !hasLocalReupload) {
+                          return <>Submitted <ArrowRight size={16} /></>;
+                        }
+                        return <>Confirm & Submit <ArrowRight size={16} /></>;
+                      })()}
+                    </button>
+                  </div>
                 )}
               </motion.div>
             </motion.div>
@@ -3314,5 +4401,7 @@ const Recommendations = () => {
 };
 
 export default Recommendations;
+
+
 
 

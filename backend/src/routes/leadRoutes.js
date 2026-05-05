@@ -8,6 +8,9 @@ import {
   updateDocumentStatus,
   assignLead,
   updatePrFeedback,
+  getSignedUrl,
+  generateViewToken,
+  streamDocument,
 } from "../controllers/leadController.js";
 import { protect, authorize } from "../middleware/authMiddleware.js";
 
@@ -130,6 +133,7 @@ router.post("/upload", protect, uploadFiles, async (req, res) => {
           folder: `vithartha_documents/${userFolder}`,
           resource_type: "auto",
           public_id: publicId,
+          type: 'authenticated'
         });
 
         return {
@@ -165,6 +169,13 @@ router.patch("/:id", protect, updateLead);
 router.delete("/:id", protect, deleteLead);
 router.patch("/:id/assign", protect, assignLead);
 router.patch("/:id/pr-feedback", protect, updatePrFeedback);
+
+router.get("/signed-url/:publicId", protect, getSignedUrl);
+router.get(/^\/view-token\/(.+)/, protect, (req, res) => {
+  req.params.publicId = req.params[0];
+  return generateViewToken(req, res);
+});
+router.get("/stream/:token", streamDocument); // Guarded by token in controller
 
 // Update individual document status
 router.patch(

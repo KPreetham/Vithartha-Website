@@ -30,6 +30,23 @@ const SERVICE_PRICE_BOOK = [
 
 const normalize = (value) => String(value || "").trim().toLowerCase();
 
+export const parseFeeAmount = (value) => {
+  const text = String(value || "").trim();
+  if (!text) return null;
+
+  const normalized = text.toLowerCase().replace(/,/g, "");
+  const match = normalized.match(/(\d+(?:\.\d+)?)(\s*[km])?/i);
+  if (!match) return null;
+
+  const amount = Number(match[1]);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+
+  const suffix = String(match[2] || "").trim().toLowerCase();
+  if (suffix === "k") return Math.round(amount * 1000);
+  if (suffix === "m") return Math.round(amount * 1000000);
+  return Math.round(amount);
+};
+
 export const getServicePriceAmount = (serviceName) => {
   const normalized = normalize(serviceName);
   const matched = SERVICE_PRICE_BOOK.find((item) =>
@@ -38,7 +55,20 @@ export const getServicePriceAmount = (serviceName) => {
   return matched?.amount || DEFAULT_SERVICE_PRICE;
 };
 
-export const resolveLeadCost = ({ serviceName, cost }) => {
+export const resolveLeadCost = ({
+  serviceName,
+  cost,
+  recommendedFeeAmount,
+  recommendedFees,
+  serviceRecommendedFees,
+}) => {
+  const explicitFee =
+    parseFeeAmount(recommendedFeeAmount) ??
+    parseFeeAmount(recommendedFees) ??
+    parseFeeAmount(serviceRecommendedFees) ??
+    parseFeeAmount(cost);
+  if (Number.isFinite(explicitFee) && explicitFee > 0) return explicitFee;
+
   const mapped = getServicePriceAmount(serviceName);
   if (mapped !== DEFAULT_SERVICE_PRICE) return mapped;
 

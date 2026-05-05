@@ -6,6 +6,8 @@ const leadSchema = new mongoose.Schema({
   email: { type: String, required: true },
   serviceName: { type: String, required: true },
   cost: { type: Number, default: 0 },
+  recommendedFeeAmount: { type: Number, default: 0 },
+  recommendedFees: { type: String, default: "" },
   status: {
     type: String,
     enum: [
@@ -33,6 +35,7 @@ const leadSchema = new mongoose.Schema({
     {
       name: String,
       url: String,
+      publicId: String,
       reuploaded: { type: Boolean, default: false },
       rejectionMessage: { type: String, default: "" },
       type: {
@@ -49,10 +52,15 @@ const leadSchema = new mongoose.Schema({
     },
   ],
   adminMessage: { type: String, default: "" },
+  adminToPrMessage: { type: String, default: "" },
   prMessage: { type: String, default: "" },
   userMessage: { type: String, default: "" },
   executorMessage: { type: String, default: "" },
+  prToExecutorMessage: { type: String, default: "" },
+  adminToExecutorMessage: { type: String, default: "" },
   draftReadyToSend: { type: Boolean, default: false },
+  reuploadedDocumentNames: [String],
+  isDeleted: { type: Boolean, default: false },
   updatedAt: { type: Date, default: Date.now },
   createdAt: { type: Date, default: Date.now },
 });

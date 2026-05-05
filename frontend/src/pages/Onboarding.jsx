@@ -744,15 +744,26 @@ const Onboarding = () => {
                       />
                       {/* Service needs selection for Starting a Business */}
                       <div>
+                        <div style={{ marginBottom: "0.75rem" }}>
+                          <InputQuestion
+                            label="Enter required services"
+                            placeholder="e.g. GST Registration, TDS Filing"
+                            value={formData.manualNeed}
+                            onChange={(v) =>
+                              setFormData({ ...formData, manualNeed: v })
+                            }
+                          />
+                        </div>
                         <p
                           style={{
-                            fontSize: "0.82rem",
+                            fontSize: "0.85rem",
                             fontWeight: 600,
-                            marginBottom: "0.55rem",
-                            color: "rgba(255,255,255,0.75)",
+                            marginBottom: "0.75rem",
+                            color: "rgba(255,255,255,0.85)",
+                            letterSpacing: "0.02em",
                           }}
                         >
-                          Which services do you need?
+                          Example Services
                         </p>
                         <div
                           style={{
@@ -762,34 +773,25 @@ const Onboarding = () => {
                           }}
                         >
                           {needsOptions.map(({ value, icon: Icon, color }) => {
-                            const selected = formData.needs.includes(value);
                             return (
-                              <button
+                              <div
                                 key={value}
-                                onClick={() => toggleNeed(value)}
                                 style={{
                                   display: "flex",
                                   alignItems: "center",
                                   gap: "0.5rem",
                                   padding: "0.55rem 0.75rem",
                                   borderRadius: "8px",
-                                  border: selected
-                                    ? `1.5px solid ${color}`
-                                    : "1.5px solid rgba(255,255,255,0.08)",
-                                  background: selected
-                                    ? `${color}12`
-                                    : "rgba(255,255,255,0.03)",
-                                  color: selected
-                                    ? color
-                                    : "rgba(255,255,255,0.35)",
+                                  border: "1.5px solid rgba(255,255,255,0.08)",
+                                  background: "rgba(255,255,255,0.03)",
+                                  color: "rgba(255,255,255,0.35)",
                                   fontSize: "0.74rem",
                                   fontWeight: 600,
-                                  cursor: "pointer",
-                                  transition: "0.2s",
+                                  cursor: "default",
                                 }}
                               >
                                 <Icon size={12} /> {value}
-                              </button>
+                              </div>
                             );
                           })}
                         </div>
@@ -834,6 +836,27 @@ const Onboarding = () => {
                         >
                           Looking for specific services?
                         </p>
+                        <div style={{ marginBottom: "0.75rem" }}>
+                          <InputQuestion
+                            label="Enter required services"
+                            placeholder="e.g. GST Registration, TDS Filing"
+                            value={formData.manualNeed}
+                            onChange={(v) =>
+                              setFormData({ ...formData, manualNeed: v })
+                            }
+                          />
+                        </div>
+                        <p
+                          style={{
+                            fontSize: "0.85rem",
+                            fontWeight: 600,
+                            marginBottom: "0.75rem",
+                            color: "rgba(255,255,255,0.85)",
+                            letterSpacing: "0.02em",
+                          }}
+                        >
+                          Example Services
+                        </p>
                         <div
                           style={{
                             display: "grid",
@@ -842,34 +865,25 @@ const Onboarding = () => {
                           }}
                         >
                           {needsOptions.map(({ value, icon: Icon, color }) => {
-                            const selected = formData.needs.includes(value);
                             return (
-                              <button
+                              <div
                                 key={value}
-                                onClick={() => toggleNeed(value)}
                                 style={{
                                   display: "flex",
                                   alignItems: "center",
                                   gap: "0.5rem",
                                   padding: "0.55rem 0.75rem",
                                   borderRadius: "8px",
-                                  border: selected
-                                    ? `1.5px solid ${color}`
-                                    : "1.5px solid rgba(255,255,255,0.08)",
-                                  background: selected
-                                    ? `${color}12`
-                                    : "rgba(255,255,255,0.03)",
-                                  color: selected
-                                    ? color
-                                    : "rgba(255,255,255,0.35)",
+                                  border: "1.5px solid rgba(255,255,255,0.08)",
+                                  background: "rgba(255,255,255,0.03)",
+                                  color: "rgba(255,255,255,0.35)",
                                   fontSize: "0.74rem",
                                   fontWeight: 600,
-                                  cursor: "pointer",
-                                  transition: "0.2s",
+                                  cursor: "default",
                                 }}
                               >
                                 <Icon size={12} /> {value}
-                              </button>
+                              </div>
                             );
                           })}
                         </div>

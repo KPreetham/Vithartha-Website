@@ -15,12 +15,15 @@ import {
 } from "../utils/onboardingFlow";
 import { getDashboardPathByRole, normalizeRole } from "../utils/roleRouting";
 
+void motion;
+
 const Login = () => {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({ email: "", password: "" });
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const accentColor = "#7F57FB";
 
   const handleRoleRedirection = async (data) => {
     const actualRole = normalizeRole(data.role);
@@ -184,12 +187,12 @@ const Login = () => {
         padding: "4.5rem 1rem 1rem",
       }}
     >
-      {/* Subtle green glow */}
+      {/* Subtle theme glow */}
       <div
         style={{
           position: "absolute",
           inset: 0,
-          background: `radial-gradient(ellipse 50% 40% at 50% 0%, rgba(34,197,94,0.06) 0%, transparent 60%)`,
+          background: `radial-gradient(ellipse 50% 40% at 50% 0%, rgba(127,87,251,0.08) 0%, transparent 60%)`,
           pointerEvents: "none",
         }}
       />
@@ -201,6 +204,7 @@ const Login = () => {
         style={{ width: "100%", maxWidth: "500px", zIndex: 1 }}
       >
         <div
+          className="auth-card"
           style={{
             background: "var(--modal-gradient)",
             borderRadius: "20px",
@@ -217,8 +221,8 @@ const Login = () => {
               borderRadius: "50%",
               overflow: "hidden",
               margin: "0 auto 0.8rem",
-              background: "rgba(255, 255, 255, 0.03)",
-              border: "1px solid rgba(255, 255, 255, 0.1)",
+              background: "rgba(127, 87, 251, 0.04)",
+              border: "1px solid rgba(127, 87, 251, 0.18)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -261,7 +265,7 @@ const Login = () => {
               style={inputStyle}
               onFocus={() => { }}
               onMouseEnter={(e) =>
-                (e.currentTarget.style.borderColor = "rgba(34,197,94,0.4)")
+                (e.currentTarget.style.borderColor = "rgba(127,87,251,0.45)")
               }
               onMouseLeave={(e) =>
                 (e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)")
@@ -285,7 +289,7 @@ const Login = () => {
                   width: "100%",
                 }}
                 onFocus={(e) =>
-                  (e.currentTarget.parentElement.style.borderColor = "#22c55e")
+                  (e.currentTarget.parentElement.style.borderColor = accentColor)
                 }
                 onBlur={(e) =>
                 (e.currentTarget.parentElement.style.borderColor =
@@ -314,7 +318,7 @@ const Login = () => {
                   flex: 1,
                 }}
                 onFocus={(e) =>
-                  (e.currentTarget.parentElement.style.borderColor = "#22c55e")
+                  (e.currentTarget.parentElement.style.borderColor = accentColor)
                 }
                 onBlur={(e) =>
                 (e.currentTarget.parentElement.style.borderColor =
@@ -351,7 +355,7 @@ const Login = () => {
                   background: "none",
                   border: "none",
                   cursor: "pointer",
-                  color: "#22c55e",
+                  color: accentColor,
                   fontSize: "0.75rem",
                   fontWeight: 600,
                   padding: 0,
@@ -370,8 +374,8 @@ const Login = () => {
                 padding: "0.75rem",
                 borderRadius: "8px",
                 background: loading
-                  ? "rgba(34,197,94,0.5)"
-                  : "linear-gradient(135deg, #16a34a 0%, #22c55e 100%)",
+                  ? "rgba(127,87,251,0.45)"
+                  : "linear-gradient(135deg, #7F57FB 0%, #6A36FB 100%)",
                 color: "white",
                 fontWeight: 800,
                 border: "none",
@@ -383,18 +387,18 @@ const Login = () => {
                 alignItems: "center",
                 justifyContent: "center",
                 gap: "0.5rem",
-                boxShadow: "0 6px 20px rgba(34,197,94,0.3)",
+                boxShadow: "0 6px 20px rgba(127,87,251,0.3)",
                 transition: "all 0.3s ease",
                 marginTop: "0",
               }}
               onMouseEnter={(e) => {
                 if (!loading)
                   e.currentTarget.style.boxShadow =
-                    "0 12px 32px rgba(34,197,94,0.45)";
+                    "0 12px 32px rgba(127,87,251,0.45)";
               }}
               onMouseLeave={(e) =>
               (e.currentTarget.style.boxShadow =
-                "0 8px 24px rgba(34,197,94,0.3)")
+                "0 8px 24px rgba(127,87,251,0.3)")
               }
             >
               {loading ? (
@@ -504,7 +508,7 @@ const Login = () => {
                   )
                 }
                 style={{
-                  color: "#22c55e",
+                  color: accentColor,
                   fontWeight: 700,
                   textDecoration: "none",
                 }}

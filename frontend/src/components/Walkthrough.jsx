@@ -624,12 +624,12 @@ const Walkthrough = ({ isAppLoading }) => {
             {hasMobileNavEntry ? (
               <>
                 Welcome to Fin2Line! Tap the menu icon, then choose{" "}
-                <b>Sign Up</b> to create your account and unlock your
+                <b>Sign In</b> to create your account and unlock your
                 personalized roadmap.
               </>
             ) : (
               <>
-                New here? Click <b>Sign Up</b> to create your account and unlock
+                New here? Click <b>Sign In</b> to create your account and unlock
                 your personalized roadmap.
               </>
             )}

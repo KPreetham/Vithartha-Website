@@ -342,9 +342,9 @@ const Footer = () => {
               }}
             >
               {[
-                { icon: Mail, text: "contact@fin2line.com" },
-                { icon: Phone, text: "+91 91234 56789" },
-                { icon: MapPin, text: "Mangaluru, Karnataka — 575001" },
+                { icon: Mail, text: "vitrharthaconsulting@gmail.com" },
+                { icon: Phone, text: "+91 7795114365" },
+                { icon: MapPin, text: "Mangaluru, India" },
               ].map(({ icon: Icon, text }) => (
                 <div
                   key={text}

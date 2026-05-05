@@ -9,6 +9,7 @@ import { getDashboardPathByRole, normalizeRole } from "../utils/roleRouting";
 
 const GoogleOAuthCallback = () => {
   const navigate = useNavigate();
+  const passwordSetupToastKey = "google-password-setup-toast-shown";
 
   const handleRoleRedirection = async (data) => {
     localStorage.setItem("user", JSON.stringify(data));
@@ -111,7 +112,12 @@ const GoogleOAuthCallback = () => {
         }
 
         if (data.needsRegistration) {
-          toast.success("Set your password to complete account setup.");
+          if (!sessionStorage.getItem(passwordSetupToastKey)) {
+            toast.success("Set your password to complete account setup.", {
+              id: "google-password-setup-toast",
+            });
+            sessionStorage.setItem(passwordSetupToastKey, "true");
+          }
           navigate("/register", {
             replace: true,
             state: {

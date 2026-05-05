@@ -17,6 +17,7 @@ import {
 import axios from "axios";
 import { toast } from "react-hot-toast";
 import Loader from "../components/Loader";
+import { getSecureDocumentUrl } from "../utils/documentViewer";
 
 const DocumentReview = () => {
   const { leadId } = useParams();
@@ -24,6 +25,7 @@ const DocumentReview = () => {
   const [lead, setLead] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedDoc, setSelectedDoc] = useState(null);
+  const [securePreviewUrl, setSecurePreviewUrl] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
 
   const fetchLeadDetails = useCallback(async () => {
@@ -53,6 +55,35 @@ const DocumentReview = () => {
   useEffect(() => {
     fetchLeadDetails();
   }, [fetchLeadDetails]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadSecurePreviewUrl = async () => {
+      if (!selectedDoc?.publicId || !leadId) {
+        setSecurePreviewUrl("");
+        return;
+      }
+
+      try {
+        const url = await getSecureDocumentUrl(selectedDoc.publicId, leadId);
+        if (!cancelled) {
+          setSecurePreviewUrl(url);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setSecurePreviewUrl("");
+        }
+        console.error("Failed to load secure preview URL:", error);
+      }
+    };
+
+    loadSecurePreviewUrl();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [leadId, selectedDoc?.publicId]);
 
   const handleDocumentAction = async (docId, status) => {
     setActionLoading(true);
@@ -548,9 +579,15 @@ const DocumentReview = () => {
                     }}
                   >
                     <a
-                      href={selectedDoc.url}
+                      href={securePreviewUrl || "#"}
                       target="_blank"
                       rel="noopener noreferrer"
+                      onClick={(e) => {
+                        if (!securePreviewUrl) {
+                          e.preventDefault();
+                          toast.error("Document preview is not ready yet.");
+                        }
+                      }}
                       style={{
                         display: "flex",
                         alignItems: "center",
@@ -647,9 +684,9 @@ const DocumentReview = () => {
                         justifyContent: "center",
                       }}
                     >
-                      {selectedDoc.url ? (
+                      {securePreviewUrl ? (
                         <iframe
-                          src={selectedDoc.url}
+                          src={securePreviewUrl}
                           title="Preview"
                           style={{
                             width: "100%",
@@ -704,10 +741,20 @@ const DocumentReview = () => {
                               Please download the file for full inspection.
                             </div>
                           </div>
-                          <a
-                            href={selectedDoc.url || "#"}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                if (!selectedDoc?.publicId) {
+                                  toast.error("Secure document reference is missing.");
+                                  return;
+                                }
+                                const url = await getSecureDocumentUrl(selectedDoc.publicId, leadId);
+                                window.open(url, "_blank", "noopener,noreferrer");
+                              } catch (error) {
+                                toast.error(error.message || "Failed to open document securely.");
+                              }
+                            }}
                             style={{
                               padding: "0.8rem 1.5rem",
                               background: "rgba(255,255,255,0.05)",
@@ -717,10 +764,11 @@ const DocumentReview = () => {
                               fontSize: "0.85rem",
                               fontWeight: 700,
                               border: "1px solid rgba(255,255,255,0.1)",
+                              cursor: "pointer",
                             }}
                           >
-                            Download Original File
-                          </a>
+                            Open Secure Copy
+                          </button>
                         </div>
                       )}
                     </div>

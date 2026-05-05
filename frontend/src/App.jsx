@@ -25,6 +25,8 @@ import Loader from "./components/Loader";
 import { Toaster } from "react-hot-toast";
 import "./App.css";
 
+void motion;
+
 // Routes that hide the Footer
 const HIDE_FOOTER_ROUTES = ["/login", "/register", "/services", "/onboarding", "/auth/google/callback"];
 // Routes that hide the Navbar — only auth pages (login/register) since dashboard now uses the shared navbar
@@ -41,6 +43,7 @@ function App() {
   const shouldHideFooter = HIDE_FOOTER_ROUTES.some(
     (r) => location.pathname === r,
   );
+  const shouldShowAIAssistant = location.pathname === "/";
   const isDarkMode = localStorage.getItem("theme") !== "light";
 
   // Handle Initial Site Load
@@ -61,13 +64,19 @@ function App() {
   useEffect(() => {
     window.scrollTo(0, 0);
     if (!isInitialLoad) {
-      setIsLoading(true);
-      const timer = setTimeout(() => {
-        setIsLoading(false);
-      }, 250); // Snappy route transition delay
-      return () => clearTimeout(timer);
+      let hideTimer;
+      const showTimer = window.setTimeout(() => {
+        setIsLoading(true);
+        hideTimer = window.setTimeout(() => {
+          setIsLoading(false);
+        }, 250); // Snappy route transition delay
+      }, 0);
+      return () => {
+        window.clearTimeout(showTimer);
+        if (hideTimer) window.clearTimeout(hideTimer);
+      };
     }
-  }, [location.pathname]);
+  }, [location.pathname, isInitialLoad]);
 
   
   useEffect(() => {
@@ -178,7 +187,7 @@ function App() {
           </Routes>
         </div>
         {!shouldHideFooter && <Footer />}
-        <AIAssistant />
+        {shouldShowAIAssistant && <AIAssistant />}
         <Toaster
           position="top-center"
           toastOptions={{

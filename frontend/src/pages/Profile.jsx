@@ -17,6 +17,7 @@ import {
 import axios from "axios";
 import { toast } from "react-hot-toast";
 import Loader from "../components/Loader";
+import { normalizeRole } from "../utils/roleRouting";
 
 const Profile = () => {
   const [user, setUser] = useState(null);
@@ -165,8 +166,30 @@ const Profile = () => {
     marginLeft: "4px",
   };
 
+  const roleKey = normalizeRole(user?.role);
+  const roleLabel =
+    roleKey === "admin"
+      ? "Admin"
+      : roleKey === "pr"
+        ? "PR Professional"
+        : roleKey === "executor"
+          ? "Service Executor"
+          : "Client";
+
+  const roleAccent =
+    roleKey === "admin"
+      ? "#22c55e"
+      : roleKey === "pr"
+        ? "#3b82f6"
+        : roleKey === "executor"
+          ? "#f59e0b"
+          : isLightMode
+            ? "rgba(0, 0, 0, 0.55)"
+            : "rgba(255, 255, 255, 0.6)";
+
   return (
     <div
+      className="profile-container"
       style={{
         minHeight: "100vh",
         width: "100%",
@@ -248,39 +271,127 @@ const Profile = () => {
                 }
 
                 @media (max-width: 768px) {
+                    .profile-container {
+                        align-items: flex-start !important;
+                        padding: 84px 16px 28px !important;
+                    }
                     .profile-card {
-                        padding: 1.5rem !important;
+                        padding: 1.4rem !important;
+                        border-radius: 24px !important;
                     }
                     .profile-header {
                         flex-direction: column !important;
-                        align-items: flex-start !important;
-                        gap: 1rem !important;
+                        align-items: center !important;
+                        text-align: center !important;
+                        gap: 0.9rem !important;
+                        margin-bottom: 1.8rem !important;
+                        padding-bottom: 1.5rem !important;
                     }
                     .profile-header-title {
-                        font-size: 1.6rem !important;
+                        font-size: 1.55rem !important;
                         flex-wrap: wrap !important;
+                        justify-content: center !important;
                     }
                     .profile-edit-btn {
                         margin-left: 0 !important;
                         width: 100% !important;
                         justify-content: center !important;
-                        margin-top: 1rem !important;
+                        margin-top: 0.75rem !important;
                     }
                     .profile-form-grid {
                         grid-template-columns: 1fr !important;
-                        gap: 1.5rem !important;
+                        gap: 1.25rem !important;
                     }
                     .profile-industry-stage-grid {
                         grid-template-columns: 1fr !important;
-                        gap: 1rem !important;
+                        gap: 0.9rem !important;
                     }
                     .profile-actions {
                         flex-direction: column !important;
-                        gap: 1rem !important;
+                        gap: 0.75rem !important;
+                        margin-top: 2rem !important;
+                        padding-top: 1.25rem !important;
                     }
                     .profile-actions button {
                         width: 100% !important;
                         justify-content: center !important;
+                    }
+                }
+
+                @media (max-width: 480px) {
+                    .profile-container {
+                        padding: 72px 12px 20px !important;
+                    }
+
+                    .profile-card {
+                        padding: 1rem !important;
+                        border-radius: 20px !important;
+                    }
+
+                    .profile-header {
+                        margin-bottom: 1.4rem !important;
+                        padding-bottom: 1.1rem !important;
+                    }
+
+                    .profile-header > div:first-child {
+                        width: 60px !important;
+                        height: 60px !important;
+                        border-radius: 16px !important;
+                    }
+
+                    .profile-header-title {
+                        font-size: 1.25rem !important;
+                        gap: 0.35rem !important;
+                    }
+
+                    .profile-header-title span {
+                        font-size: 0.6rem !important;
+                        padding: 4px 8px !important;
+                        border-radius: 7px !important;
+                    }
+
+                    .profile-header p {
+                        font-size: 0.85rem !important;
+                        word-break: break-word !important;
+                    }
+
+                    .profile-form-grid {
+                        gap: 1rem !important;
+                    }
+
+                    .profile-form-grid > div,
+                    .profile-actions {
+                        min-width: 0 !important;
+                    }
+
+                    .profile-input {
+                        font-size: 0.92rem !important;
+                        padding: 11px 14px !important;
+                        border-radius: 10px !important;
+                    }
+
+                    .profile-actions button {
+                        font-size: 0.84rem !important;
+                        padding: 11px 18px !important;
+                    }
+                }
+
+                @media (max-width: 360px) {
+                    .profile-container {
+                        padding: 68px 10px 16px !important;
+                    }
+
+                    .profile-card {
+                        padding: 0.9rem !important;
+                        border-radius: 18px !important;
+                    }
+
+                    .profile-header-title {
+                        font-size: 1.15rem !important;
+                    }
+
+                    .profile-header p {
+                        font-size: 0.8rem !important;
                     }
                 }
             `}</style>
@@ -337,19 +448,19 @@ const Profile = () => {
               flexShrink: 0,
             }}
           >
-            {user.role === "admin" ? (
+            {roleKey === "admin" ? (
               <Shield
                 size={36}
                 color={isLightMode ? "#22c55e" : "#22c55e"}
                 strokeWidth={2.5}
               />
-            ) : user.role === "PR" ? (
+            ) : roleKey === "pr" ? (
               <Briefcase
                 size={36}
                 color={isLightMode ? "#3b82f6" : "#3b82f6"}
                 strokeWidth={2.5}
               />
-            ) : user.role === "executor" ? (
+            ) : roleKey === "executor" ? (
               <Zap
                 size={36}
                 color={isLightMode ? "#f59e0b" : "#f59e0b"}
@@ -390,6 +501,9 @@ const Profile = () => {
                 display: "flex",
                 alignItems: "center",
                 gap: "12px",
+                flexWrap: "wrap",
+                justifyContent: "center",
+                textAlign: "center",
               }}
             >
               {user.name}
@@ -398,23 +512,14 @@ const Profile = () => {
                   fontSize: "0.7rem",
                   padding: "4px 10px",
                   background:
-                    user.role === "admin"
+                    roleKey === "admin"
                       ? "rgba(34, 197, 94, 0.1)"
-                      : user.role === "PR"
+                      : roleKey === "pr"
                         ? "rgba(59, 130, 246, 0.1)"
-                        : user.role === "executor"
+                        : roleKey === "executor"
                           ? "rgba(245, 158, 11, 0.1)"
                           : "rgba(255, 255, 255, 0.05)",
-                  color:
-                    user.role === "admin"
-                      ? "#22c55e"
-                      : user.role === "PR"
-                        ? "#3b82f6"
-                        : user.role === "executor"
-                          ? "#f59e0b"
-                          : isLightMode
-                            ? "rgba(0, 0, 0, 0.55)"
-                            : "rgba(255, 255, 255, 0.6)",
+                  color: roleAccent,
                   borderRadius: "8px",
                   textTransform: "uppercase",
                   letterSpacing: "0.05em",
@@ -422,13 +527,7 @@ const Profile = () => {
                   alignSelf: "center",
                 }}
               >
-                {user.role === "admin"
-                  ? "Admin"
-                  : user.role === "PR"
-                    ? "PR Professional"
-                    : user.role === "executor"
-                      ? "Service Executor"
-                      : "Client"}
+                {roleLabel}
               </span>
             </h1>
             <p
@@ -586,7 +685,7 @@ const Profile = () => {
                     letterSpacing: "0.1em",
                   }}
                 >
-                  {user.role === "PR" || user.role === "executor"
+                  {roleKey === "pr" || roleKey === "executor"
                     ? "Professional"
                     : "Business"}
                 </span>
@@ -594,7 +693,7 @@ const Profile = () => {
 
               <div>
                 <label style={labelStyle}>
-                  {user.role === "PR" || user.role === "executor"
+                  {roleKey === "pr" || roleKey === "executor"
                     ? "Organization / Firm"
                     : "Company Name"}
                 </label>
@@ -628,7 +727,7 @@ const Profile = () => {
               >
                 <div>
                   <label style={labelStyle}>
-                    {user.role === "PR" || user.role === "executor"
+                    {roleKey === "pr" || roleKey === "executor"
                       ? "Specialization"
                       : "Industry"}
                   </label>
@@ -653,7 +752,7 @@ const Profile = () => {
                 </div>
                 <div>
                   <label style={labelStyle}>
-                    {user.role === "PR" || user.role === "executor"
+                    {roleKey === "pr" || roleKey === "executor"
                       ? "Expertise Level"
                       : "Stage"}
                   </label>

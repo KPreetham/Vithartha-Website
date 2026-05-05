@@ -15,10 +15,13 @@ import {
   Info,
   Settings,
   ChevronRight,
+  ArrowRight,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import axios from "axios";
 import { getDashboardPathByRole, normalizeRole } from "../utils/roleRouting";
+
+void motion;
 
 const Navbar = () => {
   const [scrolled, setScrolled] = useState(false);
@@ -32,6 +35,13 @@ const Navbar = () => {
   const dropdownRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   // Sync user from localStorage whenever route changes or storage event fires
   useEffect(() => {
@@ -82,7 +92,7 @@ const Navbar = () => {
     if (user) {
       syncProfile();
     }
-  }, [user?.email]); // Sync when user identity is established
+  }, [user]); // Sync when user identity is established
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -105,8 +115,6 @@ const Navbar = () => {
       navigate("/");
     }, 1000);
   };
-
-  const isHome = location.pathname === "/";
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 30);
@@ -134,11 +142,16 @@ const Navbar = () => {
       document.body.classList.add("light-mode");
       localStorage.setItem("theme", "light");
     }
+    window.dispatchEvent(new Event("themechange"));
   }, [isDarkMode]);
 
   useEffect(() => {
-    setMobileOpen(false);
-    setDropdownOpen(false);
+    const resetTimer = window.setTimeout(() => {
+      setMobileOpen(false);
+      setDropdownOpen(false);
+    }, 0);
+
+    return () => window.clearTimeout(resetTimer);
   }, [location.pathname]);
 
   const getDashboardPath = () => {
@@ -157,39 +170,31 @@ const Navbar = () => {
 
   const navStyle = {
     position: "fixed",
-    top: scrolled ? "0.5rem" : "0.8rem",
-    left: "50%",
-    transform: "translateX(-50%)",
-    width: "94%",
-    maxWidth: "1200px",
+    top: "0",
+    left: "0",
+    width: "100%",
     zIndex: 1000,
-    padding: scrolled ? "0.2rem 1.6rem" : "0.32rem 2rem",
-    background: isDarkMode
-      ? "rgba(20, 20, 20, 0.45)"
-      : "rgba(255, 255, 255, 0.45)",
-    backdropFilter: "blur(20px) saturate(180%)",
-    WebkitBackdropFilter: "blur(20px) saturate(180%)",
-    borderRadius: "var(--radius-full)",
-    boxShadow: isDarkMode
-      ? "0 8px 32px 0 rgba(0, 0, 0, 0.37)"
-      : "0 8px 32px 0 rgba(31, 38, 135, 0.15)",
-    border: isDarkMode
-      ? "1px solid rgba(255, 255, 255, 0.08)"
-      : "1px solid rgba(0, 0, 0, 0.08)",
-    transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
+    padding: isMobile ? "0.65rem 1rem" : (scrolled ? "0.65rem 4%" : "0.9rem 4%"),
+    background: "transparent",
+    backdropFilter: "none",
+    WebkitBackdropFilter: "none",
+    transition: "all 0.4s ease",
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
+    borderBottom: "none",
+    boxShadow: "none",
   };
 
   const linkColor = isDarkMode ? "rgba(255,255,255,0.7)" : "rgba(0,0,0,0.7)";
-  const hoverColor = "#22c55e";
+  const hoverColor = isDarkMode ? "white" : "black";
   const logoTextColor = isDarkMode ? "white" : "black";
-  const activeLinkColor = "#22c55e";
+  const activeLinkColor = isDarkMode ? "white" : "black";
 
   return (
     <>
       <nav style={navStyle} id="main-navbar">
+
         {/* Logo */}
         <Link
           to="/"
@@ -197,17 +202,17 @@ const Navbar = () => {
             textDecoration: "none",
             display: "flex",
             alignItems: "center",
-            gap: "0.9rem",
+            gap: "0.75rem",
           }}
         >
           <div style={{
-              height: scrolled ? "44px" : "54px",
-              width: scrolled ? "44px" : "54px",
+              height: scrolled ? "36px" : "44px",
+              width: scrolled ? "36px" : "44px",
               borderRadius: "50%",
               overflow: "hidden",
               transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
-              border: isDarkMode ? "1px solid rgba(255,255,255,0.15)" : "1px solid rgba(0,0,0,0.1)",
-              boxShadow: isDarkMode ? "0 0 15px rgba(0,0,0,0.3)" : "0 0 15px rgba(0,0,0,0.1)",
+              border: isDarkMode ? "1px solid rgba(255, 255, 255, 0.2)" : "1px solid rgba(0,0,0,0.1)",
+              boxShadow: isDarkMode ? "0 4px 15px rgba(0, 0, 0, 0.3)" : "0 0 15px rgba(0,0,0,0.1)",
           }}>
             <img
               src="/logo2.png"
@@ -223,7 +228,7 @@ const Navbar = () => {
           </div>
           <span style={{
             fontFamily: "var(--font-display)",
-            fontSize: scrolled ? "1.05rem" : "1.2rem",
+            fontSize: scrolled ? "0.9rem" : "0.98rem",
             fontWeight: 700,
             color: logoTextColor,
             letterSpacing: "0.04em",
@@ -234,7 +239,7 @@ const Navbar = () => {
         </Link>
 
         {/* Desktop Nav Links */}
-        <div style={{ display: "flex", gap: "1.2rem", alignItems: "center" }}>
+        <div className="desktop-nav" style={{ display: "flex", gap: "1.2rem", alignItems: "center" }}>
           {navLinks.map((link) => {
             const isActive = location.pathname === link.path;
             return (
@@ -245,13 +250,15 @@ const Navbar = () => {
                 style={{
                   textDecoration: "none",
                   color: isActive ? activeLinkColor : linkColor,
-                  fontSize: "0.96rem",
-                  fontWeight: 700,
+                  fontSize: "1.02rem",
+                  fontWeight: 500,
                   padding: "0.5rem 0.8rem",
                   borderRadius: "var(--radius-full)",
-                  transition: "all 0.2s ease",
+                  transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
                   background: "transparent",
+                  border: "none",
                   position: "relative",
+                  boxShadow: "none",
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.color = hoverColor;
@@ -269,9 +276,10 @@ const Navbar = () => {
         </div>
 
         {/* Right Actions */}
-        <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
           {/* Theme Toggle */}
           <button
+            className="theme-toggle-btn"
             onClick={() => setIsDarkMode(!isDarkMode)}
             style={{
               background: "transparent",
@@ -279,8 +287,8 @@ const Navbar = () => {
                 ? "1px solid rgba(255,255,255,0.1)"
                 : "1px solid rgba(0,0,0,0.1)",
               color: logoTextColor,
-              width: "42px",
-              height: "42px",
+              width: "36px",
+              height: "36px",
               borderRadius: "50%",
               display: "flex",
               alignItems: "center",
@@ -298,7 +306,7 @@ const Navbar = () => {
             }
             aria-label="Toggle theme"
           >
-            {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+            {isDarkMode ? <Sun size={16} /> : <Moon size={16} />}
           </button>
 
           {/* Auth Area */}
@@ -311,7 +319,7 @@ const Navbar = () => {
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: "0.6rem",
+                  gap: "0.5rem",
                   background: "transparent",
                   border: "none",
                   cursor: "pointer",
@@ -323,8 +331,8 @@ const Navbar = () => {
               >
                 <div
                   style={{
-                    width: "42px",
-                    height: "42px",
+                    width: "36px",
+                    height: "36px",
                     borderRadius: "50%",
                     background: isDarkMode ? "#3f4044" : "#e5e7eb",
                     border: isDarkMode
@@ -337,12 +345,12 @@ const Navbar = () => {
                   }}
                 >
                   <User
-                    size={22}
+                    size={18}
                     style={{ color: isDarkMode ? "#e0e0e0" : "#374151" }}
                   />
                 </div>
                 <ChevronDown
-                  size={18}
+                  size={16}
                   style={{
                     color: isDarkMode ? "#a0a0a0" : "#4b5563",
                     transition: "transform 0.3s ease",
@@ -361,7 +369,7 @@ const Navbar = () => {
                     right: 0,
                     minWidth: "220px",
                     background: isDarkMode
-                      ? "rgba(18, 18, 25, 0.97)"
+                      ? "rgba(13, 13, 27, 0.98)"
                       : "rgba(255, 255, 255, 0.97)",
                     backdropFilter: "blur(24px)",
                     WebkitBackdropFilter: "blur(24px)",
@@ -381,7 +389,7 @@ const Navbar = () => {
                   {/* User Info Header */}
                   <div
                     style={{
-                      padding: "1rem 1.2rem",
+                        padding: "0.85rem 1rem",
                       borderBottom: isDarkMode
                         ? "1px solid rgba(255,255,255,0.06)"
                         : "1px solid rgba(0,0,0,0.06)",
@@ -392,8 +400,8 @@ const Navbar = () => {
                   >
                     <div
                       style={{
-                        width: 38,
-                        height: 38,
+                        width: 34,
+                        height: 34,
                         borderRadius: "50%",
                         background: isDarkMode ? "#3f4044" : "#e5e7eb",
                         border: isDarkMode
@@ -406,7 +414,7 @@ const Navbar = () => {
                       }}
                     >
                       <User
-                        size={20}
+                        size={18}
                         style={{ color: isDarkMode ? "#e0e0e0" : "#374151" }}
                       />
                     </div>
@@ -415,7 +423,7 @@ const Navbar = () => {
                         style={{
                           margin: 0,
                           fontWeight: 700,
-                          fontSize: "0.88rem",
+                        fontSize: "0.82rem",
                           color: isDarkMode ? "white" : "#111",
                           whiteSpace: "nowrap",
                           overflow: "hidden",
@@ -427,7 +435,7 @@ const Navbar = () => {
                       <p
                         style={{
                           margin: 0,
-                          fontSize: "0.72rem",
+                          fontSize: "0.68rem",
                           color: isDarkMode
                             ? "rgba(255,255,255,0.45)"
                             : "rgba(0,0,0,0.45)",
@@ -596,39 +604,47 @@ const Navbar = () => {
               )}
             </div>
           ) : (
-            /* === Sign Up Button (not logged in) === */
+            /* === Sign In Button (not logged in) === */
             <button
-              id="navbar-login-btn"
-              className="btn"
+              id="navbar-signup-btn"
+              className="btn navbar-signin-btn"
               style={{
-                background: "#111114",
+                background: "linear-gradient(135deg, #7c3aed 0%, #6d28d9 52%, #4c1d95 100%)",
                 color: "white",
-                border: "1px solid rgba(255, 255, 255, 0.1)",
-                fontSize: "0.9rem",
-                padding: "0.6rem 2rem",
-                borderRadius: "8px",
-                fontWeight: 700,
-                transition: "all 0.3s ease",
+                border: "1px solid rgba(255, 255, 255, 0.14)",
+                fontSize: "0.88rem",
+                padding: "0.62rem 1.4rem",
+                borderRadius: "12px",
+                fontWeight: 600,
+                transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
                 cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                boxShadow: "0 10px 24px rgba(76, 29, 149, 0.3)",
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = "#22c55e";
+                e.currentTarget.style.background = "linear-gradient(135deg, #8b5cf6 0%, #7c3aed 52%, #5b21b6 100%)";
+                e.currentTarget.style.transform = "translateY(-1px)";
+                e.currentTarget.style.border = "1px solid rgba(255, 255, 255, 0.22)";
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.1)";
+                e.currentTarget.style.background = "linear-gradient(135deg, #7c3aed 0%, #6d28d9 52%, #4c1d95 100%)";
+                e.currentTarget.style.transform = "translateY(0)";
+                e.currentTarget.style.border = "1px solid rgba(255, 255, 255, 0.14)";
               }}
               onClick={() => navigate("/login")}
             >
-              Sign Up
+              Sign In <ArrowRight size={17} />
             </button>
           )}
 
           {/* Mobile toggle */}
           <button
             id="navbar-mobile-toggle"
+            className="mobile-nav-toggle"
             onClick={() => setMobileOpen(!mobileOpen)}
             style={{
-              display: "none",
               background: "transparent",
               border: "none",
               cursor: "pointer",
@@ -657,22 +673,22 @@ const Navbar = () => {
         {mobileOpen && (
           <motion.div
             id="mobile-menu"
-            initial={{ opacity: 0, scale: 0.95, y: -20, x: "-50%" }}
-            animate={{ opacity: 1, scale: 1, y: 0, x: "-50%" }}
-            exit={{ opacity: 0, scale: 0.95, y: -20, x: "-50%" }}
+            initial={{ opacity: 0, scale: 0.95, y: -20, x: isMobile ? 0 : "-50%" }}
+            animate={{ opacity: 1, scale: 1, y: 0, x: isMobile ? 0 : "-50%" }}
+            exit={{ opacity: 0, scale: 0.95, y: -20, x: isMobile ? 0 : "-50%" }}
             transition={{ duration: 0.3, ease: [0.23, 1, 0.32, 1] }}
             style={{
               position: "fixed",
-              top: "80px",
-              left: "50%",
-              width: "90%",
+              top: isMobile ? (scrolled ? "60px" : "74px") : "80px",
+              left: isMobile ? 0 : "50%",
+              width: isMobile ? "100%" : "90%",
               zIndex: 999,
               background: isDarkMode
-                ? "rgba(20, 20, 20, 0.95)"
-                : "rgba(255, 255, 255, 0.95)",
+                ? "rgba(10, 10, 20, 0.98)"
+                : "rgba(255, 255, 255, 0.98)",
               backdropFilter: "blur(30px) saturate(150%)",
               WebkitBackdropFilter: "blur(30px) saturate(150%)",
-              borderRadius: "24px",
+              borderRadius: isMobile ? "0 0 24px 24px" : "24px",
               border: isDarkMode
                 ? "1px solid rgba(255, 255, 255, 0.1)"
                 : "1px solid rgba(0, 0, 0, 0.1)",
@@ -681,6 +697,8 @@ const Navbar = () => {
               flexDirection: "column",
               gap: "0.4rem",
               boxShadow: "0 20px 40px rgba(0,0,0,0.3)",
+              maxHeight: isMobile ? "calc(100vh - 72px)" : "none",
+              overflowY: isMobile ? "auto" : "visible",
             }}
           >
             {/* Mobile user info (if logged in) */}
@@ -780,93 +798,60 @@ const Navbar = () => {
                           overflow: "hidden",
                           whiteSpace: "nowrap",
                         }}
-                      >
+                        >
                         {user.email}
                       </p>
                     </div>
                   </div>
-                </div>
 
-                {/* Profile Quick Actions */}
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: "0.6rem",
-                    padding: "0.2rem",
-                  }}
-                >
-                  <Link
-                    to="/profile"
-                    onClick={() => setMobileOpen(false)}
+                  <button
+                    id="navbar-mobile-profile-btn"
+                    onClick={() => {
+                      setMobileOpen(false);
+                      navigate("/profile");
+                    }}
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      justifyContent: "center",
-                      gap: "0.5rem",
-                      padding: "0.7rem",
+                      justifyContent: "space-between",
+                      gap: "0.75rem",
+                      width: "100%",
+                      padding: "0.9rem 1rem",
+                      border: "none",
+                      borderRadius: "16px",
                       background: isDarkMode
                         ? "rgba(255,255,255,0.05)"
-                        : "white",
-                      boxShadow: isDarkMode
-                        ? "none"
-                        : "0 2px 8px rgba(0,0,0,0.05)",
-                      borderRadius: "14px",
+                        : "rgba(0,0,0,0.04)",
                       color: logoTextColor,
-                      fontSize: "0.85rem",
+                      fontSize: "0.92rem",
                       fontWeight: 700,
-                      textDecoration: "none",
-                      transition: "all 0.2s",
-                      border: isDarkMode
-                        ? "1px solid rgba(255,255,255,0.05)"
-                        : "1px solid rgba(0,0,0,0.03)",
+                      cursor: "pointer",
+                      textAlign: "left",
+                      transition: "all 0.18s ease",
+                      fontFamily: "var(--font-body)",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = isDarkMode
+                        ? "rgba(255,255,255,0.08)"
+                        : "rgba(0,0,0,0.06)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = isDarkMode
+                        ? "rgba(255,255,255,0.05)"
+                        : "rgba(0,0,0,0.04)";
                     }}
                   >
-                    <User size={15} /> My Profile
-                  </Link>
-                  <Link
-                    id="mobile-dashboard-link"
-                    to={getDashboardPath()}
-                    onClick={() => setMobileOpen(false)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: "0.5rem",
-                      padding: "0.7rem",
-                      background:
-                        user.role === "admin"
-                          ? "rgba(239,68,68,0.08)"
-                          : "rgba(16,185,129,0.08)",
-                      borderRadius: "14px",
-                      color: user.role === "admin" ? "#ef4444" : "#10b981",
-                      fontSize: "0.85rem",
-                      fontWeight: 700,
-                      textDecoration: "none",
-                      transition: "all 0.2s",
-                      border:
-                        user.role === "admin"
-                          ? "1px solid rgba(239,68,68,0.1)"
-                          : "1px solid rgba(16,185,129,0.1)",
-                    }}
-                  >
-                    {user.role === "admin" ? (
-                      <Shield size={15} />
-                    ) : (
-                      <Layers size={15} />
-                    )}
-                    {user.role === "admin" ? "Admin Panel" : "Dashboard"}
-                  </Link>
+                    <span style={{ display: "flex", alignItems: "center", gap: "0.7rem" }}>
+                      <User size={16} />
+                      My Profile
+                    </span>
+                    <ChevronRight size={16} style={{ opacity: 0.45 }} />
+                  </button>
                 </div>
               </div>
             )}
 
-            {navLinks
-              .filter((link) => {
-                if (user && link.name === "Dashboard") return false;
-                return true;
-              })
-              .map((link) => {
+            {navLinks.map((link) => {
                 const Icon =
                   link.name === "Home"
                     ? Home
@@ -890,7 +875,7 @@ const Navbar = () => {
                       transition: "all 0.2s ease",
                       display: "flex",
                       alignItems: "center",
-                      justifyContent: "space-between",
+                      justifyContent: "between",
                       background: "transparent",
                     }}
                     onMouseEnter={(e) => {
@@ -974,8 +959,9 @@ const Navbar = () => {
                   style={{
                     flex: 1,
                     justifyContent: "center",
-                    background: isDarkMode ? "white" : "black",
-                    color: isDarkMode ? "black" : "white",
+                    background: "linear-gradient(135deg, #7c3aed 0%, #6d28d9 52%, #4c1d95 100%)",
+                    color: "white",
+                    border: "1px solid rgba(255, 255, 255, 0.14)",
                     borderRadius: "var(--radius-full)",
                     padding: "0.8rem",
                     fontWeight: 700,
@@ -984,7 +970,7 @@ const Navbar = () => {
                   }}
                   onClick={() => navigate("/login")}
                 >
-                  Sign Up
+                  Sign In
                 </button>
               )}
             </div>
@@ -999,19 +985,19 @@ const Navbar = () => {
                 }
                 @media (max-width: 768px) {
                     #navbar-mobile-toggle { display: flex !important; }
-                    #navbar-login-btn, #navbar-user-avatar-btn { display: none !important; }
+                    #navbar-signup-btn, #navbar-user-avatar-btn { display: none !important; }
                     nav > div:nth-child(2) { display: none !important; }
                 }
                 /* Mobile menu full width on phones */
-                @media (max-width: 480px) {
+                @media (max-width: 768px) {
                     #mobile-menu {
-                        width: calc(100vw - 1.5rem) !important;
-                        left: 50% !important;
-                        top: 70px !important;
+                        width: 100% !important;
+                        left: 0 !important;
                     }
                     #main-navbar {
-                        width: calc(100% - 1.2rem) !important;
-                        padding: 0.5rem 1rem !important;
+                        width: 100% !important;
+                        padding: 0.65rem 1rem !important;
+                        left: 0 !important;
                     }
                 }
             `}</style>

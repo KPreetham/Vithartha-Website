@@ -583,9 +583,9 @@ const About = () => {
                 <h3 style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: "1.5rem" }}>Connect with Us</h3>
                 <div style={{ display: "flex", flexDirection: "column", gap: "1.2rem" }}>
                   {[
-                    { icon: Mail, label: "Email", value: "info@fin2line.com", link: "mailto:info@fin2line.com" },
-                    { icon: Phone, label: "Phone", value: "+91 98765 43210", link: "tel:+919876543210" },
-                    { icon: MapPin, label: "Office", value: "Bangalore, India", link: "#" },
+                    { icon: Mail, label: "Email", value: "vitrharthaconsulting@gmail.com", link: "mailto:vitrharthaconsulting@gmail.com" },
+                    { icon: Phone, label: "Phone", value: "+91 7795114365", link: "tel:+917795114365" },
+                    { icon: MapPin, label: "Office", value: "Mangaluru, India", link: "#" },
                   ].map((item, i) => (
                     <div key={i} style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
                       <div style={{ width: "36px", height: "36px", borderRadius: "10px", background: "rgba(16,185,129,0.1)", display: "flex", alignItems: "center", justifyCenter: "center", border: "1px solid rgba(16,185,129,0.2)" }}>

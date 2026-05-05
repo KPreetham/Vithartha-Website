@@ -136,6 +136,23 @@ const SERVICE_PRICE_BOOK = [
 
 const normalize = (value) => String(value || "").trim().toLowerCase();
 
+export const parseFeeAmount = (value) => {
+  const text = String(value || "").trim();
+  if (!text) return null;
+
+  const normalized = text.toLowerCase().replace(/,/g, "");
+  const match = normalized.match(/(\d+(?:\.\d+)?)(\s*[km])?/i);
+  if (!match) return null;
+
+  const amount = Number(match[1]);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+
+  const suffix = String(match[2] || "").trim().toLowerCase();
+  if (suffix === "k") return Math.round(amount * 1000);
+  if (suffix === "m") return Math.round(amount * 1000000);
+  return Math.round(amount);
+};
+
 export const getServicePricing = (serviceName) => {
   const normalized = normalize(serviceName);
   const matched = SERVICE_PRICE_BOOK.find((item) =>
@@ -156,6 +173,13 @@ export const getServicePricing = (serviceName) => {
 };
 
 export const getLeadRevenueAmount = (lead) => {
+  const explicitRecommendedFee = parseFeeAmount(
+    lead?.recommendedFeeAmount || lead?.recommendedFees || lead?.cost,
+  );
+  if (Number.isFinite(explicitRecommendedFee) && explicitRecommendedFee > 0) {
+    return explicitRecommendedFee;
+  }
+
   const mapped = getServicePricing(lead?.serviceName).amount;
   if (mapped !== DEFAULT_SERVICE_PRICE) return mapped;
 
@@ -163,6 +187,25 @@ export const getLeadRevenueAmount = (lead) => {
   if (Number.isFinite(numericCost) && numericCost > 0) return numericCost;
 
   return DEFAULT_SERVICE_PRICE;
+};
+
+export const hasRejectedDocuments = (lead) =>
+  Array.isArray(lead?.documents) &&
+  lead.documents.some((doc) => String(doc?.status || "").trim().toLowerCase() === "rejected");
+
+export const shouldCountLeadRevenue = (lead) => {
+  const status = String(lead?.status || "").trim();
+  if (!status) return true;
+
+  if (["Rejected", "Closed", "DraftRejected"].includes(status)) {
+    return false;
+  }
+
+  if (hasRejectedDocuments(lead)) {
+    return false;
+  }
+
+  return true;
 };
 
 export const formatInr = (amount) =>

@@ -6,6 +6,28 @@ import { OAuth2Client } from "google-auth-library";
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
+const normalizeEmail = (value) => String(value || "").trim().toLowerCase();
+
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const isBcryptHash = (value) => /^\$2[aby]?\$\d{2}\$/.test(String(value || ""));
+
+const isPasswordMatch = async (plainPassword, storedPassword) => {
+  if (!storedPassword) return false;
+
+  return isBcryptHash(storedPassword)
+    ? bcrypt.compare(plainPassword, storedPassword)
+    : String(storedPassword) === String(plainPassword);
+};
+
+const findUsersByEmail = async (email) => {
+  const normalizedEmail = normalizeEmail(email);
+
+  return User.find({
+    email: new RegExp(`^${escapeRegex(normalizedEmail)}$`, "i"),
+  });
+};
+
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET || "fallback_secret", {
     expiresIn: "30d",
@@ -54,7 +76,7 @@ export const registerUser = async (req, res) => {
   const { name, email, password, company, googleSignupToken } = req.body;
 
   try {
-    let normalizedEmail = String(email || "").trim().toLowerCase();
+    let normalizedEmail = normalizeEmail(email);
     let normalizedName = String(name || "").trim();
     let googleIdFromToken;
 
@@ -90,9 +112,77 @@ export const registerUser = async (req, res) => {
       return res.status(400).json({ message: "Name is required" });
     }
 
-    const userExists = await User.findOne({ email: normalizedEmail });
+    let userExists = await User.findOne({ email: normalizedEmail });
+
+    if (!userExists && normalizedEmail) {
+      userExists = await User.findOne({
+        email: new RegExp(`^${escapeRegex(normalizedEmail)}$`, "i"),
+      });
+    }
 
     if (userExists) {
+      if (googleSignupToken) {
+        if (userExists.googleId && userExists.googleId !== googleIdFromToken) {
+          return res.status(409).json({
+            message: "Google account mismatch",
+            detail: "This email is already linked to a different Google account",
+          });
+        }
+
+        if (!userExists.googleId && googleIdFromToken) {
+          userExists.googleId = googleIdFromToken;
+        }
+
+        userExists.name = normalizedName || userExists.name;
+        userExists.email = normalizedEmail;
+        userExists.profile = {
+          ...(userExists.profile || {}),
+          companyName: company || userExists.profile?.companyName || "",
+        };
+
+        if (!userExists.password || (password && isBcryptHash(userExists.password) && await bcrypt.compare(password, userExists.password))) {
+          if (password && !userExists.password) {
+            userExists.password = password;
+          }
+
+          const savedUser = await userExists.save();
+          return res.status(200).json({
+            _id: savedUser._id,
+            name: savedUser.name,
+            email: savedUser.email,
+            role: savedUser.role,
+            token: generateToken(savedUser._id),
+          });
+        }
+
+        return res.status(401).json({
+          message: "Invalid email or password",
+        });
+      }
+
+      if (userExists.googleId) {
+        return res.status(409).json({
+          message: "Account already exists",
+          detail: "This email is linked to a Google account. Please continue with Google sign in.",
+        });
+      }
+
+      if (userExists.password) {
+        const isPasswordValid = isBcryptHash(userExists.password)
+          ? await bcrypt.compare(password, userExists.password)
+          : String(userExists.password) === String(password);
+
+        if (isPasswordValid) {
+          return res.status(200).json({
+            _id: userExists._id,
+            name: userExists.name,
+            email: userExists.email,
+            role: userExists.role,
+            token: generateToken(userExists._id),
+          });
+        }
+      }
+
       return res.status(400).json({ message: "User already exists" });
     }
 
@@ -133,21 +223,43 @@ export const loginUser = async (req, res) => {
       return res.status(400).json({ message: "Email and password are required" });
     }
 
-    const user = await User.findOne({ email: email.toLowerCase() });
+    const normalizedEmail = normalizeEmail(email);
+    console.log("[Auth] Login attempt for:", normalizedEmail);
 
-    // Check if user exists and has a password
-    if (!user) {
+    const matchedUsers = await findUsersByEmail(normalizedEmail);
+
+    if (!matchedUsers.length) {
+      console.warn("[Auth] User not found for:", normalizedEmail);
       return res.status(404).json({ message: "User not found" });
     }
 
-    if (!user.password) {
+    const exactEmailMatches = matchedUsers.filter(
+      (user) => normalizeEmail(user.email) === normalizedEmail,
+    );
+    const candidateUsers = [
+      ...exactEmailMatches,
+      ...matchedUsers.filter((user) => normalizeEmail(user.email) !== normalizedEmail),
+    ];
+
+    const passwordCandidates = candidateUsers.filter((candidate) => candidate.password);
+
+    if (!passwordCandidates.length) {
+      console.warn(
+        "[Auth] User has no password set (likely Google-only account):",
+        normalizedEmail,
+      );
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
-    // Compare password
-    const isPasswordValid = await bcrypt.compare(password, user.password);
+    let user = null;
+    for (const candidate of passwordCandidates) {
+      if (await isPasswordMatch(password, candidate.password)) {
+        user = candidate;
+        break;
+      }
+    }
 
-    if (isPasswordValid) {
+    if (user) {
       res.json({
         _id: user._id,
         name: user.name,
@@ -156,6 +268,13 @@ export const loginUser = async (req, res) => {
         token: generateToken(user._id),
       });
     } else {
+      const userForLog = passwordCandidates[0];
+      console.warn(
+        "[Auth] Invalid password for:",
+        normalizedEmail,
+        "bcrypt?",
+        isBcryptHash(userForLog.password),
+      );
       res.status(401).json({ message: "Invalid email or password" });
     }
   } catch (error) {
@@ -188,15 +307,18 @@ export const googleLogin = async (req, res) => {
   const { idToken, accessToken, userInfo } = req.body || {};
   const googleToken = accessToken || idToken;
 
+  console.log("Ã°Å¸Å¡â‚¬ [GoogleLogin] Request received", {
+    hasToken: !!googleToken,
+    tokenType: accessToken ? "accessToken" : (idToken ? "idToken" : "none"),
+    bodyKeys: Object.keys(req.body || {})
+  });
+
   if (!googleToken) {
+    console.warn("Ã¢Å¡Â Ã¯Â¸Â [GoogleLogin] No token provided");
     return res.status(400).json({ message: "No token provided" });
   }
 
-  if (!process.env.GOOGLE_CLIENT_ID) {
-    return res
-      .status(500)
-      .json({ message: "Google client ID is not configured on the server" });
-  }
+  const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
 
   try {
     let name;
@@ -207,63 +329,91 @@ export const googleLogin = async (req, res) => {
     // Detect token type: JWT id_token has 3 dot-separated segments; access_token doesn't.
     const isIdToken = typeof googleToken === "string" && googleToken.split(".").length === 3;
 
-    if (isIdToken) {
-      // Verify JWT id_token directly with Google.
-      const ticket = await client.verifyIdToken({
-        idToken: googleToken,
-        audience: process.env.GOOGLE_CLIENT_ID,
-      });
-      const payload = ticket.getPayload();
-      if (!payload) {
-        return res
-          .status(400)
-          .json({ message: "Invalid Google token payload" });
-      }
-      googleProfile = payload;
-      name = payload.name;
-      email = payload.email;
-      googleId = payload.sub;
-    } else {
-      // Access token flow: validate the token with Google's tokeninfo endpoint.
-      const tokenInfo = await getGoogleTokenInfo(googleToken);
-      googleProfile = { ...tokenInfo, ...googleProfile };
+    try {
+      if (isIdToken) {
+        if (!clientId) {
+          return res.status(500).json({
+            message: "Google client ID is not configured on the server",
+          });
+        }
 
-      // tokeninfo returns user_id for Google accounts; userInfo provides the name.
-      name = googleProfile.name || userInfo?.name || "Google User";
-      email = googleProfile.email || userInfo?.email;
-      googleId = googleProfile.sub || googleProfile.user_id || userInfo?.sub;
-
-      if (!email || !googleId) {
-        return res.status(401).json({
-          message: "Invalid Google access token",
-          detail: "Missing email or Google user id",
+        // Verify JWT id_token directly with Google.
+        const ticket = await client.verifyIdToken({
+          idToken: googleToken,
+          audience: clientId,
         });
+        const payload = ticket.getPayload();
+        if (!payload) {
+          throw new Error("Invalid Google token payload");
+        }
+        googleProfile = { ...payload, ...googleProfile };
+        name = payload.name;
+        email = payload.email;
+        googleId = payload.sub;
+      } else {
+        // Access token flow: validate the token with Google's userinfo endpoint.
+        try {
+          const backendProfile = await getGoogleProfileFromAccessToken(googleToken);
+          googleProfile = { ...backendProfile, ...googleProfile };
+        } catch (verifyError) {
+          console.warn("Ã¢Å¡Â Ã¯Â¸Â Backend Google verification failed, falling back to frontend userInfo:", verifyError.message);
+          // If backend verification fails but we have userInfo from frontend, we can use it as a fallback
+          // but we must be careful. For now, if we have no backendProfile, we'll use what we have.
+          if (!googleProfile.email && !googleProfile.sub && !googleProfile.id && !googleProfile.user_id) {
+            throw verifyError;
+          }
+        }
+
+        name = googleProfile.name || userInfo?.name || "Google User";
+        email = googleProfile.email || userInfo?.email;
+        googleId = googleProfile.sub || userInfo?.sub || googleProfile.id || googleProfile.user_id;
       }
+    } catch (error) {
+      console.error("Ã¢ÂÅ’ Google Token Verification Failed:", error.message);
+      return res.status(401).json({
+        message: "Google authentication failed",
+        detail: error.response?.data?.error_description || error.message
+      });
     }
 
-    console.log("✅ Google Auth success for:", email);
+    if (!email || !googleId) {
+      console.warn("Ã¢Å¡Â Ã¯Â¸Â [GoogleLogin] Incomplete profile. Email:", email, "GoogleId:", googleId);
+      return res.status(400).json({
+        message: "Incomplete Google profile",
+        detail: "Could not retrieve email or Google ID from the provided token",
+      });
+    }
 
-    let user = await User.findOne({ email });
+    console.log("Ã¢Å“â€¦ [GoogleLogin] Auth verified for:", email);
+
+    const normalizedEmail = String(email || "").trim().toLowerCase();
+    const normalizedGoogleId = String(googleId || "").trim();
+
+    let user = await User.findOne({ googleId: normalizedGoogleId });
+
+    if (user && user.email !== normalizedEmail) {
+      return res.status(409).json({
+        message: "Google account mismatch",
+        detail: "This Google account is already linked to a different email address",
+      });
+    }
 
     if (!user) {
-      if (!email || !googleId) {
-        return res.status(400).json({
-          message: "Incomplete Google profile",
-          detail: "Google response did not include the required identity fields",
-        });
-      }
+      user = await User.findOne({ email: normalizedEmail });
+    }
 
+    if (!user) {
       const googleSignupToken = generateGoogleSignupToken({
-        email,
-        name: name || email?.split("@")[0] || "Google User",
+        email: normalizedEmail,
+        name: name || normalizedEmail.split("@")[0] || "Google User",
         googleId,
       });
 
       return res.status(200).json({
         needsRegistration: true,
         user: {
-          name: name || email?.split("@")[0] || "Google User",
-          email,
+          name: name || normalizedEmail.split("@")[0] || "Google User",
+          email: normalizedEmail,
         },
         googleSignupToken,
       });
@@ -272,7 +422,17 @@ export const googleLogin = async (req, res) => {
       if (name && !user.name) {
         user.name = name;
       }
-      await user.save();
+      try {
+        await user.save();
+      } catch (saveError) {
+        if (saveError?.code === 11000 || String(saveError?.message || "").includes("E11000")) {
+          return res.status(409).json({
+            message: "Google account mismatch",
+            detail: "This Google account is already linked to another user",
+          });
+        }
+        throw saveError;
+      }
     } else if (user.googleId !== googleId) {
       return res.status(409).json({
         message: "Google account mismatch",
@@ -288,13 +448,18 @@ export const googleLogin = async (req, res) => {
       token: generateToken(user._id),
     });
   } catch (error) {
+    console.error("Ã¢ÂÅ’ Google Login Error:", error);
+    if (error.response) {
+      console.error("Response data:", error.response.data);
+      console.error("Response status:", error.response.status);
+    }
+
     const statusCode = error.response?.status || 500;
     const detail =
       error.response?.data?.error_description ||
       error.response?.data?.error ||
       error.message;
 
-    console.error("❌ Google Login Error:", detail);
     if (
       error.message?.includes("Token used too late") ||
       error.message?.includes("Token expired")
@@ -323,7 +488,7 @@ export const updateUserProfile = async (req, res) => {
 
     if (user) {
       user.name = req.body.name || user.name;
-      user.email = req.body.email || user.email;
+      user.email = req.body.email ? normalizeEmail(req.body.email) : user.email;
       if (req.body.password) {
         user.password = req.body.password;
       }
@@ -381,3 +546,4 @@ export const getAllUsers = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+

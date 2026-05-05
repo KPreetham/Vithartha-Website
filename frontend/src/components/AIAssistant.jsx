@@ -1,7 +1,13 @@
 import React, { useState, useRef, useEffect } from "react";
-import { MessageSquare, X, Send, Loader2, Bot } from "lucide-react";
+import {
+  X,
+  Send,
+  Bot,
+} from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import axios from "axios";
+
+void motion;
 
 const SYSTEM_PROMPT = `You are a professional AI Business Advisor for Fin2Line, a company specializing in Finance, Compliance, Advisory, Tax, and Legal services.
 
@@ -15,19 +21,104 @@ Your primary goal is to assist users with queries regarding:
 Guidelines:
 1. TONE: Maintain a high-level, professional, and sophisticated tone. Avoid informal language.
 2. FORMATTING: Use plain text only. CRITICAL: Never use double asterisks (**) for bolding or emphasis.
-3. PRICING: If asked, mention that fees start at ₹1,000 and the timeline is typically 2-4 days. Advise them to confirm interest via the recommendations page for precise quotes.
+3. PRICING: If asked, mention that fees start at Rs 1,000 and the timeline is typically 2-4 days. Advise them to confirm interest via the recommendations page for precise quotes.
 4. SCOPE: If a user asks a general question unrelated to Fin2Line, provide a very brief professional answer if possible, but immediately follow up by asking them to keep questions relevant to Fin2Line's business services.
 5. CONCISENESS: Keep responses brief and focused on how Fin2Line can solve the user's business needs.`;
 
+const previewMessages = [
+  {
+    role: "assistant",
+    content: "Hello! How can I help you with your business compliance and finance today?",
+  },
+];
+
+const TypingDots = ({ accent = "#A78BFA" }) => (
+  <div
+    style={{
+      display: "inline-flex",
+      alignItems: "center",
+      gap: "0.3rem",
+      paddingLeft: "0.2rem",
+    }}
+  >
+    {[0, 1, 2].map((i) => (
+      <motion.span
+        key={i}
+        animate={{ y: [0, -4, 0], opacity: [0.45, 1, 0.45] }}
+        transition={{
+          repeat: Infinity,
+          duration: 0.9,
+          ease: "easeInOut",
+          delay: i * 0.12,
+        }}
+        style={{
+          width: "7px",
+          height: "7px",
+          borderRadius: "999px",
+          background: accent,
+          boxShadow: `0 0 14px ${accent}66`,
+          display: "inline-block",
+        }}
+      />
+    ))}
+  </div>
+);
+
+const RobotLauncher = () => (
+  <div
+    style={{
+      position: "relative",
+      width: "100%",
+      height: "100%",
+      display: "grid",
+      placeItems: "center",
+    }}
+  >
+    <motion.svg
+      viewBox="0 0 64 64"
+      width="64"
+      height="64"
+      aria-hidden="true"
+      animate={{ y: [0, -1.5, 0] }}
+      transition={{ repeat: Infinity, duration: 4.5, ease: "easeInOut" }}
+      style={{ overflow: "visible" }}
+    >
+      <defs>
+        <linearGradient id="botBadge" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#4f46e5" />
+          <stop offset="100%" stopColor="#4338ca" />
+        </linearGradient>
+        <linearGradient id="botStroke" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="#ede9fe" />
+          <stop offset="100%" stopColor="#f8fafc" />
+        </linearGradient>
+      </defs>
+
+      <motion.g animate={{ rotate: [-0.8, 0.8, -0.8] }} transition={{ repeat: Infinity, duration: 4.8, ease: "easeInOut" }} style={{ transformOrigin: "32px 32px" }}>
+        {/* Purple Background Square */}
+        <rect x="8" y="8" width="48" height="48" rx="14" fill="url(#botBadge)" />
+        
+        {/* Head Outline */}
+        <rect x="18" y="23" width="28" height="19" rx="4" fill="none" stroke="url(#botStroke)" strokeWidth="3.5" />
+        
+        {/* Vertical Capsule Eyes */}
+        <line x1="26" y1="29" x2="26" y2="36" stroke="url(#botStroke)" strokeWidth="3.5" strokeLinecap="round" />
+        <line x1="38" y1="29" x2="38" y2="36" stroke="url(#botStroke)" strokeWidth="3.5" strokeLinecap="round" />
+        
+        {/* Antenna (Inverted L-shape) */}
+        <path d="M28 23v-4h6" fill="none" stroke="url(#botStroke)" strokeWidth="3.5" strokeLinecap="round" />
+        
+        {/* Side Protrusions (Ears) */}
+        <line x1="18" y1="32.5" x2="14" y2="32.5" stroke="url(#botStroke)" strokeWidth="3.5" strokeLinecap="round" />
+        <line x1="46" y1="32.5" x2="50" y2="32.5" stroke="url(#botStroke)" strokeWidth="3.5" strokeLinecap="round" />
+      </motion.g>
+    </motion.svg>
+  </div>
+);
+
 const AIAssistant = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState([
-    {
-      role: "assistant",
-      content:
-        "Hello! I am your Fin2Line AI Assistant. How can I help you with our specialized business services today?",
-    },
-  ]);
+  const [messages, setMessages] = useState(previewMessages);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef(null);
@@ -41,6 +132,22 @@ const AIAssistant = () => {
       scrollToBottom();
     }
   }, [messages, isOpen]);
+
+  useEffect(() => {
+    const openAssistant = () => setIsOpen(true);
+
+    window.openFin2LineAssistant = openAssistant;
+    window.addEventListener("fin2line:open-ai-assistant", openAssistant);
+
+    return () => {
+      window.removeEventListener("fin2line:open-ai-assistant", openAssistant);
+      if (window.openFin2LineAssistant === openAssistant) {
+        delete window.openFin2LineAssistant;
+      }
+    };
+  }, []);
+
+
 
   const getAuthToken = () => {
     try {
@@ -71,6 +178,7 @@ const AIAssistant = () => {
     const userMessage = { role: "user", content: input };
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
+    setIsLoading(true);
 
     const token = getAuthToken();
     if (!token) {
@@ -82,10 +190,9 @@ const AIAssistant = () => {
             "Please log in to use the AI Assistant. Your session appears to be missing or expired.",
         },
       ]);
+      setIsLoading(false);
       return;
     }
-
-    setIsLoading(true);
 
     try {
       const apiUrl = import.meta.env.VITE_API_URL;
@@ -103,7 +210,6 @@ const AIAssistant = () => {
         },
       );
 
-      // Clean up the response: remove any remaining markdown bolding and trim whitespace
       const rawReply = response.data.choices[0].message.content;
       const aiReply = rawReply.replace(/\*\*/g, "").trim();
 
@@ -124,259 +230,106 @@ const AIAssistant = () => {
 
   return (
     <>
-      {/* Floating Robot Button */}
-      <motion.div
-        initial={{ scale: 0 }}
-        animate={{ scale: 1, y: [0, -10, 0] }}
+      <motion.button
+        initial={{ scale: 0, y: 16 }}
+        animate={{ scale: 1, y: [0, -8, 0] }}
         transition={{
-          scale: { duration: 0.3 },
-          y: { repeat: Infinity, duration: 3, ease: "easeInOut" },
+          scale: { duration: 0.25 },
+          y: { repeat: Infinity, duration: 3.5, ease: "easeInOut" },
         }}
         onClick={() => setIsOpen(true)}
+        aria-label="Open AI assistant"
         style={{
           position: "fixed",
-          bottom: "2rem",
-          right: "2rem",
-          display: isOpen ? "none" : "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          cursor: "pointer",
+          bottom: "1.75rem",
+          right: "1.75rem",
           zIndex: 9999,
+          width: "64px",
+          height: "64px",
+          padding: "0",
+          borderRadius: "16px",
+          border: "none",
+          background: "transparent",
+          color: "#fff",
+          boxShadow: "none",
+          cursor: "pointer",
+          display: isOpen ? "none" : "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          overflow: "hidden",
         }}
       >
-        {/* Robot Antenna */}
-        <div
-          style={{
-            width: "4px",
-            height: "12px",
-            background: "#4AADA0",
-            borderRadius: "4px 4px 0 0",
-            position: "relative",
-          }}
-        >
-          <motion.div
-            animate={{ opacity: [0.5, 1, 0.5] }}
-            transition={{ repeat: Infinity, duration: 1.5 }}
-            style={{
-              position: "absolute",
-              top: "-6px",
-              left: "-3px",
-              width: "10px",
-              height: "10px",
-              background: "#EFA020",
-              borderRadius: "50%",
-              boxShadow: "0 0 10px #EFA020",
-            }}
-          />
-        </div>
-        {/* Robot Head */}
-        <div
-          style={{
-            width: "52px",
-            height: "46px",
-            background: "linear-gradient(135deg, #1a1a1a 0%, #2c2c2c 100%)",
-            borderRadius: "16px",
-            border: "2px solid #4AADA0",
-            boxShadow:
-              "0 10px 30px rgba(74, 173, 160, 0.5), inset 0 2px 10px rgba(255,255,255,0.1)",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: "4px",
-            position: "relative",
-            overflow: "hidden",
-          }}
-        >
-          {/* Glowing Eyes */}
-          <div style={{ display: "flex", gap: "10px", zIndex: 2 }}>
-            <div
-              style={{
-                width: "10px",
-                height: "14px",
-                background: "#4AADA0",
-                borderRadius: "5px",
-                boxShadow: "0 0 10px #4AADA0",
-              }}
-            />
-            <div
-              style={{
-                width: "10px",
-                height: "14px",
-                background: "#4AADA0",
-                borderRadius: "5px",
-                boxShadow: "0 0 10px #4AADA0",
-              }}
-            />
-          </div>
-          {/* Robot Mouth */}
-          <div
-            style={{
-              width: "16px",
-              height: "3px",
-              background: "rgba(74,173,160,0.5)",
-              borderRadius: "2px",
-              marginTop: "4px",
-              zIndex: 2,
-            }}
-          />
+        <RobotLauncher />
+      </motion.button>
 
-          {/* Internal circuitry accent */}
-          <div
-            style={{
-              position: "absolute",
-              bottom: "-10px",
-              right: "-10px",
-              width: "40px",
-              height: "40px",
-              borderRadius: "50%",
-              background:
-                "radial-gradient(circle, rgba(139,26,45,0.2) 0%, transparent 70%)",
-              zIndex: 1,
-            }}
-          />
-        </div>
-        {/* Shadow */}
-        <motion.div
-          animate={{ scale: [1, 0.8, 1], opacity: [0.3, 0.1, 0.3] }}
-          transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
-          style={{
-            width: "40px",
-            height: "8px",
-            background: "rgba(0,0,0,0.5)",
-            borderRadius: "50%",
-            marginTop: "15px",
-            filter: "blur(4px)",
-          }}
-        />
-      </motion.div>
-
-      {/* Chat Sidebar / Window */}
       <AnimatePresence>
         {isOpen && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.9, y: 20, filter: "blur(10px)" }}
-            animate={{ opacity: 1, scale: 1, y: 0, filter: "blur(0px)" }}
-            exit={{ opacity: 0, scale: 0.9, y: 20, filter: "blur(10px)" }}
-            transition={{
-              type: "spring",
-              damping: 25,
-              stiffness: 300,
-              duration: 0.4,
-            }}
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: 20 }}
             style={{
               position: "fixed",
-              bottom: "2rem",
+              bottom: "6rem",
               right: "2rem",
-              width: "340px",
-              height: "540px",
-              /* Always dark — this is a floating overlay */
-              background:
-                "linear-gradient(145deg, rgba(18,18,24,0.97) 0%, rgba(28,28,38,0.97) 100%)",
-              backdropFilter: "blur(25px)",
-              WebkitBackdropFilter: "blur(25px)",
-              borderRadius: "28px",
-              border: "1px solid rgba(255,255,255,0.1)",
-              boxShadow:
-                "0 25px 50px -12px rgba(0, 0, 0, 0.6), 0 0 20px rgba(74, 173, 160, 0.12)",
+              width: "min(400px, calc(100vw - 4rem))",
+              height: "min(600px, calc(100vh - 8rem))",
               zIndex: 10000,
+              borderRadius: "24px",
+              border: "1px solid rgba(255,255,255,0.1)",
+              background: "rgba(13, 18, 32, 0.95)",
+              boxShadow: "0 20px 50px rgba(0,0,0,0.5)",
+              backdropFilter: "blur(20px)",
               display: "flex",
               flexDirection: "column",
               overflow: "hidden",
-              color: "#fff",
             }}
-            className="ai-chat-window"
           >
             {/* Header */}
             <div
               style={{
                 padding: "1.2rem",
-                background:
-                  "linear-gradient(135deg, rgba(139, 26, 45, 0.9) 0%, rgba(74, 173, 160, 0.9) 100%)",
-                color: "white",
+                background: "rgba(255,255,255,0.03)",
+                borderBottom: "1px solid rgba(255,255,255,0.08)",
                 display: "flex",
-                justifyContent: "space-between",
                 alignItems: "center",
-                borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
-                position: "relative",
+                justifyContent: "space-between",
               }}
             >
-              {/* Header Glow Accent */}
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  background:
-                    "linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent)",
-                  pointerEvents: "none",
-                }}
-              />
-
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.8rem",
-                  position: "relative",
-                  zIndex: 1,
-                }}
-              >
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
                 <div
                   style={{
-                    padding: "0.5rem",
-                    background: "rgba(255,255,255,0.1)",
-                    borderRadius: "12px",
+                    width: "36px",
+                    height: "36px",
+                    borderRadius: "10px",
+                    background: "var(--grad-primary)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                   }}
                 >
-                  <Bot size={22} color="#fff" />
+                  <Bot size={20} color="#fff" />
                 </div>
                 <div>
-                  <div
-                    style={{
-                      fontWeight: 800,
-                      fontSize: "1.1rem",
-                      lineHeight: "1",
-                      letterSpacing: "0.02em",
-                    }}
-                  >
+                  <div style={{ fontWeight: 700, color: "#fff", fontSize: "0.95rem" }}>
                     Fin2Line Assistant
                   </div>
-                  <div
-                    style={{
-                      fontSize: "0.7rem",
-                      opacity: 0.8,
-                      marginTop: "0.2rem",
-                      fontWeight: 500,
-                    }}
-                  >
-                    AI Business Advisor
+                  <div style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.5)" }}>
+                    Always active
                   </div>
                 </div>
               </div>
               <button
                 onClick={() => setIsOpen(false)}
                 style={{
-                  background: "rgba(255,255,255,0.1)",
+                  background: "transparent",
                   border: "none",
-                  color: "white",
+                  color: "rgba(255,255,255,0.5)",
                   cursor: "pointer",
-                  display: "flex",
                   padding: "0.5rem",
-                  borderRadius: "50%",
-                  transition: "background 0.2s",
-                  zIndex: 1,
                 }}
-                onMouseOver={(e) =>
-                  (e.currentTarget.style.background = "rgba(255,255,255,0.2)")
-                }
-                onMouseOut={(e) =>
-                  (e.currentTarget.style.background = "rgba(255,255,255,0.1)")
-                }
               >
-                <X size={18} />
+                <X size={20} />
               </button>
             </div>
 
@@ -384,74 +337,35 @@ const AIAssistant = () => {
             <div
               style={{
                 flex: 1,
-                padding: "1.2rem",
                 overflowY: "auto",
+                padding: "1.2rem",
                 display: "flex",
                 flexDirection: "column",
                 gap: "1rem",
-                background: "rgba(0,0,0,0.2)",
-                scrollbarWidth: "thin",
-                scrollbarColor: "rgba(255,255,255,0.1) transparent",
               }}
             >
               {messages.map((msg, idx) => (
-                <motion.div
+                <div
                   key={idx}
-                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  transition={{ duration: 0.3 }}
                   style={{
                     alignSelf: msg.role === "user" ? "flex-end" : "flex-start",
                     maxWidth: "85%",
-                    background:
-                      msg.role === "user"
-                        ? "linear-gradient(135deg, #8B1A2D 0%, #A32036 100%)"
-                        : "rgba(255,255,255,0.07)",
-                    /* Always white text — window is always dark */
+                    padding: "0.8rem 1rem",
+                    borderRadius: msg.role === "user" ? "18px 18px 2px 18px" : "18px 18px 18px 2px",
+                    background: msg.role === "user" ? "var(--grad-primary)" : "rgba(255,255,255,0.05)",
                     color: "#fff",
-                    padding: "1rem 1.2rem",
-                    borderRadius: "20px",
-                    borderBottomRightRadius:
-                      msg.role === "user" ? "4px" : "20px",
-                    borderBottomLeftRadius:
-                      msg.role === "assistant" ? "4px" : "20px",
-                    fontSize: "0.92rem",
-                    lineHeight: "1.6",
-                    border:
-                      msg.role === "assistant"
-                        ? "1px solid rgba(255,255,255,0.1)"
-                        : "none",
-                    boxShadow:
-                      msg.role === "user"
-                        ? "0 4px 15px rgba(139, 26, 45, 0.3)"
-                        : "none",
+                    fontSize: "0.9rem",
+                    lineHeight: 1.5,
+                    border: msg.role === "user" ? "none" : "1px solid rgba(255,255,255,0.08)",
                   }}
                 >
                   {msg.content}
-                </motion.div>
+                </div>
               ))}
               {isLoading && (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  style={{
-                    alignSelf: "flex-start",
-                    color: "#4AADA0",
-                    padding: "0.5rem",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                  }}
-                >
-                  <Loader2
-                    size={18}
-                    className="spin"
-                    style={{ animation: "spin 1s linear infinite" }}
-                  />
-                  <span style={{ fontSize: "0.8rem", fontWeight: 500 }}>
-                    Fin2Line Assistant is thinking...
-                  </span>
-                </motion.div>
+                <div style={{ alignSelf: "flex-start", padding: "0.5rem 0" }}>
+                  <TypingDots accent="#7F57FB" />
+                </div>
               )}
               <div ref={messagesEndRef} />
             </div>
@@ -459,69 +373,50 @@ const AIAssistant = () => {
             {/* Input Area */}
             <div
               style={{
-                padding: "1rem",
-                borderTop: "1px solid rgba(255, 255, 255, 0.1)",
-                background: "rgba(0,0,0,0.3)",
+                padding: "1.2rem",
+                background: "rgba(255,255,255,0.02)",
+                borderTop: "1px solid rgba(255,255,255,0.08)",
                 display: "flex",
-                gap: "0.6rem",
-                alignItems: "center",
+                gap: "0.75rem",
               }}
             >
-              <div style={{ position: "relative", flex: 1 }}>
-                <input
-                  type="text"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleSend()}
-                  placeholder="Ask Fin2Line AI..."
-                  disabled={isLoading}
-                  style={{
-                    width: "100%",
-                    padding: "0.9rem 1.2rem",
-                    borderRadius: "16px",
-                    border: "1px solid rgba(255,255,255,0.12)",
-                    background: "rgba(255,255,255,0.06)",
-                    /* Always white — window is always dark */
-                    color: "#fff",
-                    outline: "none",
-                    fontSize: "0.95rem",
-                    transition: "all 0.3s ease",
-                    fontFamily: "inherit",
-                  }}
-                  onFocus={(e) => {
-                    e.target.style.borderColor = "#4AADA0";
-                    e.target.style.background = "rgba(255,255,255,0.1)";
-                  }}
-                  onBlur={(e) => {
-                    e.target.style.borderColor = "rgba(255,255,255,0.12)";
-                    e.target.style.background = "rgba(255,255,255,0.06)";
-                  }}
-                />
-              </div>
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSend()}
+                placeholder="Ask a question..."
+                className="ai-assistant-input"
+                style={{
+                  flex: 1,
+                  background: "rgba(255,255,255,0.05)",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  borderRadius: "12px",
+                  padding: "0.75rem 1rem",
+                  color: "#fff",
+                  outline: "none",
+                  fontSize: "0.9rem",
+                }}
+              />
+              <button
                 onClick={handleSend}
                 disabled={isLoading || !input.trim()}
                 style={{
-                  background:
-                    "linear-gradient(135deg, #4AADA0 0%, #3d8f84 100%)",
-                  color: "white",
+                  width: "44px",
+                  height: "44px",
+                  borderRadius: "12px",
+                  background: "var(--grad-primary)",
                   border: "none",
-                  borderRadius: "16px",
-                  width: "48px",
-                  height: "48px",
+                  color: "#fff",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  cursor:
-                    isLoading || !input.trim() ? "not-allowed" : "pointer",
-                  opacity: isLoading || !input.trim() ? 0.6 : 1,
-                  boxShadow: "0 4px 15px rgba(74, 173, 160, 0.3)",
+                  cursor: "pointer",
+                  opacity: isLoading || !input.trim() ? 0.5 : 1,
                 }}
               >
-                <Send size={20} />
-              </motion.button>
+                <Send size={18} />
+              </button>
             </div>
           </motion.div>
         )}
