@@ -395,16 +395,21 @@ const Home = () => {
         {/* Clean gradient background — refined via CSS */}
         <div className="hero-bg">
           <div className="hero-gradient-sweep" />
+          <div className="home-hero-texture" aria-hidden="true">
+            <div className="home-hero-texture-core" />
+            <div className="home-hero-texture-noise" />
+            <div className="home-hero-texture-grid" />
+            <div className="home-hero-texture-bottom" />
+          </div>
           {/* CareerZenith Ambient Glow */}
           <div style={{
             position: "absolute",
-            top: "-10%",
-            left: "50%",
-            transform: "translateX(-50%)",
-            width: "80%",
-            height: "100%",
-            background: "radial-gradient(circle at center, rgba(103, 141, 255, 0.1) 0%, transparent 70%)",
-            filter: "blur(120px)",
+            right: "-8%",
+            bottom: "-18%",
+            width: "72%",
+            height: "78%",
+            background: "radial-gradient(circle at center, rgba(180, 165, 255, 0.12) 0%, transparent 68%)",
+            filter: "blur(135px)",
             zIndex: -1,
             pointerEvents: "none",
           }} />
