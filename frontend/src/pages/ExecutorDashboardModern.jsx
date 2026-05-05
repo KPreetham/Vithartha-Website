@@ -724,7 +724,7 @@ const ExecutorDashboardModern = () => {
                                       <span style={{ fontSize: "0.7rem", fontWeight: 700, padding: "4px 8px", borderRadius: 6, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>{doc.type}</span>
                                     </td>
                                     <td style={{ textAlign: "right" }}>
-                                      <button onClick={() => viewDocument(doc.publicId, doc.url, activeLead._id)} style={{ padding: "6px 12px", borderRadius: 8, background: "rgba(56,189,248,0.1)", color: "#38bdf8", border: "1px solid rgba(56,189,248,0.2)", cursor: "pointer", fontSize: "0.75rem", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    <button onClick={() => viewDocument(doc.publicId, doc.url || doc.secure_url || doc.uploadedUrl || doc.viewUrl, activeLead._id)} style={{ padding: "6px 12px", borderRadius: 8, background: "rgba(56,189,248,0.1)", color: "#38bdf8", border: "1px solid rgba(56,189,248,0.2)", cursor: "pointer", fontSize: "0.75rem", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 6 }}>
                                         VIEW <Eye size={14} />
                                       </button>
                                     </td>

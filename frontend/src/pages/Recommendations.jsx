@@ -1083,7 +1083,7 @@ const AdminServicesView = () => {
                                             <button
                                               onClick={(e) => {
                                                 e.stopPropagation();
-                                                viewDocument(doc.publicId, doc.url, lead._id);
+                                        viewDocument(doc.publicId, doc.url || doc.secure_url || doc.uploadedUrl || doc.viewUrl, lead._id);
                                               }}
                                               style={{
                                                 padding: "4px 12px",

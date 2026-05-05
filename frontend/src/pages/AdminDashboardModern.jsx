@@ -770,7 +770,7 @@ const AdminDashboardModern = ({
                                       {(isDone || isUserRole || hasFile) && (
                                         <button 
                                           type="button" 
-                                          onClick={() => (hasFile || isDone ? viewDocument(doc.publicId, doc.url, activeLead._id) : handlePickUpload("Draft"))} 
+                                            onClick={() => (hasFile || isDone ? viewDocument(doc.publicId, doc.url || doc.secure_url || doc.uploadedUrl || doc.viewUrl, activeLead._id) : handlePickUpload("Draft"))}
                                           style={{ 
                                             padding: (hasFile || isDone) ? "0 14px" : "0 12px",
                                             height: 34,

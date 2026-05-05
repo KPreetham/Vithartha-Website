@@ -668,21 +668,37 @@ const UserDashboardModern = ({
                                 const isRejectedByExecutor = serviceRejected && !isReuploaded && isExecutorRejectedState(activeLead);
                                 const isRejected = docStatusLower === "rejected" || serviceRejected;
                                 const isDraftDocument = String(doc?.type || "").trim().toLowerCase() === "draft";
-                                const statusColor = isAccepted ? "#22c55e" : (isRejected || isRejectedByExecutor) ? "#ef4444" : "#fbbf24";
-                                const statusBg = isAccepted ? "rgba(34,197,94,0.12)" : (isRejected || isRejectedByExecutor) ? "rgba(239,68,68,0.12)" : "rgba(245,158,11,0.12)";
-                                const displayStatus = isRejected
-                                    ? "Rejected"
-                                    : isPending
-                                      ? "Pending Review"
-                                      : docStatus || "Pending";
+                                const isFinalDocument =
+                                  String(doc?.type || "").trim().toLowerCase() === "final" ||
+                                  String(doc?.name || "").trim().toLowerCase().startsWith("final");
+                                 const displayStatus = isDraftDocument
+                                   ? String(activeLead?.status || "").trim().toLowerCase() === "draftaccepted" || String(activeLead?.status || "").trim().toLowerCase() === "useraccepted" || String(activeLead?.status || "").trim().toLowerCase() === "completed"
+                                     ? "Accepted"
+                                     : String(activeLead?.status || "").trim().toLowerCase() === "draftrejected"
+                                       ? "Rejected"
+                                       : isReuploaded
+                                         ? "Reuploaded"
+                                         : "Pending Review"
+                                   : isFinalDocument
+                                     ? "Accepted"
+                                   : isRejected
+                                     ? "Rejected"
+                                     : isPending
+                                       ? "Pending Review"
+                                       : docStatus || "Pending";
+                                const displayStatusLower = String(displayStatus || "").trim().toLowerCase();
+                                const isDisplayAccepted = ["accepted", "reuploaded"].includes(displayStatusLower);
+                                const isDisplayRejected = displayStatusLower === "rejected";
+                                const statusColor = isDisplayAccepted ? "#22c55e" : isDisplayRejected ? "#ef4444" : "#fbbf24";
+                                const statusBg = isDisplayAccepted ? "rgba(34,197,94,0.12)" : isDisplayRejected ? "rgba(239,68,68,0.12)" : "rgba(245,158,11,0.12)";
                                 return (
                                   <tr key={`${doc.name}-${idx}`}>
                                     <td>
                                       <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-                                        <FileText size={18} color={isAccepted ? "#22c55e" : (isRejected || isRejectedByExecutor) ? "#ef4444" : "#a78bfa"} style={{ flexShrink: 0 }} />
+                                        <FileText size={18} color={isDisplayAccepted ? "#22c55e" : isDisplayRejected ? "#ef4444" : "#a78bfa"} style={{ flexShrink: 0 }} />
                                         <div style={{ minWidth: 0 }}>
                                           <div style={{ fontSize: "0.92rem", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.name}</div>
-                                          {(isRejected || isRejectedByExecutor) && !isDraftDocument && (
+                                          {(isRejected || isRejectedByExecutor) && !isDraftDocument && !isFinalDocument && (
                                             <div
                                               style={{
                                                 marginTop: 4,
@@ -709,7 +725,7 @@ const UserDashboardModern = ({
                                         {hasFile && (
                                           <button 
                                             type="button" 
-                                            onClick={() => viewDocument(doc.publicId, doc.url, activeLead._id)} 
+                                            onClick={() => viewDocument(doc.publicId, doc.url || doc.secure_url || doc.uploadedUrl || doc.viewUrl, activeLead._id)} 
                                             style={{ 
                                               padding: "0 14px",
                                               height: 34,

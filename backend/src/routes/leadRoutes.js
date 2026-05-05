@@ -136,6 +136,12 @@ router.post("/upload", protect, uploadFiles, async (req, res) => {
           type: 'authenticated'
         });
 
+        if (!result || Number(result.bytes || 0) <= 0) {
+          throw new Error(
+            `Cloudinary returned an empty file for ${file.originalname}. Please upload the document again.`,
+          );
+        }
+
         return {
           url: result?.secure_url || result?.url,
           filename: result?.public_id || publicId,

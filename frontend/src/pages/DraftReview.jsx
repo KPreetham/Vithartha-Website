@@ -378,7 +378,7 @@ const DraftReview = () => {
               </div>
               <div style={{ display: "flex", gap: "0.5rem" }}>
                 <button
-                  onClick={() => viewDocument(selectedDoc?.publicId, selectedDoc?.url, leadId)}
+    onClick={() => viewDocument(selectedDoc?.publicId, selectedDoc?.url || selectedDoc?.secure_url || selectedDoc?.uploadedUrl || selectedDoc?.viewUrl, leadId)}
                   style={{
                     padding: "8px 16px",
                     background: "rgba(255,255,255,0.05)",

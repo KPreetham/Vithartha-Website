@@ -524,7 +524,7 @@ const PRDashboard = () => {
   };
 
   const canManageDraftForLead = (lead) =>
-    ['PR_Accepted', 'AssignedToExecutor', 'InProgress', 'ExecutionFinished', 'DraftSent', 'DraftRejected'].includes(lead?.status);
+    ['InProgress', 'ExecutionFinished', 'DraftSent', 'DraftRejected', 'DraftAccepted', 'UserAccepted', 'Completed'].includes(lead?.status);
 
   const hasDraftDocument = (lead) =>
     Array.isArray(lead?.documents) && lead.documents.some((d) => d.type === 'Draft');
@@ -977,6 +977,8 @@ const PRDashboard = () => {
             ) : (
               leads.map((lead) => {
                 const effectiveStatus = getEffectiveLeadStatus(lead);
+                const serviceAccepted = ["PR_Accepted", "AssignedToExecutor", "InProgress", "ExecutionFinished", "DraftSent", "DraftRejected", "DraftAccepted", "UserAccepted", "Completed"].includes(lead.status);
+                const canMarkCompleted = Array.isArray(lead.documents) && lead.documents.some((doc) => doc.type === "Final") && lead.status !== "Completed";
                 const recommendedFee = getServicePricing(lead?.serviceName);
                 return (
                   <div key={lead._id} style={{
@@ -1113,7 +1115,7 @@ const PRDashboard = () => {
                                                 </div>
                                                 <div className="pr-doc-actions" style={{ display: "flex", gap: "12px", alignItems: "center" }}>
                                                 <button
-                                                  onClick={() => viewDocument(doc.publicId, doc.url, lead._id)}
+    onClick={() => viewDocument(doc.publicId, doc.url || doc.secure_url || doc.uploadedUrl || doc.viewUrl, lead._id)}
                                                   title="View Document"
                                                   style={{ background: "rgba(255,255,255,0.04)", border: "none", color: "var(--text-secondary)", cursor: "pointer", height: "42px", padding: "0 15px", borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", fontSize: "0.75rem", fontWeight: 700 }}
                                                 >
@@ -1274,7 +1276,7 @@ const PRDashboard = () => {
                                               </div>
                                             </div>
                                             <button
-                                              onClick={() => viewDocument(doc.publicId, doc.url, lead._id)}
+            onClick={() => viewDocument(doc.publicId, doc.url || doc.secure_url || doc.uploadedUrl || doc.viewUrl, lead._id)}
                                               title="View Document"
                                               style={{ background: "rgba(255,255,255,0.04)", border: "none", color: "var(--text-secondary)", cursor: "pointer", height: "42px", padding: "0 15px", borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", fontSize: "0.75rem", fontWeight: 700 }}
                                             >
@@ -1293,10 +1295,7 @@ const PRDashboard = () => {
                                 <h4 style={{ fontSize: "0.65rem", fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.15em", color: "var(--text-muted)", marginBottom: "1.5rem" }}>Workflow Controls</h4>
 
                                 {(() => {
-                                  const hasDraftFiles = Array.isArray(lead.documents) && lead.documents.some((doc) => ["Draft", "Final"].includes(String(doc?.type || "").trim()));
-                                  const draftWorkflowStarted = hasDraftFiles || ["PR_Accepted", "AssignedToExecutor", "InProgress", "ExecutionFinished", "DraftSent", "DraftRejected", "DraftAccepted", "UserAccepted", "Completed"].includes(lead.status);
-
-                                  if (draftWorkflowStarted) {
+                                  if (serviceAccepted) {
                                     return (
                                       <div style={{ display: "flex", alignItems: "center", gap: 10, color: "#10b981", fontSize: "1rem", fontWeight: 800, padding: "8px 16px", background: "rgba(16,185,129,0.1)", borderRadius: 12, border: "1px solid rgba(16,185,129,0.2)" }}>
                                         <CheckCircle size={20} /> SERVICE ACCEPTED
@@ -1410,13 +1409,6 @@ const PRDashboard = () => {
                                   </div>
                                 )}
 
-                                {(lead.status === 'AssignedToExecutor' || lead.status === 'PR_Accepted') && (
-                                  <div style={{ textAlign: "center", padding: "1.5rem", background: "rgba(245, 158, 11, 0.05)", border: "1px solid rgba(245, 158, 11, 0.2)", borderRadius: "14px", color: "#f59e0b", marginTop: "1.5rem" }}>
-                                    <div style={{ fontSize: "1rem", fontWeight: 800, marginBottom: "4px" }}>Waiting for Executor Approval</div>
-                                    <p style={{ fontSize: "0.75rem", fontWeight: 600, margin: 0, opacity: 0.8 }}>Assigning executor... Draft delivery will be available once they accept.</p>
-                                  </div>
-                                )}
-
                                 {lead.prMessage && (
                                   <div style={{ marginTop: "1.5rem", padding: "1.5rem", background: "rgba(16, 185, 129, 0.05)", border: "1px dashed rgba(16, 185, 129, 0.3)", borderRadius: "16px", color: "#10b981" }}>
                                     <div style={{ fontSize: "0.7rem", fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "8px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
@@ -1506,9 +1498,9 @@ const PRDashboard = () => {
                                           </>
                                         )}
                                         <button
-                                          disabled={!lead.documents?.some(d => d.type === 'Final')}
+                                          disabled={!canMarkCompleted}
                                           onClick={() => handleUpdateLeadStatus(lead._id, 'Completed')}
-                                          style={{ padding: "1.2rem", borderRadius: "14px", background: "#10b981", color: "white", border: "none", fontWeight: 800, cursor: "pointer", opacity: lead.documents?.some(d => d.type === 'Final') ? 1 : 0.3 }}
+                                          style={{ padding: "1.2rem", borderRadius: "14px", background: "#10b981", color: "white", border: "none", fontWeight: 800, cursor: canMarkCompleted ? "pointer" : "not-allowed", opacity: canMarkCompleted ? 1 : 0.3 }}
                                         >
                                           MARK COMPLETED
                                         </button>

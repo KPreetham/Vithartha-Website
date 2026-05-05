@@ -137,9 +137,9 @@ const PRDashboardModern = ({
     return ["uploaded", "accepted", "verified", "approved", "completed", "reuploaded", "under review"].includes(status) || !!d?.url;
   });
   const hasReuploadedDocs = rawDocs.some((d) => !!d?.displayReuploaded || !!d?.reuploaded || String(d?.status || "").trim().toLowerCase() === "reuploaded");
+  const serviceAccepted = ["PR_Accepted", "AssignedToExecutor", "InProgress", "ExecutionFinished", "DraftSent", "DraftRejected", "DraftAccepted", "UserAccepted", "Completed"].includes(leadStatus);
   const draftWorkflowStarted =
-    ["PR_Accepted", "AssignedToExecutor", "InProgress", "ExecutionFinished", "DraftSent", "DraftRejected", "DraftAccepted", "UserAccepted", "Completed"].includes(leadStatus) ||
-    draftFinalDocs.length > 0;
+    ["InProgress", "ExecutionFinished", "DraftSent", "DraftRejected", "DraftAccepted", "UserAccepted", "Completed"].includes(leadStatus);
   const serviceProgressPercent = (() => {
     if (!lead) return 0;
     const status = String(leadStatus || "").trim();
@@ -229,20 +229,20 @@ const PRDashboardModern = ({
     }
 
     if (docType === "Final") {
-      return isFinalApprovedByWorkflow
+      return (isFinalApprovedByWorkflow || rawStatus === "accepted")
         ? {
             label: "APPROVED",
             color: "#10b981",
             bg: "rgba(16,185,129,0.12)",
             border: "rgba(16,185,129,0.2)",
-            note: "Final return completed.",
+            note: "Final return completed and accepted.",
           }
         : {
             label: "UPLOADED",
             color: "#f59e0b",
             bg: "rgba(245,158,11,0.12)",
             border: "rgba(245,158,11,0.2)",
-            note: "Awaiting final user completion.",
+            note: "Awaiting final completion.",
           };
     }
 
@@ -290,6 +290,7 @@ const PRDashboardModern = ({
     clientDocs.every((doc) => doc.status === "Accepted");
   const draftReadyToSend = lead?.draftReadyToSend === true;
   const canSendDraftNow = canSendDraftToClient(lead) && draftReadyToSend;
+  const canMarkCompleted = draftFinalDocs.some((d) => d.type === "Final") && leadStatus !== "Completed";
 
   return (
     <div className="home-page-shell pr-dashboard-shell" style={{ minHeight: "100vh", background: "var(--bg)", color: "#ffffff", paddingTop: "clamp(102px, 12vw, 124px)", paddingBottom: 64, position: "relative", overflow: "hidden" }}>
@@ -704,7 +705,7 @@ const PRDashboardModern = ({
                                               <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, alignItems: "center" }}>
                                                 <button 
                                                   type="button" 
-                                                  onClick={() => viewDocument(doc.publicId, doc.url, lead._id)} 
+                                              onClick={() => viewDocument(doc.publicId, doc.url || doc.secure_url || doc.uploadedUrl || doc.viewUrl, lead._id)}
                                                   style={{ 
                                                     height: 38,
                                                     padding: "0 12px",
@@ -833,7 +834,7 @@ const PRDashboardModern = ({
                                 <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
                                   <button 
                                     type="button" 
-                                    onClick={() => viewDocument(doc.publicId, doc.url, lead._id)} 
+                                        onClick={() => viewDocument(doc.publicId, doc.url || doc.secure_url || doc.uploadedUrl || doc.viewUrl, lead._id)}
                                     title="View Document" 
                                     style={{ 
                                       height: 38,
@@ -872,7 +873,7 @@ const PRDashboardModern = ({
                         <div style={{ color: "rgba(255,255,255,0.65)", fontSize: "0.8rem" }}>Accept the service only after every client document is approved, then manage drafts from one panel.</div>
                       </div>
                       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                        {draftWorkflowStarted ? (
+                        {serviceAccepted ? (
                           <div style={{ display: "flex", alignItems: "center", gap: 10, color: "#10b981", fontSize: "1rem", fontWeight: 800, padding: "8px 16px", background: "rgba(16,185,129,0.1)", borderRadius: 12, border: "1px solid rgba(16,185,129,0.2)" }}>
                             <CheckCircle size={20} /> SERVICE ACCEPTED
                           </div>
@@ -909,7 +910,7 @@ const PRDashboardModern = ({
                           </>
                         )}
                       </div>
-                      {!canAcceptService && !draftWorkflowStarted && (
+                      {!serviceAccepted && !draftWorkflowStarted && (
                         <div style={{ marginTop: 12, padding: "8px 14px", borderRadius: 10, background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)", color: "#f59e0b", fontSize: "0.78rem", fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
                           <AlertCircle size={14} /> Accept all client documents to enable service approval.
                         </div>
@@ -969,7 +970,7 @@ const PRDashboardModern = ({
                                 </button>
                               </>
                             )}
-                            <button type="button" disabled={!draftFinalDocs.some((d) => d.type === "Final")} onClick={() => handleUpdateLeadStatus(lead._id, "Completed")} style={{ padding: "1rem", borderRadius: 14, background: "#10b981", color: "#fff", border: "none", fontWeight: 800, cursor: "pointer", opacity: draftFinalDocs.some((d) => d.type === "Final") ? 1 : 0.3 }}>MARK COMPLETED</button>
+                            <button type="button" disabled={!canMarkCompleted} onClick={() => handleUpdateLeadStatus(lead._id, "Completed")} style={{ padding: "1rem", borderRadius: 14, background: "#10b981", color: "#fff", border: "none", fontWeight: 800, cursor: canMarkCompleted ? "pointer" : "not-allowed", opacity: canMarkCompleted ? 1 : 0.3 }}>MARK COMPLETED</button>
                           </div>
                         ) : (
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>

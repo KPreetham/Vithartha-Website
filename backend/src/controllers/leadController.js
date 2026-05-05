@@ -16,6 +16,130 @@ const normalizeDocumentName = (value) =>
     .replace(/\s+/g, " ")
     .trim();
 
+const normalizeDocumentUrl = (value) =>
+  String(value || "").trim().replace(/^http:/i, "https:");
+
+const CLOUDINARY_RESOURCE_TYPES = new Set(["image", "raw", "video", "auto"]);
+const CLOUDINARY_DELIVERY_TYPES = new Set(["authenticated", "upload"]);
+
+const uniqueValues = (values) => Array.from(new Set(values.filter(Boolean)));
+
+const parseCloudinaryAssetUrl = (value) => {
+  const normalizedUrl = normalizeDocumentUrl(value);
+  if (!normalizedUrl || !normalizedUrl.includes("res.cloudinary.com")) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(normalizedUrl);
+    const parts = parsed.pathname.split("/").filter(Boolean);
+    const resourceIndex = parts.findIndex((part) =>
+      CLOUDINARY_RESOURCE_TYPES.has(part),
+    );
+
+    if (resourceIndex === -1 || resourceIndex + 1 >= parts.length) {
+      return null;
+    }
+
+    const resourceType = parts[resourceIndex];
+    const deliveryType = parts[resourceIndex + 1];
+    const remainingParts = parts.slice(resourceIndex + 2);
+    const signatureIndex = remainingParts.findIndex((part) =>
+      /^s--[^/]+--$/.test(part),
+    );
+    const afterSignature =
+      signatureIndex >= 0
+        ? remainingParts.slice(signatureIndex + 1)
+        : remainingParts;
+    const versionIndex = afterSignature.findIndex((part) => /^v\d+$/.test(part));
+
+    if (versionIndex === -1) {
+      return {
+        normalizedUrl,
+        resourceType,
+        deliveryType,
+      };
+    }
+
+    const assetPath = afterSignature.slice(versionIndex + 1).join("/");
+    const publicIdWithFormat = assetPath.trim();
+    const publicId = publicIdWithFormat.replace(/\.[a-z0-9]+$/i, "");
+    const format = (publicIdWithFormat.match(/\.([a-z0-9]+)$/i) || [])[1] || "";
+
+    return {
+      normalizedUrl,
+      resourceType,
+      deliveryType,
+      publicId,
+      publicIdWithFormat,
+      format,
+    };
+  } catch {
+    return null;
+  }
+};
+
+const buildCloudinarySignedUrl = (
+  cloudinary,
+  publicId,
+  {
+    resourceType = "auto",
+    deliveryType = "authenticated",
+    format = null,
+  } = {},
+) => {
+  const resolvedPublicId = String(publicId || "").trim();
+  if (!resolvedPublicId || resolvedPublicId.startsWith("http")) {
+    return "";
+  }
+
+  try {
+    const options = {
+      sign_url: true,
+      type: deliveryType,
+      secure: true,
+      resource_type: resourceType,
+      expires_at: Math.floor(Date.now() / 1000) + 3600,
+    };
+
+    if (format) {
+      options.format = format;
+    }
+
+    return cloudinary.url(resolvedPublicId, options);
+  } catch {
+    return "";
+  }
+};
+
+const tryCloudinaryResourceLookup = async (
+  cloudinary,
+  publicIds,
+  resourceTypes,
+  deliveryTypes,
+) => {
+  for (const publicId of publicIds) {
+    for (const resourceType of resourceTypes) {
+      for (const deliveryType of deliveryTypes) {
+        try {
+          const asset = await cloudinary.api.resource(publicId, {
+            resource_type: resourceType,
+            type: deliveryType,
+          });
+
+          if (asset) {
+            return asset;
+          }
+        } catch {
+          // Try the next combination.
+        }
+      }
+    }
+  }
+
+  return null;
+};
+
 const toPlainObject = (value) =>
   value && typeof value.toObject === "function" ? value.toObject() : { ...value };
 
@@ -460,14 +584,16 @@ export const updateLead = async (req, res) => {
           return !inferredReuploads.has(docName);
         });
 
-        const taggedIncomingDocuments = incomingDocsRaw.map((doc) => {
+          const taggedIncomingDocuments = incomingDocsRaw.map((doc) => {
           const docName = normalizeDocumentName(doc?.name);
           const isReupload = inferredReuploads.has(docName);
+          const isFinal = String(doc?.type || "").trim().toLowerCase() === "final";
+          
           return {
             ...doc,
             name: doc?.name || "",
             reuploaded: isReupload,
-            status: isReupload ? "Pending" : (doc?.status || "Pending"),
+            status: isFinal ? "Accepted" : (isReupload ? "Pending" : (doc?.status || "Pending")),
           };
         });
 
@@ -678,14 +804,21 @@ export const getSignedUrl = async (req, res) => {
 
     const { cloudinary } = await import("../config/cloudinary.js");
     
-    // Generate a signed URL that expires in 1 hour
-    const signedUrl = cloudinary.url(publicId, {
-      sign_url: true,
-      type: 'authenticated',
-      resource_type: 'auto',
-      secure: true,
-      expires_at: Math.floor(Date.now() / 1000) + 3600 
-    });
+    const buildUrl = (resourceType = "auto") => {
+      return cloudinary.url(publicId, {
+        sign_url: true,
+        type: 'authenticated',
+        resource_type: resourceType,
+        secure: true,
+        expires_at: Math.floor(Date.now() / 1000) + 3600 
+      });
+    };
+
+    // If it's a PDF, we might need resource_type: 'raw'
+    // We return a signed URL. Since this is for client-side direct access, 
+    // we can't easily try multiple, but 'auto' is usually best.
+    // However, if we know it's a PDF, we can prefer 'raw'.
+    const signedUrl = buildUrl("auto");
 
     res.status(200).json({ success: true, url: signedUrl });
   } catch (error) {
@@ -701,20 +834,27 @@ export const generateViewToken = async (req, res) => {
     const { id } = req.query; // lead id
     const resolvedPublicId = String(publicId || "").trim();
 
+    const getDocUrl = (doc) => {
+      const url = String(doc?.url || doc?.secure_url || doc?.uploadedUrl || doc?.viewUrl || "").trim();
+      return url.replace(/^http:/, "https:"); // Normalize to https for matching
+    };
+
     if (!resolvedPublicId) {
       return res.status(400).json({ success: false, message: "Public ID is required" });
     }
 
-    // Authorization check (same logic as getSignedUrl)
+    let matchingDoc = null;
+
+    // Authorization check
     if (id) {
       const lead = await Lead.findById(id);
       if (!lead) return res.status(404).json({ success: false, message: "Lead not found" });
 
       const leadUserId = lead.user?._id || lead.user;
-      const isOwner = leadUserId && leadUserId.toString() === req.user._id.toString();
       const isAdmin = normalizeRole(req.user.role) === "admin";
       const isPR = normalizeRole(req.user.role) === "pr";
       const isExecutor = normalizeRole(req.user.role) === "executor";
+      const isOwner = leadUserId && leadUserId.toString() === req.user._id.toString();
       const isAssignedPR = lead.prId && lead.prId.toString() === req.user._id.toString();
       const isAssignedExecutor = lead.executorId && lead.executorId.toString() === req.user._id.toString();
 
@@ -722,71 +862,74 @@ export const generateViewToken = async (req, res) => {
         return res.status(403).json({ success: false, message: "Not authorized" });
       }
 
-      const matchingDoc = Array.isArray(lead.documents)
+      matchingDoc = Array.isArray(lead.documents)
         ? lead.documents.find((doc) => {
             if (!doc) return false;
             const docPublicId = String(doc.publicId || "").trim();
-            const docUrl = String(doc.url || "").trim();
+            const docUrl = getDocUrl(doc);
             const docName = String(doc.name || "").trim();
-            return (
-              docPublicId === resolvedPublicId ||
-              docUrl === resolvedPublicId ||
-              docName === resolvedPublicId
-            );
+            
+            // Exact matches
+            if (docPublicId === resolvedPublicId || docUrl === resolvedPublicId || docName === resolvedPublicId) return true;
+            
+            // Fuzzy matches for public IDs (ignoring folder/version prefix)
+            const getBasename = (str) => String(str).split("/").pop().split(".")[0];
+            const candidateBasename = getBasename(resolvedPublicId);
+            if (candidateBasename && (getBasename(docPublicId) === candidateBasename || getBasename(docUrl) === candidateBasename)) return true;
+
+            return false;
           })
         : null;
-
-      return res.json({
-        success: true,
-        token: jwt.sign(
-          {
-            publicId: resolvedPublicId,
-            leadId: id,
-            userId: req.user._id,
-            documentUrl: matchingDoc?.url || "",
-          },
-          process.env.JWT_SECRET || "fallback_secret",
-          { expiresIn: "10s" },
-        ),
-      });
     } else {
       const isAdmin = normalizeRole(req.user.role) === "admin";
       const isPR = normalizeRole(req.user.role) === "pr";
-      if (!isAdmin && !isPR) return res.status(403).json({ success: false, message: "Not authorized" });
+      if (!isAdmin && !isPR) {
+        return res.status(403).json({ success: false, message: "Not authorized" });
+      }
     }
 
-    // Create a one-time use token valid for 10 seconds
-    const tokenPayload = { publicId: resolvedPublicId, leadId: id, userId: req.user._id };
-    if (id) {
-      const lead = await Lead.findById(id);
-      const matchingDoc = Array.isArray(lead?.documents)
-        ? lead.documents.find((doc) => {
-            if (!doc) return false;
-            const docPublicId = String(doc.publicId || "").trim();
-            const docUrl = String(doc.url || "").trim();
-            const docName = String(doc.name || "").trim();
-            return (
-              docPublicId === resolvedPublicId ||
-              docUrl === resolvedPublicId ||
-              docName === resolvedPublicId
-            );
-          })
-        : null;
+    const finalDocumentUrl = getDocUrl(matchingDoc) || (resolvedPublicId.startsWith("http") ? resolvedPublicId : "");
+    const finalDocumentName = String(matchingDoc?.name || "").trim() || (resolvedPublicId.startsWith("http") ? resolvedPublicId.split("/").pop() : "");
+    const { cloudinary } = await import("../config/cloudinary.js");
+    const lookupPublicIds = uniqueValues([
+      String(matchingDoc?.publicId || "").trim(),
+      resolvedPublicId.startsWith("http") ? "" : resolvedPublicId,
+      finalDocumentUrl ? parseCloudinaryAssetUrl(finalDocumentUrl)?.publicId : "",
+    ]);
 
-      tokenPayload.documentUrl = matchingDoc?.url || "";
-      tokenPayload.documentName = matchingDoc?.name || "";
+    if (lookupPublicIds.length > 0) {
+      const asset = await tryCloudinaryResourceLookup(
+        cloudinary,
+        lookupPublicIds,
+        ["image", "raw", "auto", "video"],
+        ["authenticated", "upload"],
+      );
+
+      if (asset && Number(asset.bytes || 0) === 0) {
+        return res.status(422).json({
+          success: false,
+          message:
+            "This document is stored in Cloudinary as an empty file, so it cannot be viewed. Please re-upload it.",
+        });
+      }
     }
 
     const token = jwt.sign(
-      tokenPayload,
+      {
+        publicId: resolvedPublicId.startsWith("http") ? "" : resolvedPublicId,
+        leadId: id,
+        userId: req.user._id,
+        documentUrl: finalDocumentUrl,
+        documentName: finalDocumentName,
+      },
       process.env.JWT_SECRET || "fallback_secret",
-      { expiresIn: "5s" }
+      { expiresIn: "60s" }
     );
 
     res.json({ success: true, token });
   } catch (error) {
     console.error("Error generating view token:", error);
-    res.status(500).json({ success: false, message: "Server error" });
+    res.status(500).json({ success: false, message: "Error generating view token" });
   }
 };
 
@@ -805,13 +948,163 @@ export const streamDocument = async (req, res) => {
     }
 
     const { publicId, documentUrl, documentName } = decoded;
-    const targetUrl = String(documentUrl || "").trim();
+    const resolvedDocumentUrl = normalizeDocumentUrl(documentUrl);
+    const resolvedDocumentName = String(documentName || "").trim();
+    const fileExtension = (resolvedDocumentName.split(".").pop() || "").trim().toLowerCase();
+    const { cloudinary } = await import("../config/cloudinary.js");
+    const parsedDocumentUrl = parseCloudinaryAssetUrl(resolvedDocumentUrl);
+    const candidatePublicIds = uniqueValues([
+      publicId,
+      parsedDocumentUrl?.publicId,
+      parsedDocumentUrl?.publicIdWithFormat,
+    ]);
+    const candidateResourceTypes = uniqueValues([
+      parsedDocumentUrl?.resourceType,
+      "image",
+      "raw",
+      "auto",
+      "video",
+    ]);
+    const candidateDeliveryTypes = uniqueValues([
+      parsedDocumentUrl?.deliveryType,
+      "authenticated",
+      "upload",
+    ]);
+    const candidateFormats = uniqueValues([
+      parsedDocumentUrl?.format,
+      fileExtension,
+    ]);
 
-    if (!targetUrl) {
-      return res.status(400).send("Document URL is missing");
+    const candidates = new Set();
+    const addCandidate = (candidate) => {
+      const normalizedCandidate = normalizeDocumentUrl(candidate);
+      if (normalizedCandidate) {
+        candidates.add(normalizedCandidate);
+      }
+    };
+
+    const addSignedCandidates = (resolvedPublicId) => {
+      for (const resourceType of candidateResourceTypes) {
+        for (const deliveryType of candidateDeliveryTypes) {
+          addCandidate(
+            buildCloudinarySignedUrl(cloudinary, resolvedPublicId, {
+              resourceType,
+              deliveryType,
+            }),
+          );
+
+          for (const format of candidateFormats) {
+            addCandidate(
+              buildCloudinarySignedUrl(cloudinary, resolvedPublicId, {
+                resourceType,
+                deliveryType,
+                format,
+              }),
+            );
+          }
+        }
+      }
+    };
+
+    if (resolvedDocumentUrl) {
+      addCandidate(resolvedDocumentUrl);
     }
 
-    const response = await axios.get(targetUrl, { responseType: "stream" });
+    for (const resolvedPublicId of candidatePublicIds) {
+      addSignedCandidates(resolvedPublicId);
+    }
+
+    if (parsedDocumentUrl?.normalizedUrl) {
+      addCandidate(parsedDocumentUrl.normalizedUrl);
+    }
+
+    const uniqueCandidates = Array.from(candidates).filter(Boolean);
+
+    if (uniqueCandidates.length === 0) {
+      return res.status(400).send("Document identifier is missing");
+    }
+
+    let response;
+    let lastError;
+
+    const attemptCandidates = async (urls) => {
+      for (const targetUrl of urls) {
+        try {
+          console.log(`[Stream] Attempting: ${targetUrl}`);
+          const candidateResponse = await axios.get(targetUrl, {
+            responseType: "stream",
+            timeout: 10000,
+            headers: { Accept: "*/*" },
+            validateStatus: (status) => status === 200,
+          });
+
+          if (candidateResponse) {
+            console.log(
+              `[Stream] Success with candidate: ${targetUrl.slice(0, 80)}...`,
+            );
+            return candidateResponse;
+          }
+        } catch (fetchError) {
+          lastError = fetchError;
+          console.error(
+            `[Stream] Candidate failed (${fetchError.response?.status || "Error"}): ${targetUrl}`,
+          );
+        }
+      }
+
+      return null;
+    };
+
+    response = await attemptCandidates(uniqueCandidates);
+
+    if (!response && publicId) {
+      console.log(
+        `[Stream] Fast candidates failed. Querying Cloudinary API for exact asset details: ${publicId}`,
+      );
+      try {
+        const asset = await tryCloudinaryResourceLookup(
+          cloudinary,
+          candidatePublicIds.length > 0 ? candidatePublicIds : [publicId],
+          candidateResourceTypes,
+          candidateDeliveryTypes,
+        );
+
+        if (asset) {
+          const exactCandidates = [
+            asset.secure_url,
+            asset.url,
+            buildCloudinarySignedUrl(cloudinary, asset.public_id, {
+              resourceType: asset.resource_type,
+              deliveryType: asset.type,
+              format: asset.format,
+            }),
+            buildCloudinarySignedUrl(cloudinary, asset.public_id, {
+              resourceType: asset.resource_type,
+              deliveryType: asset.type,
+            }),
+          ];
+
+          if (asset.public_id && asset.public_id !== publicId) {
+            exactCandidates.push(
+              buildCloudinarySignedUrl(cloudinary, asset.public_id, {
+                resourceType: asset.resource_type,
+                deliveryType: asset.type,
+                format: asset.format,
+              }),
+            );
+          }
+
+          console.log(`[Stream] Attempting exact Cloudinary asset candidates`);
+          response = await attemptCandidates(exactCandidates.filter(Boolean));
+        }
+      } catch (apiError) {
+        console.error(`[Stream] Cloudinary API fallback failed: ${apiError.message}`);
+      }
+    }
+
+    if (!response) {
+      throw lastError || new Error("All streaming candidates and API fallback failed");
+    }
     const fallbackName = String(documentName || publicId || "document").split("/").pop();
 
     res.setHeader("Cache-Control", "no-store, private, max-age=0");

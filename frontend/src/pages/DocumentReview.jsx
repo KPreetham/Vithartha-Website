@@ -66,7 +66,7 @@ const DocumentReview = () => {
       }
 
       try {
-        const url = await getSecureDocumentUrl(selectedDoc.publicId, leadId);
+        const url = await getSecureDocumentUrl(selectedDoc.publicId, "", leadId);
         if (!cancelled) {
           setSecurePreviewUrl(url);
         }
@@ -749,7 +749,7 @@ const DocumentReview = () => {
                                   toast.error("Secure document reference is missing.");
                                   return;
                                 }
-                                const url = await getSecureDocumentUrl(selectedDoc.publicId, leadId);
+                                const url = await getSecureDocumentUrl(selectedDoc.publicId, "", leadId);
                                 window.open(url, "_blank", "noopener,noreferrer");
                               } catch (error) {
                                 toast.error(error.message || "Failed to open document securely.");

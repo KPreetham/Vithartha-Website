@@ -874,7 +874,7 @@ const UserDashboard = () => {
     if (status === "InProgress") return "Service accepted by the executor";
     if (status === "ExecutionFinished") return "PR Performing Quality Review";
     if (status === "DraftSent") return "Draft Awaiting Your Approval";
-    if (status === "DraftAccepted" || status === "UserAccepted") return "Waiting for Final Return Upload by PR";
+    if (status === "DraftAccepted" || status === "UserAccepted") return "Draft Accepted";
     if (status === "DraftRejected") return "Rejected by User";
     if (status === "Rejected") return "Service Rejected";
     if (status === "Completed") return "Service Completed";
