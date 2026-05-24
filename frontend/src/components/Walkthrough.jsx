@@ -145,7 +145,16 @@ const Walkthrough = ({ isAppLoading }) => {
   );
 
   const getGuestSignUpButton = useCallback(() => {
-    const btn = document.querySelector("#navbar-login-btn");
+    const btn = document.querySelector("#navbar-signup-btn");
+    if (!btn) return null;
+
+    const rect = btn.getBoundingClientRect();
+    const isVisible = rect.width > 0 && rect.height > 0;
+    return isVisible ? btn : null;
+  }, []);
+
+  const getGuestMobileSignInButton = useCallback(() => {
+    const btn = document.querySelector("#navbar-mobile-signup-btn");
     if (!btn) return null;
 
     const rect = btn.getBoundingClientRect();
@@ -163,6 +172,9 @@ const Walkthrough = ({ isAppLoading }) => {
   }, []);
 
   const getGuestWalkthroughTarget = useCallback(() => {
+    const mobileSignInBtn = getGuestMobileSignInButton();
+    if (mobileSignInBtn) return mobileSignInBtn;
+
     const mobileBtn = getGuestMobileEntryButton();
     if (mobileBtn) return mobileBtn;
 
@@ -170,7 +182,7 @@ const Walkthrough = ({ isAppLoading }) => {
     if (desktopBtn) return desktopBtn;
 
     return null;
-  }, [getGuestMobileEntryButton, getGuestSignUpButton]);
+  }, [getGuestMobileEntryButton, getGuestMobileSignInButton, getGuestSignUpButton]);
 
   const checkVisibility = useCallback(() => {
     if (isAppLoading) return;
@@ -385,7 +397,7 @@ const Walkthrough = ({ isAppLoading }) => {
     const vW = window.innerWidth;
     const vH = window.innerHeight;
     const edgeGap = vW <= 480 ? 12 : 20;
-    const maxBubbleWidth = vW >= 1280 ? 420 : 360;
+    const maxBubbleWidth = isGuest ? (vW >= 1280 ? 390 : 330) : vW >= 1280 ? 420 : 360;
     const bW = Math.min(maxBubbleWidth, vW - edgeGap * 2);
 
     if (!tr) {
@@ -438,9 +450,10 @@ const Walkthrough = ({ isAppLoading }) => {
     // Calculate arrow center relative to the box
     // Clamp arrowX between 20px and (boxWidth - 20px) so it doesn't pop out of the bubble
     const arrowX = Math.min(bW - 20, Math.max(20, targetCenter - boxLeft));
+    const bubbleGap = isGuest ? 12 : 20;
     const preferredTop = shouldShowAbove
-      ? tr.top - estimatedTooltipHeight - 20
-      : tr.bottom + 20;
+      ? tr.top - estimatedTooltipHeight - bubbleGap
+      : tr.bottom + bubbleGap;
     const clampedTop = Math.max(
       edgeGap,
       Math.min(vH - estimatedTooltipHeight - edgeGap, preferredTop),
@@ -589,6 +602,7 @@ const Walkthrough = ({ isAppLoading }) => {
               : isMobile
                 ? "1.15rem 1.25rem"
                 : "1.25rem 1.5rem",
+            maxWidth: isSmallScreen ? "320px" : isMobile ? "340px" : "360px",
             boxShadow: "0 25px 50px rgba(0,0,0,0.6)",
             textAlign: "center",
           }}
@@ -623,14 +637,12 @@ const Walkthrough = ({ isAppLoading }) => {
           >
             {hasMobileNavEntry ? (
               <>
-                Welcome to Fin2Line! Tap the menu icon, then choose{" "}
-                <b>Sign In</b> to create your account and unlock your
-                personalized roadmap.
+                Welcome to Fin2Line! Tap the menu icon, then select{" "}
+                <b>Sign In</b> to create your account.
               </>
             ) : (
               <>
-                New here? Click <b>Sign In</b> to create your account and unlock
-                your personalized roadmap.
+                New here? Click <b>Sign In</b> to create your account.
               </>
             )}
           </p>

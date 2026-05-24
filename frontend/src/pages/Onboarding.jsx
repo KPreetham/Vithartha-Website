@@ -22,98 +22,103 @@ import {
   markOnboardingCompleted,
 } from "../utils/onboardingFlow";
 
-
 const Question = ({ label, value, onChange }) => (
-  <div>
+  <div style={{ marginBottom: "0.4rem" }}>
     <p
       style={{
         fontSize: "0.82rem",
-        fontWeight: 600,
-        marginBottom: "0.55rem",
-        color: "rgba(255,255,255,0.75)",
+        fontWeight: 700,
+        marginBottom: "0.5rem",
+        color: "#111111",
       }}
     >
       {label}
     </p>
     <div style={{ display: "flex", gap: "0.6rem" }}>
       {[true, false].map((bool) => (
-        <button
+        <motion.button
           key={String(bool)}
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
           onClick={() => onChange(bool)}
           style={{
             flex: 1,
-            padding: "0.6rem",
-            borderRadius: "8px",
+            padding: "0.65rem",
+            borderRadius: "12px",
             cursor: "pointer",
             fontWeight: 700,
             fontSize: "0.82rem",
             border:
               value === bool
-                ? "1.5px solid #22c55e"
-                : "1.5px solid rgba(255,255,255,0.1)",
+                ? "2px solid #16a34a"
+                : "1px solid rgba(17,24,39,0.08)",
             background:
               value === bool
-                ? "rgba(34,197,94,0.12)"
-                : "rgba(255,255,255,0.03)",
-            color: value === bool ? "#22c55e" : "rgba(255,255,255,0.4)",
-            transition: "all 0.2s ease",
+                ? "rgba(22,163,74,0.05)"
+                : "#ffffff",
+            color: value === bool ? "#16a34a" : "#4b5563",
+            transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
+            boxShadow: value === bool ? "0 4px 12px rgba(22,163,74,0.08)" : "none",
           }}
         >
           {bool ? "Yes" : "No"}
-        </button>
+        </motion.button>
       ))}
     </div>
   </div>
 );
 
 const SelectQuestion = ({ label, options, value, onChange }) => (
-  <div>
+  <div style={{ marginBottom: "0.4rem" }}>
     <p
       style={{
         fontSize: "0.82rem",
-        fontWeight: 600,
-        marginBottom: "0.55rem",
-        color: "rgba(255,255,255,0.75)",
+        fontWeight: 700,
+        marginBottom: "0.5rem",
+        color: "#111111",
       }}
     >
       {label}
     </p>
     <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
       {options.map((opt) => (
-        <button
+        <motion.button
           key={opt}
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
           onClick={() => onChange(opt)}
           style={{
-            padding: "0.5rem 0.9rem",
-            borderRadius: "8px",
+            padding: "0.55rem 1rem",
+            borderRadius: "10px",
             cursor: "pointer",
-            fontWeight: 600,
+            fontWeight: 700,
             fontSize: "0.78rem",
             border:
               value === opt
-                ? "1.5px solid #22c55e"
-                : "1.5px solid rgba(255,255,255,0.1)",
+                ? "2px solid #16a34a"
+                : "1px solid rgba(17,24,39,0.08)",
             background:
-              value === opt ? "rgba(34,197,94,0.12)" : "rgba(255,255,255,0.03)",
-            color: value === opt ? "#22c55e" : "rgba(255,255,255,0.4)",
-            transition: "all 0.2s ease",
+              value === opt ? "rgba(22,163,74,0.05)" : "#ffffff",
+            color: value === opt ? "#16a34a" : "#4b5563",
+            transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
+            boxShadow: value === opt ? "0 4px 12px rgba(22,163,74,0.08)" : "none",
           }}
         >
           {opt}
-        </button>
+        </motion.button>
       ))}
     </div>
   </div>
 );
 
 const InputQuestion = ({ label, placeholder, value, onChange }) => (
-  <div>
+  <div style={{ marginBottom: "0.4rem" }}>
     <p
       style={{
         fontSize: "0.82rem",
-        fontWeight: 600,
-        marginBottom: "0.55rem",
-        color: "rgba(255,255,255,0.75)",
+        fontWeight: 700,
+        marginBottom: "0.5rem",
+        color: "#111111",
       }}
     >
       {label}
@@ -121,11 +126,13 @@ const InputQuestion = ({ label, placeholder, value, onChange }) => (
     <div
       style={{
         display: "flex",
-        background: "rgba(255,255,255,0.04)",
-        border: "1.5px solid rgba(255,255,255,0.1)",
-        padding: "0.65rem 0.9rem",
-        borderRadius: "8px",
+        background: "#ffffff",
+        border: "1px solid rgba(17,24,39,0.12)",
+        padding: "0.7rem 1rem",
+        borderRadius: "12px",
+        transition: "all 0.2s ease",
       }}
+      className="onboarding-input-container"
     >
       <input
         type="text"
@@ -135,24 +142,24 @@ const InputQuestion = ({ label, placeholder, value, onChange }) => (
         style={{
           background: "none",
           border: "none",
-          color: "white",
+          color: "#111111",
           outline: "none",
           width: "100%",
-          fontSize: "0.83rem",
+          fontSize: "0.85rem",
+          fontWeight: 500,
         }}
-        onFocus={(e) =>
-          (e.currentTarget.parentElement.style.borderColor = "#22c55e")
-        }
-        onBlur={(e) =>
-        (e.currentTarget.parentElement.style.borderColor =
-          "rgba(255,255,255,0.1)")
-        }
+        onFocus={(e) => {
+          e.currentTarget.parentElement.style.borderColor = "#16a34a";
+          e.currentTarget.parentElement.style.boxShadow = "0 0 0 3px rgba(22,163,74,0.08)";
+        }}
+        onBlur={(e) => {
+          e.currentTarget.parentElement.style.borderColor = "rgba(17,24,39,0.12)";
+          e.currentTarget.parentElement.style.boxShadow = "none";
+        }}
       />
     </div>
   </div>
 );
-
-/* ─── Main Component ─────────────────────────────────────────────────────── */
 
 const Onboarding = () => {
   const [path, setPath] = useState(null);
@@ -219,27 +226,14 @@ const Onboarding = () => {
     } else setStep((s) => s - 1);
   };
 
-  const toggleNeed = (need) => {
-    setFormData((prev) => ({
-      ...prev,
-      needs: prev.needs.includes(need)
-        ? prev.needs.filter((n) => n !== need)
-        : [...prev.needs, need],
-    }));
-  };
-
   const handleSubmit = async () => {
-
     const needsSet = new Set(formData.needs);
 
-    // ── PATH: Filing Returns ──────────────────────────────────────────────
     if (path === "filing") {
-      // Add granular flags based on Yes answers
       if (formData.salaried === true) needsSet.add("salaried");
       if (formData.capitalGains === true) needsSet.add("capitalGains");
       if (formData.houseProperty === true) needsSet.add("houseProperty");
       if (formData.otherSources === true) needsSet.add("otherSources");
-      // If no specific sub-type was selected, default to basic ITR filing only
       const hasAnyFlag =
         formData.salaried === true ||
         formData.capitalGains === true ||
@@ -248,35 +242,15 @@ const Onboarding = () => {
       if (!hasAnyFlag) needsSet.add("itrFiling");
     }
 
-    // ── PATH: Capital Gains ───────────────────────────────────────────────
     if (path === "capital") {
-      // Always capital gains; add other flags based on Yes answers
       needsSet.add("capitalGains");
       if (formData.houseProperty === true) needsSet.add("houseProperty");
       if (formData.otherSources === true) needsSet.add("otherSources");
     }
 
-    // ── PATH: Starting a Business ─────────────────────────────────────────
     if (path === "starting") {
       const hasExplicitNeeds = formData.needs.length > 0;
-
-      if (!hasExplicitNeeds) {
-        // No specific services selected → fall back to generic startup bundle
-        needsSet.add("startingBusiness");
-      }
-      // Note: We no longer infer needs from the industry text field for startups
-      // to ensure we only display what the user explicitly selected.
-    }
-
-    // ── PATH: Have a Business ─────────────────────────────────────────────
-
-    if (path === "having") {
-      // needsSet already seeded with formData.needs selections (GST Compliance, Income Tax, etc.)
-    }
-
-    // ── Explicit needs checkbox "Capital Gains" maps to capital gains service ──
-    if (formData.needs.includes("Capital Gains")) {
-      needsSet.add("capitalGains");
+      if (!hasExplicitNeeds) needsSet.add("startingBusiness");
     }
 
     const finalData = {
@@ -330,63 +304,37 @@ const Onboarding = () => {
       label: "Filing Returns",
       icon: FileText,
       desc: "Salary, Property, or NRI taxation",
-      color: "#4361ee",
+      color: "#16a34a",
     },
     {
       id: "capital",
       label: "Capital Gains",
       icon: TrendingUp,
       desc: "Stocks, Crypto, or Property transactions",
-      color: "#f59e0b",
+      color: "#16a34a",
     },
     {
       id: "starting",
       label: "Starting a Business",
       icon: Rocket,
       desc: "Fresh registration, setup, and legal foundations",
-      color: "#7c3aed",
+      color: "#16a34a",
     },
     {
       id: "having",
       label: "Have a Business",
       icon: Building,
       desc: "Ongoing compliance, GST, Payroll, and growth",
-      color: "#10b981",
+      color: "#16a34a",
     },
-  ];
-
-  const needsOptions = [
-    { value: "GST Compliance", icon: CheckCircle, color: "#4361ee" },
-    { value: "Income Tax", icon: BarChart, color: "#7c3aed" },
-    { value: "Capital Gains", icon: TrendingUp, color: "#f59e0b" },
-    { value: "Virtual CFO", icon: TrendingUp, color: "#f72585" },
-    { value: "Registration", icon: Building, color: "#10b981" },
-    { value: "Legal Advisory", icon: Zap, color: "#f59e0b" },
-    { value: "Payroll", icon: CheckCircle, color: "#3b82f6" },
   ];
 
   const urgencyOptions = [
-    {
-      id: "Immediate",
-      label: "As soon as possible",
-      icon: Zap,
-      color: "#ef4444",
-    },
-    {
-      id: "Planning",
-      label: "In the next 1–3 months",
-      icon: PieChart,
-      color: "#f59e0b",
-    },
-    {
-      id: "Exploring",
-      label: "Just exploring for now",
-      icon: BarChart,
-      color: "#10b981",
-    },
+    { id: "Immediate", label: "As soon as possible", icon: Zap, color: "#16a34a" },
+    { id: "Planning", label: "In the next 1–3 months", icon: PieChart, color: "#16a34a" },
+    { id: "Exploring", label: "Just exploring for now", icon: BarChart, color: "#16a34a" },
   ];
 
-  /* Progress: 3 steps → 0,1,2 */
   const progressPct = ((step + 1) / 3) * 100;
 
   return (
@@ -396,7 +344,7 @@ const Onboarding = () => {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "var(--bg)",
+        background: "radial-gradient(circle at 50% 0%, #f8fafc 0%, #ffffff 100%)",
         padding: "1.5rem 1rem",
         position: "relative",
         overflow: "hidden",
@@ -406,61 +354,38 @@ const Onboarding = () => {
       <div
         style={{
           position: "absolute",
-          inset: 0,
+          top: "-10%",
+          left: "50%",
+          transform: "translateX(-50%)",
+          width: "100%",
+          maxWidth: "1000px",
+          height: "600px",
+          background: "radial-gradient(circle, rgba(22,163,74,0.03) 0%, transparent 70%)",
           pointerEvents: "none",
-          background:
-            "radial-gradient(ellipse 50% 40% at 50% 0%, rgba(34,197,94,0.05) 0%, transparent 60%)",
         }}
       />
 
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
+        initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: [0.23, 1, 0.32, 1] }}
+        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
         style={{ width: "100%", maxWidth: "520px", zIndex: 1 }}
       >
         {/* Progress bar */}
-        <div style={{ marginBottom: "1rem" }}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              marginBottom: "0.4rem",
-            }}
-          >
-            <span
-              style={{
-                fontSize: "0.72rem",
-                color: "rgba(255,255,255,0.3)",
-                fontWeight: 600,
-                textTransform: "uppercase",
-                letterSpacing: "0.06em",
-              }}
-            >
-              Step {step + 1} of 3
+        <div style={{ marginBottom: "1.2rem", padding: "0 10px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.5rem" }}>
+            <span style={{ fontSize: "0.7rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Step {step + 1} / 3
             </span>
-            <span
-              style={{ fontSize: "0.72rem", color: "#22c55e", fontWeight: 600 }}
-            >
+            <span style={{ fontSize: "0.7rem", color: "#16a34a", fontWeight: 800 }}>
               {Math.round(progressPct)}%
             </span>
           </div>
-          <div
-            style={{
-              height: "4px",
-              background: "rgba(255,255,255,0.07)",
-              borderRadius: "99px",
-              overflow: "hidden",
-            }}
-          >
+          <div style={{ height: "4px", background: "rgba(17,24,39,0.06)", borderRadius: "99px", overflow: "hidden" }}>
             <motion.div
               animate={{ width: `${progressPct}%` }}
-              transition={{ duration: 0.4, ease: "easeOut" }}
-              style={{
-                height: "100%",
-                background: "linear-gradient(90deg, #16a34a, #22c55e)",
-                borderRadius: "99px",
-              }}
+              transition={{ duration: 0.5, ease: "easeOut" }}
+              style={{ height: "100%", background: "#16a34a", borderRadius: "99px" }}
             />
           </div>
         </div>
@@ -468,248 +393,134 @@ const Onboarding = () => {
         {/* Card */}
         <div
           style={{
-            background:
-              "linear-gradient(145deg, #0f0f12 0%, #111318 50%, #0d0f13 100%)",
-            borderRadius: "20px",
-            border: "1px solid rgba(255,255,255,0.08)",
-            padding: "1.6rem 2rem",
-            boxShadow: "0 32px 80px rgba(0,0,0,0.6)",
+            background: "whitesmoke",
+            borderRadius: "28px",
+            border: "1px solid rgba(17,24,39,0.06)",
+            padding: "1.8rem 2.2rem",
+            boxShadow: "0 20px 40px -10px rgba(0, 0, 0, 0.05)",
+            position: "relative",
           }}
         >
           {/* Logo */}
-          <div style={{ textAlign: "center", marginBottom: "1.4rem" }}>
+          <div style={{ textAlign: "center", marginBottom: "1.5rem" }}>
             <div style={{
-              height: "80px",
-              width: "80px",
-              borderRadius: "50%",
+              height: "60px",
+              width: "60px",
+              borderRadius: "16px",
               overflow: "hidden",
               margin: "0 auto",
-              background: "rgba(255, 255, 255, 0.03)",
-              border: "1px solid rgba(255, 255, 255, 0.12)",
+              background: "#ffffff",
+              border: "1px solid rgba(17,24,39,0.08)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
+              padding: "8px",
+              boxShadow: "0 4px 10px -2px rgba(0,0,0,0.03)"
             }}>
               <img
                 src="/logo2.png"
                 alt="Fin2Line Logo"
-                style={{
-                  height: "100%",
-                  width: "100%",
-                  objectFit: "cover",
-                  objectPosition: "center",
-                  display: "block",
-                }}
+                style={{ height: "100%", width: "100%", objectFit: "contain" }}
               />
             </div>
           </div>
 
           <AnimatePresence mode="wait">
-            {/* ── Step 0: Path Selection ─────────────────────────── */}
             {step === 0 && (
               <motion.div
                 key="s0"
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -16 }}
-                transition={{ duration: 0.3 }}
+                initial={{ opacity: 0, scale: 0.99, y: 5 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.99, y: -5 }}
+                transition={{ duration: 0.25 }}
               >
-                <div style={{ marginBottom: "1.1rem" }}>
-                  <h2
-                    style={{
-                      fontSize: "1.25rem",
-                      fontWeight: 600,
-                      color: "white",
-                      marginBottom: "0.2rem",
-                      letterSpacing: "-0.01em",
-                    }}
-                  >
-                    What brings you to Fin2Line?
+                <div style={{ marginBottom: "1.5rem", textAlign: "center" }}>
+                  <h2 style={{ fontSize: "1.45rem", fontWeight: 800, color: "#111111", marginBottom: "0.3rem", letterSpacing: "-0.02em" }}>
+                    Welcome to <span style={{ color: "#16a34a" }}>Fin2Line</span>
                   </h2>
-                  <p
-                    style={{
-                      color: "rgba(255,255,255,0.35)",
-                      fontSize: "0.8rem",
-                    }}
-                  >
-                    Choose an option to tailor your experience.
+                  <p style={{ color: "#64748b", fontSize: "0.88rem", fontWeight: 500 }}>
+                    Tailor your professional journey.
                   </p>
                 </div>
 
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "0.55rem",
-                  }}
-                >
-                  {mainPaths.map(({ id, icon: Icon, label, desc, color }) => (
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
+                  {mainPaths.map(({ id, icon: Icon, label, desc }) => (
                     <motion.button
                       key={id}
-                      whileHover={{ scale: 1.01 }}
+                      whileHover={{ scale: 1.01, backgroundColor: "#ffffff" }}
                       whileTap={{ scale: 0.99 }}
                       onClick={() => handlePathSelect(id)}
                       style={{
                         display: "flex",
                         alignItems: "center",
                         gap: "1rem",
-                        padding: "0.9rem 1rem",
-                        borderRadius: "12px",
-                        border: "1px solid rgba(255,255,255,0.08)",
-                        background: "rgba(255,255,255,0.03)",
+                        padding: "0.95rem",
+                        borderRadius: "18px",
+                        border: "1px solid rgba(17,24,39,0.06)",
+                        background: "rgba(255,255,255,0.6)",
                         cursor: "pointer",
                         textAlign: "left",
                         width: "100%",
-                        transition: "all 0.2s",
+                        transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
                       }}
-                      onMouseEnter={(e) =>
-                        (e.currentTarget.style.borderColor = `${color}60`)
-                      }
-                      onMouseLeave={(e) =>
-                      (e.currentTarget.style.borderColor =
-                        "rgba(255,255,255,0.08)")
-                      }
                     >
-                      <div
-                        style={{
-                          width: 38,
-                          height: 38,
-                          borderRadius: "10px",
-                          background: `${color}18`,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          flexShrink: 0,
-                        }}
-                      >
-                        <Icon size={17} color={color} />
+                      <div style={{
+                        width: 42,
+                        height: 42,
+                        borderRadius: "12px",
+                        background: "rgba(22,163,74,0.08)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                      }}>
+                        <Icon size={18} color="#16a34a" />
                       </div>
                       <div style={{ flex: 1 }}>
-                        <p
-                          style={{
-                            fontWeight: 700,
-                            color: "white",
-                            margin: "0 0 0.1rem",
-                            fontSize: "0.88rem",
-                          }}
-                        >
+                        <p style={{ fontWeight: 800, color: "#111111", margin: "0 0 0.1rem", fontSize: "0.92rem" }}>
                           {label}
                         </p>
-                        <p
-                          style={{
-                            color: "rgba(255,255,255,0.35)",
-                            fontSize: "0.74rem",
-                            margin: 0,
-                          }}
-                        >
+                        <p style={{ color: "#64748b", fontSize: "0.8rem", margin: 0, fontWeight: 500 }}>
                           {desc}
                         </p>
                       </div>
-                      <ChevronRight size={15} color="rgba(255,255,255,0.2)" />
+                      <ChevronRight size={16} color="rgba(17,24,39,0.2)" />
                     </motion.button>
                   ))}
                 </div>
               </motion.div>
             )}
 
-            {/* ── Step 1: Conditional Questions ─────────────────── */}
             {step === 1 && (
               <motion.div
                 key="s1"
-                initial={{ opacity: 0, x: 20 }}
+                initial={{ opacity: 0, x: 15 }}
                 animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
+                exit={{ opacity: 0, x: -15 }}
                 transition={{ duration: 0.3 }}
               >
-                <div style={{ marginBottom: "1.1rem" }}>
-                  <h2
-                    style={{
-                      fontSize: "1.2rem",
-                      fontWeight: 600,
-                      color: "white",
-                      marginBottom: "0.2rem",
-                      letterSpacing: "-0.01em",
-                    }}
-                  >
-                    {path === "filing"
-                      ? "Tax Filing Details"
-                      : path === "starting"
-                        ? "Tell us about your Startup"
-                        : "Business Insights"}
+                <div style={{ marginBottom: "1.4rem" }}>
+                  <h2 style={{ fontSize: "1.35rem", fontWeight: 800, color: "#111111", marginBottom: "0.2rem", letterSpacing: "-0.02em" }}>
+                    {path === "filing" ? "Tax Details" : path === "starting" ? "Startup Info" : "Business Insights"}
                   </h2>
-                  <p
-                    style={{
-                      color: "rgba(255,255,255,0.35)",
-                      fontSize: "0.78rem",
-                    }}
-                  >
-                    A few details to provide expert recommendations.
+                  <p style={{ color: "#64748b", fontSize: "0.85rem", fontWeight: 500 }}>
+                    Customize your expert roadmap.
                   </p>
                 </div>
 
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "1rem",
-                  }}
-                >
+                <div style={{ display: "flex", flexDirection: "column", gap: "1.1rem" }}>
                   {path === "filing" && (
                     <>
-                      <Question
-                        label="Are you a salaried employee?"
-                        value={formData.salaried}
-                        onChange={(v) =>
-                          setFormData({ ...formData, salaried: v })
-                        }
-                      />
-                      <Question
-                        label="Do you have Capital Gains (Stocks / Property)?"
-                        value={formData.capitalGains}
-                        onChange={(v) =>
-                          setFormData({ ...formData, capitalGains: v })
-                        }
-                      />
-                      <Question
-                        label="Have House Property / Rental Income?"
-                        value={formData.houseProperty}
-                        onChange={(v) =>
-                          setFormData({ ...formData, houseProperty: v })
-                        }
-                      />
-                      <Question
-                        label="Other Sources (Interest / Dividends / Misc)?"
-                        value={formData.otherSources}
-                        onChange={(v) =>
-                          setFormData({ ...formData, otherSources: v })
-                        }
-                      />
+                      <Question label="Are you a salaried employee?" value={formData.salaried} onChange={(v) => setFormData({ ...formData, salaried: v })} />
+                      <Question label="Do you have Capital Gains?" value={formData.capitalGains} onChange={(v) => setFormData({ ...formData, capitalGains: v })} />
+                      <Question label="Have House Property Income?" value={formData.houseProperty} onChange={(v) => setFormData({ ...formData, houseProperty: v })} />
                     </>
                   )}
 
                   {path === "capital" && (
                     <>
-                      <Question
-                        label="Stocks, Mutual Funds or Crypto?"
-                        value={formData.capitalGains}
-                        onChange={(v) =>
-                          setFormData({ ...formData, capitalGains: v })
-                        }
-                      />
-                      <Question
-                        label="Sold property (Flat, Land, House)?"
-                        value={formData.houseProperty}
-                        onChange={(v) =>
-                          setFormData({ ...formData, houseProperty: v })
-                        }
-                      />
-                      <Question
-                        label="Other income (Dividends / Interest)?"
-                        value={formData.otherSources}
-                        onChange={(v) =>
-                          setFormData({ ...formData, otherSources: v })
-                        }
-                      />
+                      <Question label="Stocks or Crypto Gains?" value={formData.capitalGains} onChange={(v) => setFormData({ ...formData, capitalGains: v })} />
+                      <Question label="Sold Real Estate / Property?" value={formData.houseProperty} onChange={(v) => setFormData({ ...formData, houseProperty: v })} />
                     </>
                   )}
 
@@ -717,85 +528,12 @@ const Onboarding = () => {
                     <>
                       <SelectQuestion
                         label="Expected annual revenue?"
-                        options={[
-                          "< 20 Lakhs",
-                          "20 Lakhs - 1 Crore",
-                          "> 1 Crore",
-                        ]}
+                        options={["< 20 Lakhs", "20 Lakhs - 1 Crore", "> 1 Crore"]}
                         value={formData.expectedRevenue}
-                        onChange={(v) =>
-                          setFormData({ ...formData, expectedRevenue: v })
-                        }
+                        onChange={(v) => setFormData({ ...formData, expectedRevenue: v })}
                       />
-                      <Question
-                        label="Have you registered the entity yet?"
-                        value={formData.registered}
-                        onChange={(v) =>
-                          setFormData({ ...formData, registered: v })
-                        }
-                      />
-                      <InputQuestion
-                        label="Which industry are you in?"
-                        placeholder="e.g. Tech, Retail, Service"
-                        value={formData.industry}
-                        onChange={(v) =>
-                          setFormData({ ...formData, industry: v })
-                        }
-                      />
-                      {/* Service needs selection for Starting a Business */}
-                      <div>
-                        <div style={{ marginBottom: "0.75rem" }}>
-                          <InputQuestion
-                            label="Enter required services"
-                            placeholder="e.g. GST Registration, TDS Filing"
-                            value={formData.manualNeed}
-                            onChange={(v) =>
-                              setFormData({ ...formData, manualNeed: v })
-                            }
-                          />
-                        </div>
-                        <p
-                          style={{
-                            fontSize: "0.85rem",
-                            fontWeight: 600,
-                            marginBottom: "0.75rem",
-                            color: "rgba(255,255,255,0.85)",
-                            letterSpacing: "0.02em",
-                          }}
-                        >
-                          Example Services
-                        </p>
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "1fr 1fr",
-                            gap: "0.45rem",
-                          }}
-                        >
-                          {needsOptions.map(({ value, icon: Icon, color }) => {
-                            return (
-                              <div
-                                key={value}
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: "0.5rem",
-                                  padding: "0.55rem 0.75rem",
-                                  borderRadius: "8px",
-                                  border: "1.5px solid rgba(255,255,255,0.08)",
-                                  background: "rgba(255,255,255,0.03)",
-                                  color: "rgba(255,255,255,0.35)",
-                                  fontSize: "0.74rem",
-                                  fontWeight: 600,
-                                  cursor: "default",
-                                }}
-                              >
-                                <Icon size={12} /> {value}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
+                      <Question label="Registered the entity yet?" value={formData.registered} onChange={(v) => setFormData({ ...formData, registered: v })} />
+                      <InputQuestion label="Primary Industry" placeholder="e.g. Technology" value={formData.industry} onChange={(v) => setFormData({ ...formData, industry: v })} />
                     </>
                   )}
 
@@ -803,292 +541,119 @@ const Onboarding = () => {
                     <>
                       <SelectQuestion
                         label="Current annual revenue?"
-                        options={[
-                          "< 40 Lakhs",
-                          "40 Lakhs - 1.5 Crore",
-                          "> 1.5 Crore",
-                        ]}
+                        options={["< 40 Lakhs", "40 Lakhs - 1.5 Crore", "> 1.5 Crore"]}
                         value={formData.currentRevenue}
-                        onChange={(v) =>
-                          setFormData({ ...formData, currentRevenue: v })
-                        }
+                        onChange={(v) => setFormData({ ...formData, currentRevenue: v })}
                       />
                       <SelectQuestion
                         label="Team size?"
-                        options={[
-                          "1–5 Employees",
-                          "5–20 Employees",
-                          "20+ Employees",
-                        ]}
+                        options={["1–5 Employees", "5–20 Employees", "20+ Employees"]}
                         value={formData.employeeCount}
-                        onChange={(v) =>
-                          setFormData({ ...formData, employeeCount: v })
-                        }
+                        onChange={(v) => setFormData({ ...formData, employeeCount: v })}
                       />
-                      <div>
-                        <p
-                          style={{
-                            fontSize: "0.82rem",
-                            fontWeight: 600,
-                            marginBottom: "0.55rem",
-                            color: "rgba(255,255,255,0.75)",
-                          }}
-                        >
-                          Looking for specific services?
-                        </p>
-                        <div style={{ marginBottom: "0.75rem" }}>
-                          <InputQuestion
-                            label="Enter required services"
-                            placeholder="e.g. GST Registration, TDS Filing"
-                            value={formData.manualNeed}
-                            onChange={(v) =>
-                              setFormData({ ...formData, manualNeed: v })
-                            }
-                          />
-                        </div>
-                        <p
-                          style={{
-                            fontSize: "0.85rem",
-                            fontWeight: 600,
-                            marginBottom: "0.75rem",
-                            color: "rgba(255,255,255,0.85)",
-                            letterSpacing: "0.02em",
-                          }}
-                        >
-                          Example Services
-                        </p>
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "1fr 1fr",
-                            gap: "0.45rem",
-                          }}
-                        >
-                          {needsOptions.map(({ value, icon: Icon, color }) => {
-                            return (
-                              <div
-                                key={value}
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: "0.5rem",
-                                  padding: "0.55rem 0.75rem",
-                                  borderRadius: "8px",
-                                  border: "1.5px solid rgba(255,255,255,0.08)",
-                                  background: "rgba(255,255,255,0.03)",
-                                  color: "rgba(255,255,255,0.35)",
-                                  fontSize: "0.74rem",
-                                  fontWeight: 600,
-                                  cursor: "default",
-                                }}
-                              >
-                                <Icon size={12} /> {value}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
                     </>
                   )}
                 </div>
 
-                <div
-                  style={{
-                    marginTop: "1.2rem",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                  }}
-                >
-                  <button
-                    onClick={handleBack}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: "rgba(255,255,255,0.35)",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.4rem",
-                      cursor: "pointer",
-                      fontWeight: 600,
-                      fontSize: "0.82rem",
-                      padding: 0,
-                    }}
-                  >
+                <div style={{ marginTop: "1.5rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <motion.button whileHover={{ x: -2 }} onClick={handleBack} style={{ background: "none", border: "none", color: "#64748b", display: "flex", alignItems: "center", gap: "0.4rem", cursor: "pointer", fontWeight: 700, fontSize: "0.85rem" }}>
                     <ArrowLeft size={14} /> Back
-                  </button>
-                  <button
-                    onClick={handleNext}
-                    style={{
-                      padding: "0.65rem 1.6rem",
-                      borderRadius: "8px",
-                      background: "linear-gradient(135deg, #16a34a, #22c55e)",
-                      color: "white",
-                      fontWeight: 700,
-                      border: "none",
-                      fontSize: "0.84rem",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.4rem",
-                      boxShadow: "0 6px 20px rgba(34,197,94,0.25)",
-                    }}
-                  >
-                    Continue <ArrowRight size={14} />
-                  </button>
+                  </motion.button>
+                  <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={handleNext} style={{ padding: "0.7rem 1.5rem", borderRadius: "12px", background: "#111111", color: "white", fontWeight: 700, border: "none", fontSize: "0.85rem", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.5rem", transition: "all 0.2s" }}>
+                    Next <ArrowRight size={14} />
+                  </motion.button>
                 </div>
               </motion.div>
             )}
 
-            {/* ── Step 2: Urgency ────────────────────────────────── */}
             {step === 2 && (
               <motion.div
                 key="s2"
-                initial={{ opacity: 0, x: 20 }}
+                initial={{ opacity: 0, x: 15 }}
                 animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
+                exit={{ opacity: 0, x: -15 }}
                 transition={{ duration: 0.3 }}
               >
-                <div style={{ marginBottom: "1.1rem" }}>
-                  <h2
-                    style={{
-                      fontSize: "1.2rem",
-                      fontWeight: 600,
-                      color: "white",
-                      marginBottom: "0.2rem",
-                      letterSpacing: "-0.01em",
-                    }}
-                  >
-                    One last thing...
+                <div style={{ marginBottom: "1.4rem" }}>
+                  <h2 style={{ fontSize: "1.35rem", fontWeight: 800, color: "#111111", marginBottom: "0.2rem", letterSpacing: "-0.02em" }}>
+                    Timeline
                   </h2>
-                  <p
-                    style={{
-                      color: "rgba(255,255,255,0.35)",
-                      fontSize: "0.78rem",
-                    }}
-                  >
-                    When would you like to get started?
+                  <p style={{ color: "#64748b", fontSize: "0.85rem", fontWeight: 500 }}>
+                    When would you like to begin?
                   </p>
                 </div>
 
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "0.55rem",
-                  }}
-                >
-                  {urgencyOptions.map(({ id, label, icon: Icon, color }) => {
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
+                  {urgencyOptions.map(({ id, label, icon: Icon }) => {
                     const selected = formData.urgency === id;
                     return (
-                      <button
+                      <motion.button
                         key={id}
-                        onClick={() =>
-                          setFormData({ ...formData, urgency: id })
-                        }
+                        whileHover={{ scale: 1.01, backgroundColor: selected ? "rgba(22,163,74,0.06)" : "#ffffff" }}
+                        whileTap={{ scale: 0.99 }}
+                        onClick={() => setFormData({ ...formData, urgency: id })}
                         style={{
                           display: "flex",
                           alignItems: "center",
-                          gap: "0.9rem",
-                          padding: "0.85rem 1rem",
-                          borderRadius: "12px",
-                          border: selected
-                            ? `1.5px solid ${color}`
-                            : "1px solid rgba(255,255,255,0.08)",
-                          background: selected
-                            ? `${color}10`
-                            : "rgba(255,255,255,0.03)",
+                          gap: "1rem",
+                          padding: "0.95rem",
+                          borderRadius: "18px",
+                          border: selected ? "2px solid #16a34a" : "1px solid rgba(17,24,39,0.06)",
+                          background: selected ? "rgba(22,163,74,0.04)" : "rgba(255,255,255,0.6)",
                           cursor: "pointer",
                           textAlign: "left",
                           width: "100%",
-                          transition: "all 0.2s",
+                          transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
                         }}
                       >
-                        <div
-                          style={{
-                            width: 36,
-                            height: 36,
-                            borderRadius: "9px",
-                            background: `${color}18`,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            flexShrink: 0,
-                          }}
-                        >
-                          <Icon size={16} color={color} />
+                        <div style={{
+                          width: 38,
+                          height: 38,
+                          borderRadius: "10px",
+                          background: selected ? "rgba(22,163,74,0.12)" : "rgba(17,24,39,0.04)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0,
+                        }}>
+                          <Icon size={16} color={selected ? "#16a34a" : "#64748b"} />
                         </div>
-                        <span
-                          style={{
-                            fontWeight: 600,
-                            fontSize: "0.86rem",
-                            color: selected ? color : "rgba(255,255,255,0.6)",
-                          }}
-                        >
+                        <span style={{ fontWeight: 700, fontSize: "0.9rem", color: selected ? "#111111" : "#4b5563", flex: 1 }}>
                           {label}
                         </span>
-                        {selected && (
-                          <CheckCircle
-                            size={15}
-                            color={color}
-                            style={{ marginLeft: "auto" }}
-                          />
-                        )}
-                      </button>
+                        {selected && <CheckCircle size={16} color="#16a34a" />}
+                      </motion.button>
                     );
                   })}
                 </div>
 
-                <div
-                  style={{
-                    marginTop: "1.2rem",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                  }}
-                >
-                  <button
-                    onClick={handleBack}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: "rgba(255,255,255,0.35)",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.4rem",
-                      cursor: "pointer",
-                      fontWeight: 600,
-                      fontSize: "0.82rem",
-                      padding: 0,
-                    }}
-                  >
+                <div style={{ marginTop: "1.5rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <motion.button whileHover={{ x: -2 }} onClick={handleBack} style={{ background: "none", border: "none", color: "#64748b", display: "flex", alignItems: "center", gap: "0.4rem", cursor: "pointer", fontWeight: 700, fontSize: "0.85rem" }}>
                     <ArrowLeft size={14} /> Back
-                  </button>
-                  <button
+                  </motion.button>
+                  <motion.button
+                    whileHover={formData.urgency ? { scale: 1.02 } : {}}
+                    whileTap={formData.urgency ? { scale: 0.98 } : {}}
                     onClick={handleSubmit}
                     disabled={!formData.urgency}
                     style={{
-                      padding: "0.65rem 1.6rem",
-                      borderRadius: "8px",
-                      background: formData.urgency
-                        ? "linear-gradient(135deg, #16a34a, #22c55e)"
-                        : "rgba(34,197,94,0.25)",
+                      padding: "0.75rem 1.8rem",
+                      borderRadius: "12px",
+                      background: formData.urgency ? "#16a34a" : "rgba(17,24,39,0.1)",
                       color: "white",
-                      fontWeight: 700,
+                      fontWeight: 800,
                       border: "none",
-                      fontSize: "0.84rem",
+                      fontSize: "0.9rem",
                       cursor: formData.urgency ? "pointer" : "not-allowed",
                       display: "flex",
                       alignItems: "center",
-                      gap: "0.4rem",
-                      boxShadow: formData.urgency
-                        ? "0 6px 20px rgba(34,197,94,0.25)"
-                        : "none",
+                      gap: "0.6rem",
+                      boxShadow: formData.urgency ? "0 8px 20px -4px rgba(22,163,74,0.3)" : "none",
                       transition: "all 0.3s ease",
                     }}
                   >
-                    Generate Roadmap <Send size={13} />
-                  </button>
+                    Finish <Send size={14} />
+                  </motion.button>
                 </div>
               </motion.div>
             )}

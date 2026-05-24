@@ -36,6 +36,7 @@ function App() {
   const location = useLocation();
   const [isLoading, setIsLoading] = useState(true);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [showFullRouteLoader, setShowFullRouteLoader] = useState(false);
 
   const shouldHideNavbar = HIDE_NAVBAR_ROUTES.some(
     (r) => location.pathname === r,
@@ -64,15 +65,29 @@ function App() {
   useEffect(() => {
     window.scrollTo(0, 0);
     if (!isInitialLoad) {
+      const isAuthRedirect = sessionStorage.getItem("fin2line_auth_redirect") === "true";
       let hideTimer;
-      const showTimer = window.setTimeout(() => {
+      if (isAuthRedirect) {
         setIsLoading(true);
+        setShowFullRouteLoader(true);
         hideTimer = window.setTimeout(() => {
           setIsLoading(false);
-        }, 250); // Snappy route transition delay
-      }, 0);
+          setShowFullRouteLoader(false);
+          sessionStorage.removeItem("fin2line_auth_redirect");
+        }, 250);
+      } else {
+        const showTimer = window.setTimeout(() => {
+          setIsLoading(true);
+          hideTimer = window.setTimeout(() => {
+            setIsLoading(false);
+          }, 250); // Snappy route transition delay
+        }, 0);
+        return () => {
+          window.clearTimeout(showTimer);
+          if (hideTimer) window.clearTimeout(hideTimer);
+        };
+      }
       return () => {
-        window.clearTimeout(showTimer);
         if (hideTimer) window.clearTimeout(hideTimer);
       };
     }
@@ -93,7 +108,7 @@ function App() {
   return (
     <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}>
       <AnimatePresence mode="wait">
-        {isLoading && <Loader key="loader" minimal={!isInitialLoad} />}
+        {isLoading && <Loader key="loader" minimal={!isInitialLoad && !showFullRouteLoader} />}
       </AnimatePresence>
 
       <motion.div
@@ -194,15 +209,11 @@ function App() {
             duration: 3000,
             style: {
               fontFamily: "var(--font-body)",
-              borderRadius: "50px",
-              background: isDarkMode
-                ? "rgba(20, 20, 20, 0.95)"
-                : "rgba(255, 255, 255, 0.95)",
-              backdropFilter: "blur(10px)",
-              WebkitBackdropFilter: "blur(10px)",
-              color: isDarkMode ? "#fff" : "#000",
-              border: "1px solid rgba(255, 255, 255, 0.1)",
-              boxShadow: "0 10px 30px rgba(0,0,0,0.2)",
+              borderRadius: "4px",
+              background: "whitesmoke",
+              color: "#000",
+              border: "1px solid rgba(0, 0, 0, 0.1)",
+              boxShadow: "0 10px 30px rgba(0,0,0,0.1)",
               padding: "12px 24px",
               fontWeight: 600,
               fontSize: "0.9rem",
@@ -211,13 +222,13 @@ function App() {
             success: {
               iconTheme: {
                 primary: "#10b981",
-                secondary: "#fff",
+                secondary: "whitesmoke",
               },
             },
             error: {
               iconTheme: {
                 primary: "#ef4444",
-                secondary: "#fff",
+                secondary: "whitesmoke",
               },
             },
           }}

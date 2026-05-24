@@ -106,6 +106,15 @@ const Navbar = () => {
   }, []);
 
   const handleLogout = () => {
+    const savedUser = localStorage.getItem("user");
+    try {
+      const parsed = savedUser ? JSON.parse(savedUser) : null;
+      if (parsed?.token) {
+        const apiUrl = import.meta.env.VITE_API_URL;
+        axios.post(`${apiUrl}/auth/logout`, {}, { headers: { Authorization: `Bearer ${parsed.token}` } }).catch(() => {});
+      }
+    } catch {}
+
     localStorage.removeItem("user");
     sessionStorage.removeItem("fin2line_guest_walkthrough_seen_v5"); // Reset guest walkthrough
     setUser(null);
@@ -168,28 +177,36 @@ const Navbar = () => {
     { name: "About", path: "/about" },
   ];
 
+  const navbarSurface = "#ffffff";
+  const navbarTextColor = "#000000";
+  const navbarMutedText = "rgba(0,0,0,0.72)";
+  const navbarSubtleText = "rgba(0,0,0,0.45)";
+  const navbarBorder = "1px solid rgba(0,0,0,0.08)";
+  const navbarSoftBorder = "1px solid rgba(0,0,0,0.06)";
+  const navbarShadow = "0 10px 30px rgba(0,0,0,0.08)";
+
   const navStyle = {
     position: "fixed",
     top: "0",
     left: "0",
     width: "100%",
     zIndex: 1000,
-    padding: isMobile ? "0.65rem 1rem" : (scrolled ? "0.65rem 4%" : "0.9rem 4%"),
-    background: "transparent",
+    padding: isMobile ? "0.45rem 1rem" : (scrolled ? "0.5rem 4%" : "0.65rem 4%"),
+    background: navbarSurface,
     backdropFilter: "none",
     WebkitBackdropFilter: "none",
     transition: "all 0.4s ease",
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    borderBottom: "none",
-    boxShadow: "none",
+    borderBottom: "1px solid rgba(0,0,0,0.04)",
+    boxShadow: "0 8px 22px rgba(0,0,0,0.04)",
   };
 
-  const linkColor = isDarkMode ? "rgba(255,255,255,0.7)" : "rgba(0,0,0,0.7)";
-  const hoverColor = isDarkMode ? "white" : "black";
-  const logoTextColor = isDarkMode ? "white" : "black";
-  const activeLinkColor = isDarkMode ? "white" : "black";
+  const linkColor = navbarMutedText;
+  const hoverColor = navbarTextColor;
+  const logoTextColor = navbarTextColor;
+  const activeLinkColor = navbarTextColor;
 
   return (
     <>
@@ -211,8 +228,8 @@ const Navbar = () => {
               borderRadius: "50%",
               overflow: "hidden",
               transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
-              border: isDarkMode ? "1px solid rgba(255, 255, 255, 0.2)" : "1px solid rgba(0,0,0,0.1)",
-              boxShadow: isDarkMode ? "0 4px 15px rgba(0, 0, 0, 0.3)" : "0 0 15px rgba(0,0,0,0.1)",
+              border: navbarBorder,
+              boxShadow: "0 0 15px rgba(0,0,0,0.08)",
           }}>
             <img
               src="/logo2.png"
@@ -228,7 +245,7 @@ const Navbar = () => {
           </div>
           <span style={{
             fontFamily: "var(--font-display)",
-            fontSize: scrolled ? "0.9rem" : "0.98rem",
+            fontSize: scrolled ? "0.86rem" : "0.94rem",
             fontWeight: 700,
             color: logoTextColor,
             letterSpacing: "0.04em",
@@ -276,20 +293,20 @@ const Navbar = () => {
         </div>
 
         {/* Right Actions */}
-        <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: "1.7rem", alignItems: "center" }}>
           {/* Theme Toggle */}
+          {/* 
           <button
             className="theme-toggle-btn"
             onClick={() => setIsDarkMode(!isDarkMode)}
             style={{
               background: "transparent",
-              border: isDarkMode
-                ? "1px solid rgba(255,255,255,0.1)"
-                : "1px solid rgba(0,0,0,0.1)",
+              border: navbarBorder,
               color: logoTextColor,
               width: "36px",
-              height: "36px",
+              height: "34px",
               borderRadius: "50%",
+              marginLeft: "-0.25rem",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -308,6 +325,7 @@ const Navbar = () => {
           >
             {isDarkMode ? <Sun size={16} /> : <Moon size={16} />}
           </button>
+          */}
 
           {/* Auth Area */}
           {user ? (
@@ -334,10 +352,8 @@ const Navbar = () => {
                     width: "36px",
                     height: "36px",
                     borderRadius: "50%",
-                    background: isDarkMode ? "#3f4044" : "#e5e7eb",
-                    border: isDarkMode
-                      ? "2px solid #2e2e32"
-                      : "2px solid #d1d5db",
+                    background: "#f3f4f6",
+                    border: "2px solid #d1d5db",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -346,13 +362,13 @@ const Navbar = () => {
                 >
                   <User
                     size={18}
-                    style={{ color: isDarkMode ? "#e0e0e0" : "#374151" }}
+                    style={{ color: "#374151" }}
                   />
                 </div>
                 <ChevronDown
                   size={16}
                   style={{
-                    color: isDarkMode ? "#a0a0a0" : "#4b5563",
+                    color: "#4b5563",
                     transition: "transform 0.3s ease",
                     transform: dropdownOpen ? "rotate(180deg)" : "rotate(0deg)",
                   }}
@@ -368,18 +384,12 @@ const Navbar = () => {
                     top: "calc(100% + 12px)",
                     right: 0,
                     minWidth: "220px",
-                    background: isDarkMode
-                      ? "rgba(13, 13, 27, 0.98)"
-                      : "rgba(255, 255, 255, 0.97)",
+                    background: "#ffffff",
                     backdropFilter: "blur(24px)",
                     WebkitBackdropFilter: "blur(24px)",
-                    border: isDarkMode
-                      ? "1px solid rgba(255,255,255,0.1)"
-                      : "1px solid rgba(0,0,0,0.1)",
+                    border: navbarBorder,
                     borderRadius: "18px",
-                    boxShadow: isDarkMode
-                      ? "0 24px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04)"
-                      : "0 24px 60px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.04)",
+                    boxShadow: "0 24px 60px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.04)",
                     overflow: "hidden",
                     animation:
                       "dropdownFadeIn 0.2s cubic-bezier(0.4, 0, 0.2, 1) forwards",
@@ -390,9 +400,7 @@ const Navbar = () => {
                   <div
                     style={{
                         padding: "0.85rem 1rem",
-                      borderBottom: isDarkMode
-                        ? "1px solid rgba(255,255,255,0.06)"
-                        : "1px solid rgba(0,0,0,0.06)",
+                      borderBottom: navbarSoftBorder,
                       display: "flex",
                       alignItems: "center",
                       gap: "0.75rem",
@@ -403,10 +411,8 @@ const Navbar = () => {
                         width: 34,
                         height: 34,
                         borderRadius: "50%",
-                        background: isDarkMode ? "#3f4044" : "#e5e7eb",
-                        border: isDarkMode
-                          ? "1px solid #2e2e32"
-                          : "1px solid #d1d5db",
+                        background: "#e5e7eb",
+                        border: "1px solid #d1d5db",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
@@ -415,7 +421,7 @@ const Navbar = () => {
                     >
                       <User
                         size={18}
-                        style={{ color: isDarkMode ? "#e0e0e0" : "#374151" }}
+                        style={{ color: "#374151" }}
                       />
                     </div>
                     <div style={{ overflow: "hidden" }}>
@@ -424,7 +430,7 @@ const Navbar = () => {
                           margin: 0,
                           fontWeight: 700,
                         fontSize: "0.82rem",
-                          color: isDarkMode ? "white" : "#111",
+                          color: navbarTextColor,
                           whiteSpace: "nowrap",
                           overflow: "hidden",
                           textOverflow: "ellipsis",
@@ -436,9 +442,7 @@ const Navbar = () => {
                         style={{
                           margin: 0,
                           fontSize: "0.68rem",
-                          color: isDarkMode
-                            ? "rgba(255,255,255,0.45)"
-                            : "rgba(0,0,0,0.45)",
+                          color: navbarSubtleText,
                           whiteSpace: "nowrap",
                           overflow: "hidden",
                           textOverflow: "ellipsis",
@@ -450,13 +454,10 @@ const Navbar = () => {
                         style={{
                           marginTop: "4px",
                           display: "inline-block",
-                          padding: "2px 8px",
-                          background:
-                            user.role === "admin"
-                              ? "rgba(239,68,68,0.1)"
-                              : "rgba(16,185,129,0.1)",
+                          padding: 0,
+                          background: "transparent",
                           color: user.role === "admin" ? "#ef4444" : "#10b981",
-                          borderRadius: "100px",
+                          borderRadius: 0,
                           fontSize: "0.62rem",
                           fontWeight: 800,
                           textTransform: "uppercase",
@@ -485,9 +486,7 @@ const Navbar = () => {
                         border: "none",
                         borderRadius: "10px",
                         background: "transparent",
-                        color: isDarkMode
-                          ? "rgba(255,255,255,0.75)"
-                          : "rgba(0,0,0,0.7)",
+                        color: navbarMutedText,
                         fontSize: "0.85rem",
                         fontWeight: 600,
                         cursor: "pointer",
@@ -496,18 +495,12 @@ const Navbar = () => {
                         fontFamily: "var(--font-body)",
                       }}
                       onMouseEnter={(e) => {
-                        e.currentTarget.style.background = isDarkMode
-                          ? "rgba(255,255,255,0.06)"
-                          : "rgba(0,0,0,0.05)";
-                        e.currentTarget.style.color = isDarkMode
-                          ? "white"
-                          : "#111";
+                        e.currentTarget.style.background = "rgba(0,0,0,0.05)";
+                        e.currentTarget.style.color = navbarTextColor;
                       }}
                       onMouseLeave={(e) => {
                         e.currentTarget.style.background = "transparent";
-                        e.currentTarget.style.color = isDarkMode
-                          ? "rgba(255,255,255,0.75)"
-                          : "rgba(0,0,0,0.7)";
+                        e.currentTarget.style.color = navbarMutedText;
                       }}
                     >
                       <User size={15} />
@@ -529,9 +522,7 @@ const Navbar = () => {
                         border: "none",
                         borderRadius: "10px",
                         background: "transparent",
-                        color: isDarkMode
-                          ? "rgba(255,255,255,0.75)"
-                          : "rgba(0,0,0,0.7)",
+                        color: navbarMutedText,
                         fontSize: "0.85rem",
                         fontWeight: 600,
                         cursor: "pointer",
@@ -540,18 +531,12 @@ const Navbar = () => {
                         fontFamily: "var(--font-body)",
                       }}
                       onMouseEnter={(e) => {
-                        e.currentTarget.style.background = isDarkMode
-                          ? "rgba(255,255,255,0.06)"
-                          : "rgba(0,0,0,0.05)";
-                        e.currentTarget.style.color = isDarkMode
-                          ? "white"
-                          : "#111";
+                        e.currentTarget.style.background = "rgba(0,0,0,0.05)";
+                        e.currentTarget.style.color = navbarTextColor;
                       }}
                       onMouseLeave={(e) => {
                         e.currentTarget.style.background = "transparent";
-                        e.currentTarget.style.color = isDarkMode
-                          ? "rgba(255,255,255,0.75)"
-                          : "rgba(0,0,0,0.7)";
+                        e.currentTarget.style.color = navbarMutedText;
                       }}
                     >
                       <Shield size={15} />
@@ -561,9 +546,7 @@ const Navbar = () => {
                     <div
                       style={{
                         height: "1px",
-                        background: isDarkMode
-                          ? "rgba(255,255,255,0.06)"
-                          : "rgba(0,0,0,0.06)",
+                        background: "rgba(0,0,0,0.06)",
                         margin: "0.3rem 0",
                       }}
                     />
@@ -609,7 +592,7 @@ const Navbar = () => {
               id="navbar-signup-btn"
               className="btn navbar-signin-btn"
               style={{
-                background: "linear-gradient(135deg, #7c3aed 0%, #6d28d9 52%, #4c1d95 100%)",
+                background: "linear-gradient(135deg, #f97316 0%, #ea580c 52%, #c2410c 100%)",
                 color: "white",
                 border: "1px solid rgba(255, 255, 255, 0.14)",
                 fontSize: "0.88rem",
@@ -621,17 +604,19 @@ const Navbar = () => {
                 display: "flex",
                 alignItems: "center",
                 gap: "0.5rem",
-                boxShadow: "0 10px 24px rgba(76, 29, 149, 0.3)",
+                boxShadow: "none",
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.background = "linear-gradient(135deg, #8b5cf6 0%, #7c3aed 52%, #5b21b6 100%)";
+                e.currentTarget.style.background = "linear-gradient(135deg, #fb923c 0%, #f97316 52%, #ea580c 100%)";
                 e.currentTarget.style.transform = "translateY(-1px)";
                 e.currentTarget.style.border = "1px solid rgba(255, 255, 255, 0.22)";
+                e.currentTarget.style.boxShadow = "none";
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.background = "linear-gradient(135deg, #7c3aed 0%, #6d28d9 52%, #4c1d95 100%)";
+                e.currentTarget.style.background = "linear-gradient(135deg, #f97316 0%, #ea580c 52%, #c2410c 100%)";
                 e.currentTarget.style.transform = "translateY(0)";
                 e.currentTarget.style.border = "1px solid rgba(255, 255, 255, 0.14)";
+                e.currentTarget.style.boxShadow = "none";
               }}
               onClick={() => navigate("/login")}
             >
@@ -677,26 +662,22 @@ const Navbar = () => {
             animate={{ opacity: 1, scale: 1, y: 0, x: isMobile ? 0 : "-50%" }}
             exit={{ opacity: 0, scale: 0.95, y: -20, x: isMobile ? 0 : "-50%" }}
             transition={{ duration: 0.3, ease: [0.23, 1, 0.32, 1] }}
-            style={{
+              style={{
               position: "fixed",
-              top: isMobile ? (scrolled ? "60px" : "74px") : "80px",
+              top: isMobile ? (scrolled ? "56px" : "68px") : "72px",
               left: isMobile ? 0 : "50%",
               width: isMobile ? "100%" : "90%",
               zIndex: 999,
-              background: isDarkMode
-                ? "rgba(10, 10, 20, 0.98)"
-                : "rgba(255, 255, 255, 0.98)",
+              background: "#ffffff",
               backdropFilter: "blur(30px) saturate(150%)",
               WebkitBackdropFilter: "blur(30px) saturate(150%)",
               borderRadius: isMobile ? "0 0 24px 24px" : "24px",
-              border: isDarkMode
-                ? "1px solid rgba(255, 255, 255, 0.1)"
-                : "1px solid rgba(0, 0, 0, 0.1)",
-              padding: "1.2rem 1.5rem",
+              border: navbarBorder,
+              padding: "0.95rem 1.3rem",
               display: "flex",
               flexDirection: "column",
-              gap: "0.4rem",
-              boxShadow: "0 20px 40px rgba(0,0,0,0.3)",
+              gap: "0.3rem",
+              boxShadow: "0 10px 24px rgba(0,0,0,0.06)",
               maxHeight: isMobile ? "calc(100vh - 72px)" : "none",
               overflowY: isMobile ? "auto" : "visible",
             }}
@@ -704,19 +685,15 @@ const Navbar = () => {
             {/* Mobile user info (if logged in) */}
             {user && (
               <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "0.6rem",
-                  padding: "0.6rem",
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "0.6rem",
+                  padding: "0.5rem",
                   marginBottom: "0.8rem",
-                  background: isDarkMode
-                    ? "rgba(255,255,255,0.03)"
-                    : "rgba(0,0,0,0.01)",
+                  background: "rgba(0,0,0,0.01)",
                   borderRadius: "22px",
-                  border: isDarkMode
-                    ? "1px solid rgba(255,255,255,0.06)"
-                    : "1px solid rgba(0,0,0,0.06)",
+                  border: navbarSoftBorder,
                 }}
               >
                 <div
@@ -730,12 +707,10 @@ const Navbar = () => {
                   <div
                     style={{
                       width: 44,
-                      height: 44,
+                      height: 40,
                       borderRadius: "50%",
-                      background: isDarkMode ? "#3f4044" : "#f3f4f6",
-                      border: isDarkMode
-                        ? "1px solid #2e2e32"
-                        : "1px solid #e5e7eb",
+                      background: "#f3f4f6",
+                      border: "1px solid #e5e7eb",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
@@ -745,7 +720,7 @@ const Navbar = () => {
                   >
                     <User
                       size={22}
-                      style={{ color: isDarkMode ? "#e0e0e0" : "#374151" }}
+                      style={{ color: "#374151" }}
                     />
                   </div>
                   <div style={{ flex: 1, overflow: "hidden" }}>
@@ -791,9 +766,7 @@ const Navbar = () => {
                         style={{
                           margin: 0,
                           fontSize: "0.72rem",
-                          color: isDarkMode
-                            ? "rgba(255,255,255,0.4)"
-                            : "rgba(0,0,0,0.4)",
+                          color: navbarSubtleText,
                           textOverflow: "ellipsis",
                           overflow: "hidden",
                           whiteSpace: "nowrap",
@@ -814,16 +787,14 @@ const Navbar = () => {
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "space-between",
-                      gap: "0.75rem",
+                        gap: "0.75rem",
                       width: "100%",
-                      padding: "0.9rem 1rem",
+                      padding: "0.78rem 0.95rem",
                       border: "none",
                       borderRadius: "16px",
-                      background: isDarkMode
-                        ? "rgba(255,255,255,0.05)"
-                        : "rgba(0,0,0,0.04)",
+                      background: "rgba(0,0,0,0.04)",
                       color: logoTextColor,
-                      fontSize: "0.92rem",
+                      fontSize: "0.88rem",
                       fontWeight: 700,
                       cursor: "pointer",
                       textAlign: "left",
@@ -831,14 +802,10 @@ const Navbar = () => {
                       fontFamily: "var(--font-body)",
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.background = isDarkMode
-                        ? "rgba(255,255,255,0.08)"
-                        : "rgba(0,0,0,0.06)";
+                      e.currentTarget.style.background = "rgba(0,0,0,0.06)";
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.background = isDarkMode
-                        ? "rgba(255,255,255,0.05)"
-                        : "rgba(0,0,0,0.04)";
+                      e.currentTarget.style.background = "rgba(0,0,0,0.04)";
                     }}
                   >
                     <span style={{ display: "flex", alignItems: "center", gap: "0.7rem" }}>
@@ -875,13 +842,11 @@ const Navbar = () => {
                       transition: "all 0.2s ease",
                       display: "flex",
                       alignItems: "center",
-                      justifyContent: "between",
+                      justifyContent: "space-between",
                       background: "transparent",
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.background = isDarkMode
-                        ? "rgba(255, 255, 255, 0.05)"
-                        : "rgba(0, 0, 0, 0.03)";
+                      e.currentTarget.style.background = "rgba(0, 0, 0, 0.03)";
                       e.currentTarget.style.paddingLeft = "1.5rem";
                     }}
                     onMouseLeave={(e) => {
@@ -901,9 +866,7 @@ const Navbar = () => {
                           width: "32px",
                           height: "32px",
                           borderRadius: "10px",
-                          background: isDarkMode
-                            ? "rgba(255,255,255,0.05)"
-                            : "rgba(0,0,0,0.03)",
+                          background: "rgba(0,0,0,0.03)",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
@@ -921,12 +884,10 @@ const Navbar = () => {
             <div
               style={{
                 display: "flex",
-                gap: "0.75rem",
-                marginTop: "0.8rem",
-                paddingTop: "1rem",
-                borderTop: isDarkMode
-                  ? "1px solid rgba(255, 255, 255, 0.1)"
-                  : "1px solid rgba(0,0,0,0.1)",
+                      gap: "0.75rem",
+                      marginTop: "0.65rem",
+                      paddingTop: "0.8rem",
+                borderTop: navbarBorder,
               }}
             >
               {user ? (
@@ -935,9 +896,7 @@ const Navbar = () => {
                   style={{
                     flex: 1,
                     justifyContent: "center",
-                    background: isDarkMode
-                      ? "rgba(255,255,255,0.05)"
-                      : "rgba(0,0,0,0.03)",
+                    background: "rgba(0,0,0,0.03)",
                     color: "#ef4444",
                     border: "1px solid rgba(239,68,68,0.2)",
                     borderRadius: "var(--radius-full)",
@@ -959,7 +918,7 @@ const Navbar = () => {
                   style={{
                     flex: 1,
                     justifyContent: "center",
-                    background: "linear-gradient(135deg, #7c3aed 0%, #6d28d9 52%, #4c1d95 100%)",
+                    background: "linear-gradient(135deg, #f97316 0%, #ea580c 52%, #c2410c 100%)",
                     color: "white",
                     border: "1px solid rgba(255, 255, 255, 0.14)",
                     borderRadius: "var(--radius-full)",
@@ -967,6 +926,7 @@ const Navbar = () => {
                     fontWeight: 700,
                     display: "flex",
                     alignItems: "center",
+                    boxShadow: "none",
                   }}
                   onClick={() => navigate("/login")}
                 >

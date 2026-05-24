@@ -24,14 +24,14 @@ const PremiumCard = ({ children, style = {}, className = "" }) => (
     className={className}
     style={{
       background:
-        "linear-gradient(145deg, rgba(18, 20, 34, 0.92) 0%, rgba(11, 13, 24, 0.94) 100%)",
+        "linear-gradient(145deg, #ffffff 0%, #f9fafb 100%)",
       backdropFilter: "blur(16px)",
       borderRadius: 24,
-      border: "1px solid rgba(255,255,255,0.08)",
-      boxShadow: "0 18px 40px -24px rgba(0,0,0,0.7)",
+      border: "1px solid rgba(17,24,39,0.08)",
+      boxShadow: "0 18px 40px -28px rgba(17,24,39,0.18)",
       overflow: "hidden",
       position: "relative",
-      color: "#ffffff",
+      color: "#111111",
       ...style,
     }}
   >
@@ -53,6 +53,7 @@ const UserDashboardModern = ({
   getStatusTheme,
   getDisplayStatus,
   getCommitmentAmount,
+  getCommitmentPair,
   formatInr,
   selectedStatusText,
   selectedStatusBadge,
@@ -94,8 +95,19 @@ const UserDashboardModern = ({
   const [documentsOpen, setDocumentsOpen] = React.useState(false);
   const [isDropActive, setIsDropActive] = React.useState(false);
   const [reuploadingDocName, setReuploadingDocName] = React.useState(null);
+  const [animatedCommitmentHigh, setAnimatedCommitmentHigh] = React.useState(0);
+  const [animatedCommitmentSmall, setAnimatedCommitmentSmall] = React.useState(0);
+  const [syncedSidebarHeight, setSyncedSidebarHeight] = React.useState(null);
+  const detailsPanelRef = React.useRef(null);
+  const [isCompactMobile, setIsCompactMobile] = React.useState(
+    () => window.innerWidth <= 480,
+  );
   const documentCountLabel = `${uploadedDocumentCount} / ${selectedLeadDocuments.length || 0}`;
   const serviceProgress = Math.max(0, Math.min(100, serviceProgressPercent ?? 0));
+  const commitmentTargetHigh = Math.max(0, Number(stats.totalCommitmentHigh || 0));
+  const commitmentTargetSmall = Math.max(0, Number(stats.totalCommitmentSmall || 0));
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
+  const userName = user?.name ? user.name.split(" ")[0] : "there";
 
   const systemPhrases = ["status changed", "lead assigned", "draft accepted", "draft sent", "draft rejected", "document accepted", "document rejected", "service updated", "rejected by executor", "assignment rejected"];
   const isSystemMessage = (msg) => {
@@ -104,92 +116,316 @@ const UserDashboardModern = ({
     return systemPhrases.some(p => lower.includes(p));
   };
 
+  const getEffectiveLeadStatus = (lead) => {
+    const rawStatus = String(lead?.status || "").trim();
+    const rawStatusLower = rawStatus.toLowerCase();
+    const documents = Array.isArray(lead?.documents) ? lead.documents : [];
+    const hasFinalDocument = documents.some((doc) => {
+      const docType = String(doc?.type || "").trim().toLowerCase();
+      const docName = String(doc?.name || "").trim().toLowerCase();
+      return docType === "final" || docName.startsWith("final");
+    });
+
+    if (hasFinalDocument && !["rejected", "informationrequired"].includes(rawStatusLower)) {
+      return "Completed";
+    }
+
+    return rawStatus;
+  };
+
   React.useEffect(() => {
     setDocumentsOpen(false);
   }, [activeLead?._id]);
 
+  React.useEffect(() => {
+    let rafId = 0;
+    const duration = 900;
+    const start = performance.now();
+    const startValueHigh = 0;
+    const startValueSmall = 0;
+
+    const tick = (now) => {
+      const elapsed = Math.min(now - start, duration);
+      const progress = elapsed / duration;
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setAnimatedCommitmentHigh(startValueHigh + (commitmentTargetHigh - startValueHigh) * eased);
+      setAnimatedCommitmentSmall(startValueSmall + (commitmentTargetSmall - startValueSmall) * eased);
+      if (elapsed < duration) {
+        rafId = requestAnimationFrame(tick);
+      } else {
+        setAnimatedCommitmentHigh(commitmentTargetHigh);
+        setAnimatedCommitmentSmall(commitmentTargetSmall);
+      }
+    };
+
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [commitmentTargetHigh, commitmentTargetSmall]);
+
+  React.useEffect(() => {
+    const handleResize = () => setIsCompactMobile(window.innerWidth <= 480);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const syncSidebarHeight = () => {
+      if (window.innerWidth <= 1200) {
+        setSyncedSidebarHeight(null);
+        return;
+      }
+
+      const detailsNode = detailsPanelRef.current;
+      if (!detailsNode) {
+        setSyncedSidebarHeight(null);
+        return;
+      }
+
+      const nextHeight = Math.ceil(detailsNode.getBoundingClientRect().height);
+      setSyncedSidebarHeight((current) => (current === nextHeight ? current : nextHeight));
+    };
+
+    syncSidebarHeight();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", syncSidebarHeight);
+      return () => window.removeEventListener("resize", syncSidebarHeight);
+    }
+
+    const observer = new ResizeObserver(syncSidebarHeight);
+    if (detailsPanelRef.current) {
+      observer.observe(detailsPanelRef.current);
+    }
+    window.addEventListener("resize", syncSidebarHeight);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", syncSidebarHeight);
+    };
+  }, [activeLead?._id, documentsOpen]);
+
   const containerStyle = {
     minHeight: "100vh",
-    background: "var(--bg)",
-    color: "var(--text)",
-    paddingTop: "clamp(102px, 12vw, 124px)",
+    background:
+      "radial-gradient(circle at top, rgba(248, 250, 252, 1) 0%, rgba(241, 245, 249, 1) 50%, rgba(226, 232, 240, 1) 100%)",
+    color: "#111111",
+    "--text": "#111111",
+    "--text-secondary": "#4b5563",
+    "--text-muted": "#6b7280",
+    "--card-content-text": "#111111",
+    "--card-content-muted": "#6b7280",
+    paddingTop: isCompactMobile ? "clamp(112px, 16vw, 126px)" : "clamp(130px, 14vw, 150px)",
     paddingBottom: 64,
     position: "relative",
     overflow: "hidden",
   };
 
+  const rejectionSignature = activeLead ? getDetailsMissingSignature(activeLead) : "";
+  const isRejectionBannerDismissed = activeLead
+    ? dismissedDetailsMissingSignatureByLead[activeLead._id] === rejectionSignature
+    : false;
+
+  const activeRejectionBanner = !activeLead
+    ? null
+    : String(activeLead.status || "").trim().toLowerCase() === "draftrejected"
+      ? null
+      : isExecutorRejectedState(activeLead)
+      ? {
+          title: "Rejected by Executor",
+          message: getDetailsMissingMessage(activeLead),
+        }
+      : isPrRejectedState(activeLead) || isDetailsMissingState(activeLead)
+        ? {
+            title: "Rejected by PR",
+            message: getDetailsMissingMessage(activeLead),
+          }
+        : null;
+
+  const showRejectionBanner = Boolean(activeRejectionBanner) && !isRejectionBannerDismissed;
+  const showOnlyRejectionBanner = showRejectionBanner && activeRejectionBanner?.title === "Rejected by PR";
+
   const getProgressMessage = () => {
     if (!activeLead) return "No active service.";
-    if (activeLead.status === "Completed") return "Service completed successfully.";
-    if (activeLead.status === "Rejected") return "";
-    if (isExecutorRejectedState(activeLead) || isDetailsMissingState(activeLead)) return "";
-    if (isReviewDraftState(activeLead)) return "Please review the draft document below.";
-    
-    const status = String(activeLead.status || "").trim();
-    if (status === "PendingReview") return "Documents are being reviewed by PR.";
-    if (status === "PR_Accepted") return "Documents verified. Awaiting executor assignment.";
-    if (status === "AssignedToExecutor") return "Executor assigned. Service is starting.";
-    if (status === "InProgress") return "Executor is currently working on your service.";
-    if (status === "ExecutionFinished") return "Execution finished. Undergoing quality review.";
-    if (status === "DraftSent") return "Draft is awaiting your approval.";
-    if (status === "DraftAccepted" || status === "UserAccepted") return "Draft approved. Awaiting final documents.";
-    if (status === "DraftRejected") return "Draft rejected. Executor is reviewing your feedback.";
-    if (status === "Rejected") return "Service has been rejected.";
-    if (status === "Open") {
-        if (selectedLeadDocuments.length > 0 && uploadedDocumentCount >= selectedLeadDocuments.length) {
-            return "All documents uploaded. Awaiting PR review.";
-        }
-        if (selectedLeadDocuments.length > 0) {
-          return `${uploadedDocumentCount} of ${selectedLeadDocuments.length} documents uploaded. Keep going!`;
-        }
-        return "Keep going! Upload required documents to proceed.";
+    const activeLeadStatus = String(activeLead.status || "").trim();
+    const activeLeadStatusLower = activeLeadStatus.toLowerCase();
+    const hasFinalDocument = Array.isArray(selectedLeadDocuments) && selectedLeadDocuments.some((doc) => {
+      const docType = String(doc?.type || "").trim().toLowerCase();
+      const docName = String(doc?.name || "").trim().toLowerCase();
+      return docType === "final" || docName.startsWith("final");
+    });
+    const effectiveLeadStatus = hasFinalDocument && !["rejected", "informationrequired"].includes(activeLeadStatusLower)
+      ? "Completed"
+      : activeLeadStatus;
+
+    if (showOnlyRejectionBanner) return "";
+    if (effectiveLeadStatus === "Completed") return "Service completed successfully.";
+    if (effectiveLeadStatus === "DraftRejected") return "Draft Rejected by User.";
+    if (effectiveLeadStatus === "Rejected" || isDetailsMissingState(activeLead)) {
+      if (isExecutorRejectedState(activeLead)) return "Service rejected by Executor. Please check for feedback.";
+      return "Service rejected by PR. Please review missing or rejected documents.";
     }
-    
-    return "Service is in progress.";
+    if (isReviewDraftState(activeLead)) return "Please review the draft document below.";
+
+    const status = effectiveLeadStatus;
+    // If InformationRequired but user has already reuploaded all rejected docs,
+    // show pending-review message instead of the rejection prompt.
+    if (status === "InformationRequired") {
+      const hasRejected = Array.isArray(selectedLeadDocuments) && selectedLeadDocuments.some(d => String(d?.status || "").trim().toLowerCase() === "rejected");
+      if (!hasRejected) return "Documents are being reviewed by PR.";
+    }
+
+    const statusMap = {
+      Open: "Pending verification and initial review.",
+      PendingReview: "Documents are being reviewed by PR.",
+      InformationRequired: "Service rejected by PR. Action required.",
+      PR_Accepted: "Documents verified. Awaiting executor assignment.",
+      AssignedToExecutor: "Executor assigned. Service is starting.",
+      InProgress: "Accepted by Executor.",
+      ExecutionFinished: "Execution finished. Undergoing quality review.",
+      DraftSent: "Review Draft.",
+      DraftAccepted: "Draft approved. Waiting for final completion.",
+      UserAccepted: "Draft approved. Waiting for final completion.",
+      DraftRejected: "Draft Rejected by User.",
+      Rejected: "Service has been rejected.",
+      Completed: "Service completed successfully.",
+    };
+
+    if (status === "Open") {
+      if (selectedLeadDocuments.length > 0 && uploadedDocumentCount >= selectedLeadDocuments.length) {
+        return "All documents uploaded. Awaiting PR review.";
+      }
+      if (selectedLeadDocuments.length > 0) {
+        return `${uploadedDocumentCount} of ${selectedLeadDocuments.length} documents uploaded. Keep going!`;
+      }
+    }
+
+    return statusMap[status] || "Service is in progress.";
   };
   const progressMessage = getProgressMessage();
 
   return (
     <div className="home-page-shell user-dashboard-shell" style={containerStyle}>
-      <div className="home-page-backdrop" aria-hidden="true" />
+      <div className="home-page-backdrop" style={{ background: "#f8fafc" }} aria-hidden="true" />
       <style>{`
         .user-dashboard-shell .dashboard-stat-grid {
           display: grid;
           grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 14px;
-          margin-bottom: 18px;
+          gap: 10px;
+          margin-bottom: 0;
+          align-items: stretch;
+        }
+        .user-dashboard-shell .dashboard-shell {
+          width: 100%;
+          background: #f4f4f5;
+          border: 1px solid rgba(17,24,39,0.08);
+          border-radius: 0;
+          box-shadow: none;
+          overflow: hidden;
+        }
+        .user-dashboard-shell .stat-card {
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          cursor: default;
+        }
+        .user-dashboard-shell .stat-card:hover {
+          transform: translateY(-6px) scale(1.03);
+          box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04) !important;
+          border-color: rgba(17,24,39,0.18) !important;
+          z-index: 10;
+        }
+        .user-dashboard-shell .dashboard-shell-inner {
+          padding: 10px 14px 10px;
         }
         .user-dashboard-shell .dashboard-main-grid {
           display: grid;
-          grid-template-columns: 360px minmax(0, 1fr);
-          gap: 14px;
-          align-items: stretch;
+          grid-template-columns: 360px 1px minmax(0, 1fr);
+          gap: 0;
+          align-items: start;
+          background: #ffffff;
+          border: 1px solid rgba(17,24,39,0.12);
+          border-radius: 24px;
+          overflow: hidden;
+          box-shadow: 0 4px 20px -12px rgba(0, 0, 0, 0.08);
+        }
+        .user-dashboard-shell .dashboard-panels-divider {
+          background: rgba(17,24,39,0.08);
+          align-self: stretch;
+          border-radius: 0;
+        }
+        .user-dashboard-shell .dashboard-service-row {
+          transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .user-dashboard-shell .dashboard-service-row:hover {
+          transform: scale(1.015) translateY(-2px);
+          box-shadow: 0 6px 15px -4px rgba(0, 0, 0, 0.08);
+          border-color: rgba(34, 197, 94, 0.2) !important;
+          z-index: 2;
+        }
+        .user-dashboard-shell .inner-card {
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .user-dashboard-shell .inner-card:hover {
+          transform: translateY(-4px);
+          box-shadow: 0 12px 20px -10px rgba(0, 0, 0, 0.12) !important;
+          border-color: rgba(17,24,39,0.18) !important;
+        }
+        .user-dashboard-shell .dashboard-panels-shell {
+          padding: 18px 0 0 0;
+          border-radius: 0;
+          margin-top: 0;
+          background: transparent;
+          border: none;
+          box-shadow: none;
+        }
+        .user-dashboard-shell .dashboard-section-divider {
+          height: 1px;
+          width: 100%;
+          background: rgba(17,24,39,0.08);
+          margin: 6px 0 8px 0;
         }
         .user-dashboard-shell .dashboard-sidebar-panel {
-          min-height: 560px;
           height: auto;
+          min-height: 0;
           display: flex;
           flex-direction: column;
+          align-self: start;
         }
         .user-dashboard-shell .dashboard-details-panel {
-          min-height: 560px;
           height: auto;
           display: flex;
           flex-direction: column;
+          align-self: start;
         }
         .user-dashboard-shell .dashboard-details-scroll {
-          flex: 1;
-          min-height: 0;
-          overflow-y: auto;
-          padding-right: 4px;
-          margin-right: -4px;
+          flex: 0 0 auto;
+          min-height: auto;
+          overflow: visible;
+          padding-right: 0;
+          margin-right: 0;
         }
         .user-dashboard-shell .dashboard-sidebar-scroll {
           flex: 1;
+          height: 0;
           min-height: 0;
           overflow-y: auto;
           padding-right: 4px;
           margin-right: -4px;
+          scrollbar-width: thin;
+          scrollbar-color: #b8b8b8 transparent;
+        }
+        .user-dashboard-shell .dashboard-sidebar-scroll::-webkit-scrollbar {
+          width: 6px;
+        }
+        .user-dashboard-shell .dashboard-sidebar-scroll::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .user-dashboard-shell .dashboard-sidebar-scroll::-webkit-scrollbar-thumb {
+          background: #b8b8b8;
+          border-radius: 999px;
+        }
+        .user-dashboard-shell .dashboard-sidebar-scroll::-webkit-scrollbar-thumb:hover {
+          background: #9ca3af;
         }
         .user-dashboard-shell .dashboard-stat-icon {
           width: 58px;
@@ -206,8 +442,9 @@ const UserDashboardModern = ({
           gap: 8px;
           padding: 8px 12px;
           border-radius: 999px;
-          font-size: 0.8rem;
+          font-size: 0.86rem;
           font-weight: 700;
+          line-height: 1.1;
           white-space: nowrap;
         }
         .user-dashboard-shell .dashboard-pill .dot {
@@ -224,11 +461,11 @@ const UserDashboardModern = ({
         .user-dashboard-shell .dashboard-table th,
         .user-dashboard-shell .dashboard-table td {
           padding: 13px 16px;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+          border-bottom: 1px solid rgba(17, 24, 39, 0.08);
           text-align: left;
         }
         .user-dashboard-shell .dashboard-table th {
-          color: rgba(255, 255, 255, 0.55);
+          color: #6b7280;
           font-size: 0.8rem;
           font-weight: 700;
         }
@@ -244,8 +481,18 @@ const UserDashboardModern = ({
           border-color: rgba(34, 197, 94, 0.95);
           background: rgba(34, 197, 94, 0.05);
         }
+        .user-dashboard-shell .dashboard-search,
+        .user-dashboard-shell .dashboard-input {
+          transition: all 0.2s ease;
+        }
+        .user-dashboard-shell .dashboard-search:focus,
+        .user-dashboard-shell .dashboard-input:focus {
+          border-color: #16a34a !important;
+          box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.1);
+          outline: none;
+        }
         .user-dashboard-shell .dashboard-search::placeholder {
-          color: rgba(255, 255, 255, 0.35);
+          color: #6b7280;
         }
         @media (max-width: 1200px) {
           .user-dashboard-shell .dashboard-stat-grid {
@@ -254,11 +501,20 @@ const UserDashboardModern = ({
           .user-dashboard-shell .dashboard-main-grid {
             grid-template-columns: 1fr;
           }
+          .user-dashboard-shell .dashboard-panels-divider {
+            display: none;
+          }
           .user-dashboard-shell .dashboard-sidebar-panel {
+            height: auto;
             min-height: 0;
+            max-height: 350px;
+          }
+          .user-dashboard-shell .dashboard-sidebar-scroll {
+            height: auto;
           }
           .user-dashboard-shell .dashboard-details-panel {
             min-height: 0;
+            max-height: none;
           }
         }
         @media (max-width: 768px) {
@@ -270,579 +526,714 @@ const UserDashboardModern = ({
             padding: 12px 12px;
           }
         }
+        @media (max-width: 480px) {
+          .user-dashboard-shell .dashboard-shell-inner {
+            padding: 8px 10px 10px;
+          }
+          .user-dashboard-shell .dashboard-main-grid {
+            border-radius: 18px;
+          }
+          .user-dashboard-shell .dashboard-sidebar-panel,
+          .user-dashboard-shell .dashboard-details-panel {
+            padding: 14px 12px;
+          }
+          .user-dashboard-shell .dashboard-service-row {
+            padding: 14px 12px 14px 14px !important;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 10px;
+          }
+          .user-dashboard-shell .dashboard-pill {
+            width: fit-content;
+            white-space: normal;
+          }
+          .user-dashboard-shell .dashboard-table th,
+          .user-dashboard-shell .dashboard-table td {
+            padding: 10px 10px;
+            font-size: 0.76rem;
+          }
+          .user-dashboard-shell .dashboard-documents-scroll {
+            overflow-x: auto;
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
+            scrollbar-color: #b8b8b8 transparent;
+            padding-bottom: 4px;
+          }
+          .user-dashboard-shell .dashboard-documents-scroll::-webkit-scrollbar {
+            height: 6px;
+          }
+          .user-dashboard-shell .dashboard-documents-scroll::-webkit-scrollbar-track {
+            background: transparent;
+          }
+          .user-dashboard-shell .dashboard-documents-scroll::-webkit-scrollbar-thumb {
+            background: #b8b8b8;
+            border-radius: 999px;
+          }
+          .user-dashboard-shell .dashboard-documents-scroll::-webkit-scrollbar-thumb:hover {
+            background: #9ca3af;
+          }
+          .user-dashboard-shell .dashboard-table {
+            min-width: 520px;
+          }
+        }
       `}</style>
 
       <div
         style={{
-          maxWidth: 1360,
-          margin: "0 auto",
-          padding: "0 1.25rem 0.5rem",
+          width: "100%",
+          maxWidth: "none",
+          margin: 0,
+          padding: "0 0 0.5rem",
           position: "relative",
           zIndex: 1,
         }}
       >
-        <div style={{ marginBottom: 40, textAlign: "center" }}>
-          <h1 style={{ fontSize: "1.75rem", fontWeight: 700, letterSpacing: "0.05em", color: "var(--text)", textTransform: "uppercase" }}>
-            USER DASHBOARD
+        <div style={{ marginBottom: isCompactMobile ? 28 : 40, textAlign: "center" }}>
+          <h1 style={{ fontSize: isCompactMobile ? "1.65rem" : "2.2rem", fontWeight: 800, color: "#111111", letterSpacing: "-0.02em", marginBottom: isCompactMobile ? 10 : 12, lineHeight: 1.15 }}>
+            Hi, <span style={{ color: "#16a34a" }}>{userName}!</span>
           </h1>
-          <p style={{ color: "var(--card-content-muted)", fontSize: "0.95rem", marginTop: 8, maxWidth: 600, margin: "8px auto 0" }}>
-            Monitor your service progress, manage your documents and connect with your advisors all in one secure unified portal.
+          <p style={{ color: "#4b5563", fontSize: isCompactMobile ? "0.92rem" : "1.05rem", marginTop: 8, maxWidth: 700, margin: "0 auto", lineHeight: 1.6 }}>
+            Welcome to your Dashboard to track your service progress.
           </p>
         </div>
 
-        <div className="dashboard-stat-grid">
-          <PremiumCard style={{ padding: 18, minHeight: 115, borderColor: "rgba(74, 222, 128, 0.13)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
-            <div style={{ fontSize: "0.9rem", fontWeight: 500, color: "#ffffff", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10 }}>Pending</div>
-            <div style={{ fontSize: "1.9rem", fontWeight: 800, lineHeight: 1, color: "#ffffff" }}>{stats.pending}</div>
-            <div style={{ color: "rgba(251, 191, 36, 0.8)", fontSize: "0.75rem", marginTop: 8, fontWeight: 600 }}>Needs your action</div>
-          </PremiumCard>
+        <div className="dashboard-shell">
+          <div className="dashboard-shell-inner">
+            <div className="dashboard-stat-grid">
+              <PremiumCard className="stat-card" style={{ padding: 12, minHeight: 92, background: "#ffffff", border: "1px solid rgba(17,24,39,0.08)", boxShadow: "0 2px 4px rgba(0,0,0,0.02)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", borderRadius: 16 }}>
+                <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "#111111", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Services Pending</div>
+                <div style={{ fontSize: "1.44rem", fontWeight: 500, lineHeight: 1, color: "#16a34a" }}>{stats.pending}</div>
+              </PremiumCard>
 
-          <PremiumCard style={{ padding: 18, minHeight: 115, borderColor: "rgba(67, 97, 238, 0.14)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
-            <div style={{ fontSize: "0.9rem", fontWeight: 500, color: "#ffffff", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10 }}>In Progress</div>
-            <div style={{ fontSize: "1.9rem", fontWeight: 800, lineHeight: 1, color: "#ffffff" }}>{stats.inProgress}</div>
-            <div style={{ color: "rgba(79, 70, 229, 0.8)", fontSize: "0.75rem", marginTop: 8, fontWeight: 600 }}>In progress services</div>
-          </PremiumCard>
+              <PremiumCard className="stat-card" style={{ padding: 12, minHeight: 92, background: "#ffffff", border: "1px solid rgba(17,24,39,0.08)", boxShadow: "0 2px 4px rgba(0,0,0,0.02)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", borderRadius: 16 }}>
+                <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "#111111", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Services In Progress</div>
+                <div style={{ fontSize: "1.44rem", fontWeight: 500, lineHeight: 1, color: "#16a34a" }}>{stats.inProgress}</div>
+              </PremiumCard>
 
-          <PremiumCard style={{ padding: 18, minHeight: 115, borderColor: "rgba(52, 211, 153, 0.14)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
-            <div style={{ fontSize: "0.9rem", fontWeight: 500, color: "#ffffff", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10 }}>Completed</div>
-            <div style={{ fontSize: "1.9rem", fontWeight: 800, lineHeight: 1, color: "#ffffff" }}>{stats.completed}</div>
-            <div style={{ color: "rgba(52, 211, 153, 0.8)", fontSize: "0.75rem", marginTop: 8, fontWeight: 600 }}>This month</div>
-          </PremiumCard>
+              <PremiumCard className="stat-card" style={{ padding: 12, minHeight: 92, background: "#ffffff", border: "1px solid rgba(17,24,39,0.08)", boxShadow: "0 2px 4px rgba(0,0,0,0.02)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", borderRadius: 16 }}>
+                <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "#111111", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Services Completed</div>
+                <div style={{ fontSize: "1.44rem", fontWeight: 500, lineHeight: 1, color: "#16a34a" }}>{stats.completed}</div>
+              </PremiumCard>
 
-          <PremiumCard style={{ padding: 18, minHeight: 115, borderColor: "rgba(16, 185, 129, 0.16)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
-            <div style={{ fontSize: "0.9rem", fontWeight: 500, color: "#ffffff", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10 }}>Total Commitment</div>
-            <div style={{ fontSize: "1.9rem", fontWeight: 800, lineHeight: 1, color: "#34d399" }}>{formatInr(stats.totalCommitment)}</div>
-            <div style={{ color: "rgba(255,255,255,0.55)", fontSize: "0.75rem", marginTop: 8, fontWeight: 600 }}>This month</div>
-          </PremiumCard>
-        </div>
-
-        <div className="dashboard-main-grid">
-          <PremiumCard className="dashboard-sidebar-panel" style={{ padding: 18 }}>
-            <div style={{ marginBottom: 14 }}>
-              <h2 style={{ fontSize: "1.05rem", fontWeight: 700, marginBottom: 4, color: "#ffffff" }}>All Services</h2>
-              <p style={{ color: "rgba(255,255,255,0.55)", fontSize: "0.82rem" }}>{filteredLeads.length} active service{filteredLeads.length === 1 ? "" : "s"}</p>
+              <PremiumCard className="stat-card" style={{ padding: 12, minHeight: 92, background: "#ffffff", border: "1px solid rgba(17,24,39,0.08)", boxShadow: "0 2px 4px rgba(0,0,0,0.02)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", borderRadius: 16 }}>
+                <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "#111111", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Total Commitment</div>
+                <div style={{ fontSize: "1.44rem", fontWeight: 400, lineHeight: 1, color: "#16a34a", letterSpacing: "-0.03em" }}>
+                  {commitmentTargetHigh === commitmentTargetSmall ? (
+                    formatInr(Math.round(animatedCommitmentHigh))
+                  ) : (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+                      <span style={{ textDecoration: "line-through", color: "#6b7280", fontWeight: 600 }}>{formatInr(Math.round(animatedCommitmentHigh))}</span>
+                      <span style={{ color: "#16a34a", fontWeight: 800 }}>{formatInr(Math.round(animatedCommitmentSmall))}</span>
+                    </span>
+                  )}
+                </div>
+              </PremiumCard>
             </div>
-
-            <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
-              <div style={{ position: "relative", flex: 1 }}>
-                <Search size={16} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "rgba(255,255,255,0.55)" }} />
-                <input
-                  value={serviceSearch}
-                  onChange={(e) => setServiceSearch(e.target.value)}
-                  placeholder="Search services..."
-                  className="dashboard-search"
-                  style={{
-                    width: "100%",
-                    padding: "0.82rem 1rem 0.82rem 2.65rem",
-                    background: "rgba(255,255,255,0.03)",
-                    border: "1px solid rgba(255,255,255,0.06)",
-                    borderRadius: 12,
-                    color: "#ffffff",
-                    outline: "none",
-                  }}
-                />
-              </div>
-            </div>
-
-            <div className="dashboard-sidebar-scroll" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {filteredLeads.length > 0 ? (
-                filteredLeads.map((lead, index) => {
-                  const visibleDocs = Array.isArray(lead?.documents) ? lead.documents : [];
-                  const hasRejectedDocument = visibleDocs.some((doc) => {
-                    const docStatus = String(doc?.status || "").trim().toLowerCase();
-                    const rejectionText = String(doc?.rejectionReason || doc?.rejectionMessage || "").trim();
-                    return docStatus === "rejected" || !!rejectionText;
-                  });
-                  const hasRejectedService =
-                    String(lead?.status || "").trim().toLowerCase() === "rejected";
-                  const showRejectedCardState =
-                    hasRejectedService ||
-                    hasRejectedDocument ||
-                    isRejectedServiceState(lead) ||
-                    isExecutorRejectedState(lead);
-                  const theme = showRejectedCardState
-                    ? { color: "#ef4444", bg: "rgba(239,68,68,0.12)" }
-                    : getStatusTheme(lead);
-                  const selected = lead._id === activeLead?._id;
-                  const amount = formatInr(getCommitmentAmount(lead));
-                  const rejectedCardLabel = isExecutorRejectedState(lead)
-                    ? "Rejected by Executor"
-                    : isPrRejectedState(lead)
-                      ? "Rejected by PR"
-                      : "Rejected";
-                  const statusLabel =
-                    lead.status === "Completed"
-                      ? "Completed"
-                      : ["AssignedToExecutor", "InProgress", "ExecutionFinished", "DraftSent", "DraftAccepted", "UserAccepted"].includes(lead.status)
-                        ? "In Progress"
-                        : showRejectedCardState
-                          ? rejectedCardLabel
-                          : lead.status === "DraftRejected"
-                            ? "Draft Rejected"
-                            : "Pending";
-                  const statusIcon =
-                    lead.status === "Completed"
-                      ? <CheckCircle size={14} />
-                      : ["AssignedToExecutor", "InProgress", "ExecutionFinished", "DraftSent", "DraftAccepted", "UserAccepted"].includes(lead.status)
-                        ? <Clock size={14} />
-                        : (showRejectedCardState || lead.status === "DraftRejected")
-                          ? <AlertCircle size={14} />
-                          : <span className="dot" />;
-                  return (
-                    <motion.div
-                      key={lead._id}
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.14, delay: Math.min(index * 0.02, 0.12) }}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => setSelectedLeadId?.(lead._id)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          setSelectedLeadId?.(lead._id);
-                        }
-                      }}
-                      className={`dashboard-service-row ${selected ? "active" : ""}`}
-                      style={{
-                        textAlign: "left",
-                        width: "100%",
-                        padding: "16px 16px 16px 18px",
-                        borderRadius: 16,
-                        border: selected ? "1px solid rgba(34,197,94,0.75)" : "1px solid rgba(255,255,255,0.06)",
-                        background: selected ? "rgba(16,185,129,0.08)" : "rgba(255,255,255,0.03)",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 12,
-                      }}
-                    >
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 6 }}>
-                          <div style={{ minWidth: 0, flex: 1 }}>
-                            <div style={{ fontSize: "0.98rem", fontWeight: 700, marginBottom: 4, whiteSpace: "normal", overflow: "visible", lineHeight: 1.25 }}>{lead.serviceName}</div>
-                            <div style={{ color: "rgba(255,255,255,0.55)", fontSize: "0.8rem" }}>Order ID: #{String(lead._id || "").slice(-6).toUpperCase()}  •  {new Date(lead.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</div>
-                          </div>
-                          <span className="dashboard-pill" style={{ color: theme.color, background: theme.bg, border: `1px solid ${theme.color}33`, flexShrink: 0 }}>
-                            {statusIcon}
-                            {statusLabel}
-                          </span>
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                          <span style={{ color: "rgba(255,255,255,0.55)", fontSize: "0.86rem" }}>{amount}</span>
-                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteService(lead, e);
-                              }}
-                              title="Remove service"
-                              style={{
-                                width: 28,
-                                height: 28,
-                                borderRadius: 999,
-                                border: "1px solid rgba(255,255,255,0.08)",
-                                background: "rgba(255,255,255,0.03)",
-                                color: "rgba(255,255,255,0.55)",
-                                display: "inline-flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                cursor: "pointer",
-                              }}
-                            >
-                              <X size={14} />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </motion.div>
-                  );
-                })
-              ) : (
-                <div style={{ padding: "28px 16px", textAlign: "center", color: "rgba(255,255,255,0.55)" }}>No services match your search.</div>
-              )}
-            </div>
-
-            <button
-              type="button"
-              onClick={() => navigate("/services")}
-              style={{
-                marginTop: 18,
-                width: "100%",
-                padding: "0.95rem 1rem",
-                borderRadius: 14,
-                border: "1px solid rgba(255,255,255,0.06)",
-                background: "rgba(255,255,255,0.03)",
-                color: "#ffffff",
-                fontWeight: 600,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 10,
-                cursor: "pointer",
-              }}
-            >
-              View All Services
-              <ChevronRight size={16} />
-            </button>
-          </PremiumCard>
-
-          <PremiumCard className="dashboard-details-panel" style={{ padding: 22 }}>
-            {activeLead ? (
-              <div className="dashboard-details-scroll" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 18, flexWrap: "wrap" }}>
-                  <div style={{ minWidth: 0 }}>
-                    <h2 style={{ fontSize: "1.45rem", fontWeight: 700, marginBottom: 8, color: "#ffffff" }}>{activeLead.serviceName}</h2>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 14, color: "rgba(255,255,255,0.55)", fontSize: "0.84rem" }}>
-                      <span>Order ID: #{String(activeLead._id || "").slice(-6).toUpperCase()}</span>
-                      <span>{serviceDate}</span>
-                      <span>Total Commitment <strong style={{ color: "#34d399", marginLeft: 8 }}>{formatInr(getCommitmentAmount(activeLead))}</strong></span>
-                    </div>
-                  </div>
-                  <span className="dashboard-pill" style={{ color: selectedStatusBadge.color, background: selectedStatusBadge.bg, border: `1px solid ${selectedStatusBadge.color}33` }}>
-                    {activeLead.status === "Completed" ? <CheckCircle size={14} /> : <span className="dot" />}
-                    {selectedStatusText}
-                  </span>
+          </div>
+          <div className="dashboard-section-divider" />
+          <div className="dashboard-shell-inner" style={{ paddingTop: 0 }}>
+            <div className="dashboard-main-grid">
+              <div
+                className="dashboard-sidebar-panel"
+                style={{
+                  padding: isCompactMobile ? "16px 12px" : "20px 18px",
+                  background: "#ffffff",
+                  height: syncedSidebarHeight ? `${syncedSidebarHeight}px` : "auto",
+                  maxHeight: syncedSidebarHeight ? `${syncedSidebarHeight}px` : "none",
+                  overflow: syncedSidebarHeight ? "hidden" : "visible",
+                }}
+              >
+                <div style={{ marginBottom: 14 }}>
+                  <h2 style={{ fontSize: isCompactMobile ? "0.98rem" : "1.05rem", fontWeight: 700, marginBottom: 4, color: "#111111" }}>All Services</h2>
+                  <p style={{ color: "#6b7280", fontSize: isCompactMobile ? "0.77rem" : "0.82rem" }}>{filteredLeads.length} active service{filteredLeads.length === 1 ? "" : "s"}</p>
                 </div>
 
-                <PremiumCard style={{ padding: 16, borderRadius: 18 }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1.35fr auto", gap: 14, alignItems: "center" }}>
-                    <div>
-                      <div style={{ color: "rgba(255,255,255,0.55)", fontSize: "0.82rem", marginBottom: 8 }}>Documents</div>
-                      <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-                        <span style={{ fontSize: "1.55rem", fontWeight: 800 }}>{documentCountLabel}</span>
-                        <span style={{ color: "rgba(255,255,255,0.55)", fontSize: "0.88rem" }}>uploaded</span>
-                      </div>
-                    </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                      <div style={{ width: "100%", height: 10, background: "rgba(255,255,255,0.05)", borderRadius: 999, overflow: "hidden" }}>
-                        <div style={{ width: `${serviceProgress}%`, height: "100%", borderRadius: 999, background: "linear-gradient(90deg, #22c55e, #14b8a6)" }} />
-                      </div>
-                      {progressMessage ? (
-                        <div style={{ color: "rgba(255,255,255,0.55)", fontSize: "0.84rem" }}>{progressMessage}</div>
-                      ) : null}
-                    </div>
-                    <div style={{ fontSize: "0.9rem", fontWeight: 700, color: "#e5e7eb" }}>{Math.round(serviceProgress)}%</div>
-                  </div>
-                </PremiumCard>
-
-                {isExecutorRejectedState(activeLead) && dismissedDetailsMissingSignatureByLead[activeLead._id] !== getDetailsMissingSignature(activeLead) && (
-                  <div style={{ padding: 16, borderRadius: 18, border: "1px solid rgba(239,68,68,0.22)", background: "rgba(239,68,68,0.08)" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 8, color: "#fb7185" }}>
-                      <strong style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><AlertCircle size={16} /> Rejected by Executor</strong>
-                      <button type="button" onClick={(e) => handleDismissDetailsMissingMessage(activeLead, e)} style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "inherit", cursor: "pointer" }}>×</button>
-                    </div>
-                  </div>
-                )}
-
-                {isPrRejectedState(activeLead) && dismissedDetailsMissingSignatureByLead[activeLead._id] !== getDetailsMissingSignature(activeLead) && (
-                  <div style={{ padding: 16, borderRadius: 18, border: "1px solid rgba(239,68,68,0.22)", background: "rgba(239,68,68,0.08)" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 8, color: "#fb7185" }}>
-                      <strong style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><AlertCircle size={16} /> Rejected by PR</strong>
-                      <button type="button" onClick={(e) => handleDismissDetailsMissingMessage(activeLead, e)} style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "inherit", cursor: "pointer" }}>×</button>
-                    </div>
-                  </div>
-                )}
-
-                {isDetailsMissingState(activeLead) && dismissedDetailsMissingSignatureByLead[activeLead._id] !== getDetailsMissingSignature(activeLead) && (
-                  <div style={{ padding: 16, borderRadius: 18, border: "1px solid rgba(239,68,68,0.18)", background: "rgba(239,68,68,0.05)" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 8, color: "#fb7185" }}>
-                      <strong style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><AlertCircle size={16} /> Action Required</strong>
-                      <button type="button" onClick={(e) => { if (String(activeLead.prFeedback || "").trim()) { handleDeleteRejectionMessage(activeLead._id, e); return; } handleDismissDetailsMissingMessage(activeLead, e); }} style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "inherit", cursor: "pointer" }}>×</button>
-                    </div>
-                  </div>
-                )}
-
-                {activeLead.adminMessage && !isSystemMessage(activeLead.adminMessage) && (
-                  <div style={{ padding: 16, borderRadius: 18, border: "1px solid rgba(16,185,129,0.22)", background: "rgba(16,185,129,0.05)" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 8, color: "#34d399" }}>
-                      <strong style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Sparkles size={16} /> Message from Admin</strong>
-                      <button type="button" onClick={(e) => handleDeleteAdvisorMessage(activeLead._id, e)} style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "inherit", cursor: "pointer" }}>×</button>
-                    </div>
-                    <div style={{ color: "#ffffff", fontSize: "0.95rem", lineHeight: 1.6 }}>{activeLead.adminMessage}</div>
-                  </div>
-                )}
-
-                {activeLead.prFeedback && !isSystemMessage(activeLead.prFeedback) && (
-                  <div style={{ padding: 16, borderRadius: 18, border: "1px solid rgba(59,130,246,0.22)", background: "rgba(59,130,246,0.05)" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 8, color: "#60a5fa" }}>
-                      <strong style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><MessageSquare size={16} /> Message from PR</strong>
-                      <button type="button" onClick={(e) => handleDeleteRejectionMessage(activeLead._id, e)} style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "inherit", cursor: "pointer" }}>×</button>
-                    </div>
-                    <div style={{ color: "#ffffff", fontSize: "0.95rem", fontStyle: "italic" }}>"{activeLead.prFeedback}"</div>
-                  </div>
-                )}
-
-                {activeLead.executorMessage && !isSystemMessage(activeLead.executorMessage) && (
-                  <div style={{ padding: 16, borderRadius: 18, border: "1px solid rgba(139,92,246,0.22)", background: "rgba(139,92,246,0.05)" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 8, color: "#a78bfa" }}>
-                      <strong style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Sparkles size={16} /> Message from Executor</strong>
-                      <button type="button" onClick={(e) => handleDeleteExecutorMessage(activeLead._id, e)} style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "inherit", cursor: "pointer" }}>×</button>
-                    </div>
-                    <div style={{ color: "#ffffff", fontSize: "0.95rem", fontStyle: "italic" }}>"{activeLead.executorMessage}"</div>
-                  </div>
-                )}
-
-                {isReviewDraftState(activeLead) && (
-                  <div style={{ padding: 16, borderRadius: 18, border: "1px solid rgba(139,92,246,0.24)", background: "rgba(139,92,246,0.06)", display: "grid", gap: 12 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#c4b5fd", fontWeight: 800 }}>
-                      <Sparkles size={16} /> Review Your Draft
-                    </div>
-                    <p style={{ color: "#ffffff", margin: 0, fontSize: "0.9rem" }}>Your service draft is ready for review. Please check the document below and approve it if everything is correct.</p>
-                    <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                      <button onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/review-draft/${activeLead._id}`); }} style={{ padding: "0.7rem 0.95rem", borderRadius: 12, border: "1px solid rgba(139,92,246,0.35)", background: "rgba(139,92,246,0.12)", color: "#c4b5fd", fontWeight: 700, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 8 }}><FileText size={15} /> View Draft</button>
-                      <button onClick={() => handleDraftAction(activeLead._id, "accept")} style={{ padding: "0.7rem 0.95rem", borderRadius: 12, border: "none", background: "#10b981", color: "#fff", fontWeight: 700, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 8 }}><CheckCircle size={15} /> Approve Draft</button>
-                      <button onClick={() => openDraftRejectForm(activeLead._id)} style={{ padding: "0.7rem 0.95rem", borderRadius: 12, border: "1px solid rgba(239,68,68,0.2)", background: "rgba(239,68,68,0.08)", color: "#fb7185", fontWeight: 700, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 8 }}><AlertCircle size={15} /> Reject Draft</button>
-                    </div>
-                    {draftRejectingLeadId === activeLead._id && (
-                      <div style={{ display: "grid", gap: 10, marginTop: 4 }}>
-                        <textarea value={draftRejectDrafts[activeLead._id] || ""} onChange={(e) => setDraftRejectDrafts((prev) => ({ ...prev, [activeLead._id]: e.target.value }))} rows={3} placeholder="Describe what needs to be changed in this draft..." style={{ width: "100%", resize: "vertical", borderRadius: 12, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(0,0,0,0.22)", color: "#ffffff", padding: "0.95rem", outline: "none" }} />
-                        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                          <button onClick={() => submitDraftReject(activeLead._id)} style={{ padding: "0.78rem 1rem", borderRadius: 12, border: "none", background: "#ef4444", color: "#fff", fontWeight: 800, cursor: "pointer" }}>Send to PR and Reject Draft</button>
-                          <button onClick={() => setDraftRejectingLeadId(null)} style={{ padding: "0.78rem 1rem", borderRadius: 12, border: "1px solid rgba(255,255,255,0.14)", background: "transparent", color: "var(--text-secondary)", fontWeight: 700, cursor: "pointer" }}>Cancel</button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <div style={{ display: "grid", gap: 18 }}>
-                  <PremiumCard style={{ padding: 0, overflow: "hidden" }}>
-                    <button
-                      type="button"
-                      onClick={() => setDocumentsOpen((prev) => !prev)}
-                      aria-expanded={documentsOpen}
+                <div style={{ display: "flex", gap: 10, marginBottom: isCompactMobile ? 12 : 14 }}>
+                  <div style={{ position: "relative", flex: 1 }}>
+                    <Search size={16} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "#6b7280" }} />
+                    <input
+                      value={serviceSearch}
+                      onChange={(e) => setServiceSearch(e.target.value)}
+                      placeholder="Search services..."
+                      className="dashboard-search"
                       style={{
                         width: "100%",
-                        padding: "14px 16px",
-                        border: "none",
-                        background: "transparent",
-                        color: "inherit",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 12,
-                        textAlign: "left",
-                        borderBottom: documentsOpen ? "1px solid rgba(255,255,255,0.06)" : "none",
-                      }}
-                    >
-                      <div>
-                        <h3 style={{ fontSize: "0.98rem", fontWeight: 800, marginBottom: 3, color: "#ffffff" }}>Required Documents</h3>
-                        <p style={{ color: "rgba(255,255,255,0.55)", fontSize: "0.8rem" }}>Track uploaded and pending files for this service.</p>
-                      </div>
-                      <span style={{ color: "rgba(255,255,255,0.55)", fontSize: "0.8rem" }}>
-                        {selectedLeadDocuments.length} documents {documentsOpen ? "▴" : "▾"}
-                      </span>
-                    </button>
-
-                    {documentsOpen && (
-                      <div style={{ overflowX: "auto" }}>
-                        <table className="dashboard-table">
-                          <thead>
-                            <tr>
-                              <th style={{ width: "68%" }}>Document</th>
-                              <th>Status</th>
-                              <th style={{ width: 110, textAlign: "right" }}>Action</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {selectedLeadDocuments.length > 0 ? (
-                              selectedLeadDocuments.map((doc, idx) => {
-                                const docStatus = String(doc?.status || (doc?.url ? "Uploaded" : "Pending")).trim();
-                                const docStatusLower = docStatus.toLowerCase();
-                                const hasFile =
-                                  !!doc?.url ||
-                                  !!doc?.secure_url ||
-                                  !!doc?.uploadedUrl ||
-                                  !!doc?.viewUrl ||
-                                  !!doc?.publicId ||
-                                  !!doc?.filename ||
-                                  !!doc?.fileName;
-                                const serviceRejected = isRejectedServiceState?.(activeLead) ||
-                                  String(activeLead?.status || "").trim().toLowerCase() === "rejected";
-                                const isReuploaded = !serviceRejected && (!!doc?.displayReuploaded || !!doc?.reuploaded || docStatusLower === "reuploaded");
-                                const isAccepted = !serviceRejected && ["uploaded", "accepted", "verified", "approved", "completed"].includes(docStatusLower);
-                                const isPending = !serviceRejected && ["pending", "pendingreview"].includes(docStatusLower);
-                                const isRejectedByExecutor = serviceRejected && !isReuploaded && isExecutorRejectedState(activeLead);
-                                const isRejected = docStatusLower === "rejected" || serviceRejected;
-                                const isDraftDocument = String(doc?.type || "").trim().toLowerCase() === "draft";
-                                const isFinalDocument =
-                                  String(doc?.type || "").trim().toLowerCase() === "final" ||
-                                  String(doc?.name || "").trim().toLowerCase().startsWith("final");
-                                 const displayStatus = isDraftDocument
-                                   ? String(activeLead?.status || "").trim().toLowerCase() === "draftaccepted" || String(activeLead?.status || "").trim().toLowerCase() === "useraccepted" || String(activeLead?.status || "").trim().toLowerCase() === "completed"
-                                     ? "Accepted"
-                                     : String(activeLead?.status || "").trim().toLowerCase() === "draftrejected"
-                                       ? "Rejected"
-                                       : isReuploaded
-                                         ? "Reuploaded"
-                                         : "Pending Review"
-                                   : isFinalDocument
-                                     ? "Accepted"
-                                   : isRejected
-                                     ? "Rejected"
-                                     : isPending
-                                       ? "Pending Review"
-                                       : docStatus || "Pending";
-                                const displayStatusLower = String(displayStatus || "").trim().toLowerCase();
-                                const isDisplayAccepted = ["accepted", "reuploaded"].includes(displayStatusLower);
-                                const isDisplayRejected = displayStatusLower === "rejected";
-                                const statusColor = isDisplayAccepted ? "#22c55e" : isDisplayRejected ? "#ef4444" : "#fbbf24";
-                                const statusBg = isDisplayAccepted ? "rgba(34,197,94,0.12)" : isDisplayRejected ? "rgba(239,68,68,0.12)" : "rgba(245,158,11,0.12)";
-                                return (
-                                  <tr key={`${doc.name}-${idx}`}>
-                                    <td>
-                                      <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-                                        <FileText size={18} color={isDisplayAccepted ? "#22c55e" : isDisplayRejected ? "#ef4444" : "#a78bfa"} style={{ flexShrink: 0 }} />
-                                        <div style={{ minWidth: 0 }}>
-                                          <div style={{ fontSize: "0.92rem", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.name}</div>
-                                          {(isRejected || isRejectedByExecutor) && !isDraftDocument && !isFinalDocument && (
-                                            <div
-                                              style={{
-                                                marginTop: 4,
-                                                color: "#f87171",
-                                                fontSize: "0.76rem",
-                                                fontWeight: 700,
-                                              }}
-                                            >
-                                              Reupload this document from the Services page
-                                            </div>
-                                          )}
-                                          {isReuploaded && <div style={{ marginTop: 4, color: "#38bdf8", fontSize: "0.76rem", fontWeight: 700 }}>Reuploaded</div>}
-                                        </div>
-                                      </div>
-                                    </td>
-                                    <td style={{ verticalAlign: "middle" }}>
-                                      <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "8px 12px", borderRadius: 999, color: statusColor, background: statusBg, border: `1px solid ${statusColor}33`, fontSize: "0.8rem", fontWeight: 700, whiteSpace: "nowrap", lineHeight: 1, width: "fit-content", minHeight: 34 }}>
-                                        <span className="dot" />
-                                        {displayStatus}
-                                      </span>
-                                    </td>
-                                    <td style={{ textAlign: "right" }}>
-                                      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                                        {hasFile && (
-                                          <button 
-                                            type="button" 
-                                            onClick={() => viewDocument(doc.publicId, doc.url || doc.secure_url || doc.uploadedUrl || doc.viewUrl, activeLead._id)} 
-                                            style={{ 
-                                              padding: "0 14px",
-                                              height: 34,
-                                              borderRadius: 10, 
-                                              border: "1px solid rgba(255,255,255,0.08)", 
-                                              background: "rgba(255,255,255,0.03)", 
-                                              color: "#e2e8f0", 
-                                              display: "inline-flex", 
-                                              alignItems: "center", 
-                                              justifyContent: "center", 
-                                              gap: 8,
-                                              cursor: "pointer",
-                                              fontSize: "0.75rem",
-                                              fontWeight: 600
-                                            }} 
-                                            title="View Document"
-                                          >
-                                            VIEW <Eye size={15} />
-                                          </button>
-                                        )}
-                                      </div>
-                                    </td>
-                                  </tr>
-                                );
-                              })
-                            ) : (
-                              <tr>
-                                <td colSpan={3} style={{ color: "rgba(255,255,255,0.55)", textAlign: "center", padding: "24px 20px" }}>No documents uploaded yet.</td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </PremiumCard>
-
-                  <div style={{ position: "absolute", width: 1, height: 1, opacity: 0, overflow: "hidden" }}>
-                    <input
-                      ref={uploadInputRef}
-                      id="dashboard-upload-input"
-                      type="file"
-                      multiple={!reuploadingDocName}
-                      accept=".pdf,application/pdf"
-                      style={{ display: "none" }}
-                      disabled={!!uploadingId}
-                      onChange={(e) => {
-                        if (e.target.files && e.target.files.length > 0) {
-                          handleUploadDocuments(activeLead._id, e.target.files, reuploadingDocName);
-                          // Reset reuploading name after trigger
-                          setReuploadingDocName(null);
-                          e.target.value = "";
-                        }
+                        padding: isCompactMobile ? "0.76rem 0.9rem 0.76rem 2.45rem" : "0.82rem 1rem 0.82rem 2.65rem",
+                        background: "#ffffff",
+                        border: "1px solid rgba(17,24,39,0.08)",
+                        borderRadius: 12,
+                        color: "#111111",
+                        outline: "none",
                       }}
                     />
                   </div>
+                </div>
 
-                  <PremiumCard style={{ padding: 16, borderRadius: 18 }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600 }}>
-                        Message to PR
-                      </div>
-                    </div>
-                    <div style={{ position: "relative" }}>
-                      <textarea
-                        value={messageByLead[activeLead._id] || ""}
-                        onChange={(e) => handleMessageChange(activeLead._id, e.target.value)}
-                        placeholder="Need help or have updates? Message your PR advisor here..."
-                        style={{
-                          width: "100%",
-                          minHeight: 100,
-                          background: "rgba(255,255,255,0.03)",
-                          border: "1px solid rgba(255,255,255,0.08)",
-                          borderRadius: 16,
-                          padding: "0.95rem",
-                          color: "#ffffff",
-                          fontSize: "0.88rem",
-                          resize: "none",
-                          outline: "none",
-                        }}
-                      />
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleSendMessageToPR(activeLead._id);
-                        }}
-                        style={{
-                          position: "absolute",
-                          bottom: 12,
-                          right: 12,
-                          background: "#10b981",
-                          border: "none",
-                          color: "white",
-                          padding: "7px 14px",
-                          borderRadius: 10,
-                          fontSize: "0.72rem",
-                          fontWeight: 800,
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 8,
-                        }}
-                      >
-                        Send Message <ArrowUpRight size={14} />
-                      </button>
-                    </div>
-                  </PremiumCard>
+                <div className="dashboard-sidebar-scroll" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {filteredLeads.length > 0 ? (
+                    filteredLeads.map((lead, index) => {
+                      const visibleDocs = Array.isArray(lead?.documents) ? lead.documents : [];
+                      const hasRejectedDocument = visibleDocs.some((doc) => {
+                        const docStatus = String(doc?.status || "").trim().toLowerCase();
+                        const rejectionText = String(doc?.rejectionReason || doc?.rejectionMessage || "").trim();
+                        return docStatus === "rejected" || !!rejectionText;
+                      });
+                      const hasRejectedService =
+                        String(lead?.status || "").trim().toLowerCase() === "rejected";
+                      const showRejectedCardState =
+                        hasRejectedService ||
+                        hasRejectedDocument ||
+                        isRejectedServiceState(lead) ||
+                        isExecutorRejectedState(lead);
+                      const theme = showRejectedCardState
+                        ? { color: "#ef4444", bg: "rgba(239,68,68,0.12)" }
+                        : getStatusTheme(lead);
+                      const selected = lead._id === activeLead?._id;
+                      const pair = getCommitmentPair(lead) || { high: 0, small: 0 };
+                      const amount = pair && pair.high && pair.small
+                        ? (pair.high === pair.small
+                            ? formatInr(pair.high)
+                            : (
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                                <span style={{ textDecoration: "line-through", color: "#6b7280", fontWeight: 600 }}>{formatInr(pair.high)}</span>
+                                <span style={{ color: "#111111", fontWeight: 700 }}>{formatInr(pair.small)}</span>
+                              </span>
+                            ))
+                        : formatInr(getCommitmentAmount(lead));
+                      const rejectedCardLabel = isExecutorRejectedState(lead)
+                        ? "Rejected by Executor"
+                        : isPrRejectedState(lead)
+                          ? "Rejected by PR"
+                          : "Rejected";
+                      const isDraftRejectedState = lead.status === "DraftRejected";
+                      const effectiveLeadStatus = (() => {
+                        const rawStatus = String(lead?.status || "").trim();
+                        const rawStatusLower = rawStatus.toLowerCase();
+                        const hasFinalDocument = Array.isArray(visibleDocs) && visibleDocs.some((doc) => {
+                          const docType = String(doc?.type || "").trim().toLowerCase();
+                          const docName = String(doc?.name || "").trim().toLowerCase();
+                          return docType === "final" || docName.startsWith("final");
+                        });
+
+                        if (hasFinalDocument && !["rejected", "informationrequired"].includes(rawStatusLower)) {
+                          return "Completed";
+                        }
+
+                        return rawStatus;
+                      })();
+                      const statusLabel =
+                        effectiveLeadStatus === "Completed"
+                          ? "Completed"
+                          : effectiveLeadStatus === "PR_Accepted"
+                            ? "Accepted by PR"
+                          : ["PendingReview", "AssignedToExecutor", "InProgress", "ExecutionFinished", "DraftSent", "DraftAccepted", "UserAccepted"].includes(effectiveLeadStatus)
+                            ? (effectiveLeadStatus === "InProgress"
+                                ? "Accepted by Executor"
+                                : effectiveLeadStatus === "DraftSent"
+                                  ? "Review Draft"
+                                  : ["DraftAccepted", "UserAccepted"].includes(effectiveLeadStatus)
+                                    ? "Draft Accepted by User"
+                                  : "In Progress")
+                            : isDraftRejectedState
+                              ? "Draft Rejected by User"
+                              : showRejectedCardState
+                              ? rejectedCardLabel
+                                : "Pending";
+                      const statusIcon =
+                        effectiveLeadStatus === "Completed"
+                          ? <CheckCircle size={14} />
+                          : ["PendingReview", "AssignedToExecutor", "InProgress", "ExecutionFinished", "DraftSent", "DraftAccepted", "UserAccepted"].includes(effectiveLeadStatus)
+                            ? (effectiveLeadStatus === "InProgress" ? <CheckCircle size={14} /> : <Clock size={14} />)
+                                  : (showRejectedCardState || isDraftRejectedState)
+                                    ? <AlertCircle size={14} />
+                                    : null;
+                      return (
+                        <motion.div
+                          key={lead._id}
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.14, delay: Math.min(index * 0.02, 0.12) }}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => setSelectedLeadId?.(lead._id)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setSelectedLeadId?.(lead._id);
+                            }
+                          }}
+                          className={`dashboard-service-row ${selected ? "active" : ""}`}
+                          style={{
+                            textAlign: "left",
+                            width: "100%",
+                            padding: isCompactMobile ? "14px 12px 14px 14px" : "16px 16px 16px 18px",
+                            borderRadius: 16,
+                            border: selected ? "1px solid rgba(34,197,94,0.45)" : "1px solid rgba(17,24,39,0.08)",
+                            background: selected ? "rgba(16,185,129,0.08)" : "#ffffff",
+                            cursor: "pointer",
+                            display: "flex",
+                            flexDirection: isCompactMobile ? "column" : "row",
+                            alignItems: isCompactMobile ? "stretch" : "flex-start",
+                            gap: isCompactMobile ? 10 : 12,
+                          }}
+                        >
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: isCompactMobile ? 6 : 10, marginBottom: 6, flexDirection: isCompactMobile ? "column" : "row" }}>
+                              <div style={{ minWidth: 0, flex: 1 }}>
+                                <div style={{ fontSize: isCompactMobile ? "0.92rem" : "0.98rem", fontWeight: 700, marginBottom: 4, whiteSpace: "normal", overflow: "visible", lineHeight: 1.25, color: "#111111" }}>{lead.serviceName}</div>
+                                <div style={{ color: "#6b7280", fontSize: "0.8rem" }}>Order ID: #{String(lead._id || "").slice(-6).toUpperCase()}  •  {new Date(lead.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</div>
+                              </div>
+                              <span className="dashboard-pill" style={{ color: theme.color, background: "transparent", border: "none", boxShadow: "none", padding: 0, flexShrink: 0, alignSelf: "flex-start", filter: "brightness(0.92)", marginTop: 0, whiteSpace: isCompactMobile ? "normal" : "nowrap" }}>
+                                {statusIcon}
+                                {statusLabel}
+                              </span>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: isCompactMobile ? "wrap" : "nowrap" }}>
+                              <span style={{ color: "#6b7280", fontSize: "0.86rem" }}>{amount}</span>
+                              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteService(lead, e);
+                                  }}
+                                  title="Remove service"
+                                  style={{
+                                    width: 28,
+                                    height: 28,
+                                    borderRadius: 999,
+                                    border: "1px solid rgba(17,24,39,0.08)",
+                                    background: "rgba(255,255,255,0.62)",
+                                    color: "#6b7280",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  <X size={14} />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </motion.div>
+                      );
+                    })
+                  ) : (
+                    <div style={{ padding: "28px 16px", textAlign: "center", color: "#6b7280" }}>No services match your search.</div>
+                  )}
+                </div>
+
+                <div style={{ marginTop: "auto", paddingTop: 32 }}>
+                  <button
+                    type="button"
+                    onClick={() => navigate("/services")}
+                    style={{
+                      width: "100%",
+                      padding: "0.95rem 1rem",
+                      borderRadius: 14,
+                      border: "1px solid rgba(17,24,39,0.08)",
+                      background: "rgba(255,255,255,0.72)",
+                      color: "#111111",
+                      fontWeight: 600,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 10,
+                      cursor: "pointer",
+                    }}
+                  >
+                    View All Services
+                    <ChevronRight size={16} />
+                  </button>
                 </div>
               </div>
-            ) : (
-              <div style={{ padding: "52px 24px", textAlign: "center", color: "rgba(255,255,255,0.55)" }}>
-                <LayoutDashboard size={48} style={{ marginBottom: 14 }} />
-                <h3 style={{ color: "#ffffff", fontSize: "1.25rem", fontWeight: 800, marginBottom: 8 }}>No active services found</h3>
-                <p style={{ maxWidth: 420, margin: "0 auto 20px", lineHeight: 1.6 }}>Start your journey by selecting a service from our curated recommendations.</p>
-                <button onClick={() => navigate("/services")} style={{ padding: "0.85rem 1.2rem", borderRadius: 12, border: "1px solid rgba(34,197,94,0.25)", background: "rgba(34,197,94,0.08)", color: "#34d399", fontWeight: 700, cursor: "pointer" }}>Explore Services</button>
+
+              <div className="dashboard-panels-divider" aria-hidden="true" />
+
+              <div
+                ref={detailsPanelRef}
+                className="dashboard-details-panel"
+                style={{ padding: isCompactMobile ? "16px 12px" : "22px 24px", background: "#ffffff" }}
+              >
+                {activeLead ? (
+                  <div className="dashboard-details-scroll" style={{ display: "flex", flexDirection: "column", gap: isCompactMobile ? 8 : 18 }}>
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 18, flexWrap: "wrap", flexDirection: isCompactMobile ? "column" : "row" }}>
+                      <div style={{ minWidth: 0 }}>
+                        <h2 style={{ fontSize: isCompactMobile ? "1.2rem" : "1.45rem", fontWeight: 700, marginBottom: 8, color: "#111111" }}>{activeLead.serviceName}</h2>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: isCompactMobile ? 10 : 14, color: "#6b7280", fontSize: "0.84rem" }}>
+                          <span>Order ID: #{String(activeLead._id || "").slice(-6).toUpperCase()}</span>
+                          <span>{serviceDate}</span>
+                          <span>
+                            Total Commitment
+                            <strong style={{ color: "#16a34a", marginLeft: 8 }}>
+                              {(() => {
+                                const pair = getCommitmentPair(activeLead);
+                                if (!pair) return "";
+                                if (pair.high === pair.small) {
+                                  return formatInr(pair.high);
+                                }
+
+                                return (
+                                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                                    <span style={{ textDecoration: "line-through", color: "#6b7280", fontWeight: 600 }}>{formatInr(pair.high)}</span>
+                                    <span style={{ color: "#16a34a", fontWeight: 800 }}>{formatInr(pair.small)}</span>
+                                  </span>
+                                );
+                              })()}
+                            </strong>
+                          </span>
+                        </div>
+                      </div>
+                      <span className="dashboard-pill" style={{ color: selectedStatusBadge.color, background: "transparent", border: "none", boxShadow: "none", padding: 0, filter: "brightness(0.92)", alignSelf: isCompactMobile ? "flex-start" : "auto", whiteSpace: isCompactMobile ? "normal" : "nowrap" }}>
+                        {getEffectiveLeadStatus(activeLead) === "Completed" ? <CheckCircle size={14} /> : null}
+                        {selectedStatusText}
+                      </span>
+                    </div>
+
+                    <PremiumCard className="inner-card" style={{ padding: isCompactMobile ? 10 : 16, borderRadius: 18, background: "#ffffff", border: "1px solid rgba(17,24,39,0.14)", boxShadow: "none" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: isCompactMobile ? "1fr" : "1fr 1.35fr auto", gap: isCompactMobile ? 8 : 14, alignItems: "center" }}>
+                        <div>
+                          <div style={{ color: "#6b7280", fontSize: "0.82rem", marginBottom: 8, fontWeight: 500 }}>Service Progress</div>
+                          <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+                            <span style={{ fontSize: "1.55rem", fontWeight: 700 }}>{documentCountLabel}</span>
+                            <span style={{ color: "#6b7280", fontSize: "0.88rem" }}>uploaded</span>
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                          <div style={{ width: "100%", height: 10, background: "rgba(17,24,39,0.08)", borderRadius: 999, overflow: "hidden" }}>
+                            <div style={{ width: `${serviceProgress}%`, height: "100%", borderRadius: 999, background: "linear-gradient(90deg, #22c55e, #14b8a6)" }} />
+                          </div>
+                          {progressMessage ? (
+                            <div style={{ color: "#6b7280", fontSize: "0.84rem" }}>{progressMessage}</div>
+                          ) : null}
+                        </div>
+                        <div style={{ fontSize: "0.9rem", fontWeight: 700, color: "#111111" }}>{Math.round(serviceProgress)}%</div>
+                      </div>
+                    </PremiumCard>
+
+                    {showRejectionBanner && (
+                      <div className="inner-card" style={{ padding: 16, borderRadius: 18, border: "1px solid rgba(239,68,68,0.22)", background: "rgba(239,68,68,0.08)" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: activeRejectionBanner.message ? 8 : 0, color: "#fb7185" }}>
+                          <strong style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><AlertCircle size={16} /> {activeRejectionBanner.title}</strong>
+                          <button
+                            type="button"
+                            onClick={(e) => handleDismissDetailsMissingMessage(activeLead, e)}
+                            style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "inherit", cursor: "pointer" }}
+                          >
+                            ×
+                          </button>
+                        </div>
+                        {activeRejectionBanner.message ? (
+                          <div style={{ color: "#111111", fontSize: "0.95rem" }}>{activeRejectionBanner.message}</div>
+                        ) : null}
+                      </div>
+                    )}
+
+                    {activeLead.adminMessage && !isSystemMessage(activeLead.adminMessage) && !showOnlyRejectionBanner && (
+                      <div className="inner-card" style={{ padding: 16, borderRadius: 18, border: "1px solid rgba(16,185,129,0.22)", background: "rgba(16,185,129,0.05)" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 8, color: "#16a34a" }}>
+                          <strong style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Sparkles size={16} /> Message from Admin</strong>
+                          <button type="button" onClick={(e) => handleDeleteAdvisorMessage(activeLead._id, e)} style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "inherit", cursor: "pointer" }}>×</button>
+                        </div>
+                        <div style={{ color: "#111111", fontSize: "0.95rem", lineHeight: 1.6 }}>{activeLead.adminMessage}</div>
+                      </div>
+                    )}
+
+                    {activeLead.prFeedback && !isSystemMessage(activeLead.prFeedback) && !showRejectionBanner && !isPrRejectedState(activeLead) && !isDetailsMissingState(activeLead) && (
+                      <div className="inner-card" style={{ padding: 16, borderRadius: 18, border: "1px solid rgba(59,130,246,0.22)", background: "rgba(59,130,246,0.05)" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 8, color: "#2563eb" }}>
+                          <strong style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><MessageSquare size={16} /> Message from PR</strong>
+                          <button type="button" onClick={(e) => handleDeleteRejectionMessage(activeLead._id, e)} style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "inherit", cursor: "pointer" }}>×</button>
+                        </div>
+                        <div style={{ color: "#111111", fontSize: "0.95rem", fontStyle: "italic" }}>"{activeLead.prFeedback}"</div>
+                      </div>
+                    )}
+
+                    {activeLead.executorMessage && !isSystemMessage(activeLead.executorMessage) && !showRejectionBanner && (
+                      <div className="inner-card" style={{ padding: 16, borderRadius: 18, border: "1px solid rgba(139,92,246,0.22)", background: "rgba(139,92,246,0.05)" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 8, color: "#7c3aed" }}>
+                          <strong style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Sparkles size={16} /> Message from Executor</strong>
+                          <button type="button" onClick={(e) => handleDeleteExecutorMessage(activeLead._id, e)} style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "inherit", cursor: "pointer" }}>×</button>
+                        </div>
+                        <div style={{ color: "#111111", fontSize: "0.95rem", fontStyle: "italic" }}>"{activeLead.executorMessage}"</div>
+                      </div>
+                    )}
+
+                    {isReviewDraftState(activeLead) && (
+                      <div className="inner-card" style={{ padding: 16, borderRadius: 18, border: "1px solid rgba(22,163,74,0.24)", background: "rgba(22,163,74,0.06)", display: "grid", gap: 12 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#16a34a", fontWeight: 800 }}>
+                          Review Your Draft
+                        </div>
+                        <p style={{ color: "#6b7280", margin: 0, fontSize: "0.9rem" }}>Your service draft is ready for review. Please check the document below and approve it if everything is correct.</p>
+                        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                          <button onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/review-draft/${activeLead._id}`); }} style={{ padding: "0.7rem 0.95rem", borderRadius: 12, border: "1px solid rgba(22,163,74,0.35)", background: "rgba(22,163,74,0.12)", color: "#16a34a", fontWeight: 700, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 8 }}><FileText size={15} /> View Draft</button>
+                          <button onClick={() => handleDraftAction(activeLead._id, "accept")} style={{ padding: "0.7rem 0.95rem", borderRadius: 12, border: "none", background: "#10b981", color: "#fff", fontWeight: 700, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 8 }}><CheckCircle size={15} /> Approve Draft</button>
+                          <button onClick={() => openDraftRejectForm(activeLead._id)} style={{ padding: "0.7rem 0.95rem", borderRadius: 12, border: "1px solid rgba(239,68,68,0.2)", background: "rgba(239,68,68,0.08)", color: "#fb7185", fontWeight: 700, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 8 }}><AlertCircle size={15} /> Reject Draft</button>
+                        </div>
+                        {draftRejectingLeadId === activeLead._id && (
+                          <div style={{ display: "grid", gap: 10, marginTop: 4 }}>
+                            <textarea className="dashboard-input" value={draftRejectDrafts[activeLead._id] || ""} onChange={(e) => setDraftRejectDrafts((prev) => ({ ...prev, [activeLead._id]: e.target.value }))} rows={3} placeholder="Describe what needs to be changed in this draft..." style={{ width: "100%", resize: "vertical", borderRadius: 12, border: "1px solid rgba(17,24,39,0.08)", background: "rgba(255,255,255,0.72)", color: "#111111", padding: "0.95rem", outline: "none" }} />
+                            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                              <button onClick={() => submitDraftReject(activeLead._id)} style={{ padding: "0.78rem 1rem", borderRadius: 12, border: "none", background: "#ef4444", color: "#fff", fontWeight: 800, cursor: "pointer" }}>Send to PR and Reject Draft</button>
+                              <button onClick={() => setDraftRejectingLeadId(null)} style={{ padding: "0.78rem 1rem", borderRadius: 12, border: "1px solid rgba(17,24,39,0.08)", background: "transparent", color: "#6b7280", fontWeight: 700, cursor: "pointer" }}>Cancel</button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div style={{ display: "grid", gap: isCompactMobile ? 10 : 18 }}>
+                      <PremiumCard className="inner-card" style={{ padding: 0, overflow: "hidden", background: "#ffffff", border: "1px solid rgba(17,24,39,0.14)", boxShadow: "none" }}>
+                        <button
+                          type="button"
+                          onClick={() => setDocumentsOpen((prev) => !prev)}
+                          aria-expanded={documentsOpen}
+                          style={{
+                            width: "100%",
+                            padding: isCompactMobile ? "12px 12px" : "14px 16px",
+                            border: "none",
+                            background: "transparent",
+                            color: "inherit",
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 12,
+                            textAlign: "left",
+                            borderBottom: "none",
+                          }}
+                        >
+                          <div>
+                            <h3 style={{ fontSize: isCompactMobile ? "0.92rem" : "0.98rem", fontWeight: 700, marginBottom: 3, color: "#111111" }}>Required Documents</h3>
+                            <p style={{ color: "#6b7280", fontSize: isCompactMobile ? "0.74rem" : "0.8rem", fontWeight: 400 }}>Track uploaded and pending files for this service.</p>
+                          </div>
+                          <span style={{ color: "#6b7280", fontSize: isCompactMobile ? "0.74rem" : "0.8rem", fontWeight: 500 }}>
+                            {selectedLeadDocuments.length} documents {documentsOpen ? "▴" : "▾"}
+                          </span>
+                        </button>
+
+                        <div
+                          style={{
+                            maxHeight: documentsOpen ? 1000 : 0,
+                            opacity: documentsOpen ? 1 : 0,
+                            transform: documentsOpen ? "translateY(0)" : "translateY(-6px)",
+                            overflow: "hidden",
+                            transition: "max-height 280ms ease, opacity 220ms ease, transform 220ms ease",
+                            willChange: "max-height, opacity, transform",
+                          }}
+                        >
+                          <div className="dashboard-documents-scroll">
+                            <table className="dashboard-table">
+                              <thead>
+                                <tr>
+                                  <th style={{ width: isCompactMobile ? "58%" : "68%" }}>Document</th>
+                                  <th>Status</th>
+                                  <th style={{ width: isCompactMobile ? 86 : 110, textAlign: "right" }}>Action</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {selectedLeadDocuments.length > 0 ? (
+                                  selectedLeadDocuments.map((doc, idx) => {
+                                    const docStatus = String(doc?.status || (doc?.url ? "Uploaded" : "Pending")).trim();
+                                    const docStatusLower = docStatus.toLowerCase();
+                                    const hasFile =
+                                      !!doc?.url ||
+                                      !!doc?.secure_url ||
+                                      !!doc?.uploadedUrl ||
+                                      !!doc?.viewUrl ||
+                                      !!doc?.publicId ||
+                                      !!doc?.filename ||
+                                      !!doc?.fileName;
+                                    const serviceRejected = isRejectedServiceState?.(activeLead) ||
+                                      String(activeLead?.status || "").trim().toLowerCase() === "rejected";
+                                    const isReuploaded = !serviceRejected && (!!doc?.displayReuploaded || !!doc?.reuploaded || docStatusLower === "reuploaded");
+                                    const isAccepted = !serviceRejected && ["uploaded", "accepted", "verified", "approved", "completed"].includes(docStatusLower);
+                                    const isPending = !serviceRejected && ["pending", "pendingreview"].includes(docStatusLower);
+                                    const isRejectedByExecutor = serviceRejected && !isReuploaded && isExecutorRejectedState(activeLead);
+                                    const isRejected = docStatusLower === "rejected" || serviceRejected;
+                                    const isDraftDocument = String(doc?.type || "").trim().toLowerCase() === "draft";
+                                    const isFinalDocument =
+                                      String(doc?.type || "").trim().toLowerCase() === "final" ||
+                                      String(doc?.name || "").trim().toLowerCase().startsWith("final");
+                                    const displayStatus = isDraftDocument
+                                      ? String(activeLead?.status || "").trim().toLowerCase() === "draftaccepted" || String(activeLead?.status || "").trim().toLowerCase() === "useraccepted" || String(activeLead?.status || "").trim().toLowerCase() === "completed"
+                                        ? "Accepted"
+                                        : String(activeLead?.status || "").trim().toLowerCase() === "draftrejected"
+                                          ? "Rejected"
+                                          : ["draftsent", "draftrejected", "draftaccepted", "useraccepted", "completed"].includes(String(activeLead?.status || "").trim().toLowerCase())
+                                            ? "Draft Shared"
+                                            : isReuploaded
+                                              ? "Draft Uploaded"
+                                              : "Draft Uploaded"
+                                      : isFinalDocument
+                                        ? "Accepted"
+                                        : isRejected
+                                          ? "Rejected"
+                                          : isPending
+                                            ? "Pending Review"
+                                            : docStatus || "Pending";
+                                    const displayStatusLower = String(displayStatus || "").trim().toLowerCase();
+                                    const isDisplayAccepted = ["accepted"].includes(displayStatusLower);
+                                    const isDisplayRejected = displayStatusLower === "rejected";
+                                    const isDraftShared = isDraftDocument && displayStatusLower.includes("draft shared");
+                                    const statusColor = isDisplayAccepted || isDraftShared ? "#22c55e" : isDisplayRejected ? "#ef4444" : "#fbbf24";
+                                    const statusBg = isDisplayAccepted || isDraftShared ? "rgba(34,197,94,0.12)" : isDisplayRejected ? "rgba(239,68,68,0.12)" : "rgba(245,158,11,0.12)";
+                                    return (
+                                      <tr key={`${doc.name}-${idx}`}>
+                                        <td>
+                                          <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0, flexWrap: isCompactMobile ? "wrap" : "nowrap" }}>
+                                            <FileText size={18} color={isDisplayAccepted || isDraftShared ? "#22c55e" : isDisplayRejected ? "#ef4444" : "#a78bfa"} style={{ flexShrink: 0 }} />
+                                            <div style={{ minWidth: 0 }}>
+                                              <div style={{ fontSize: isCompactMobile ? "0.86rem" : "0.92rem", fontWeight: 600, whiteSpace: isCompactMobile ? "normal" : "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.name}</div>
+                                              {(isRejected || isRejectedByExecutor) && !isDraftDocument && !isFinalDocument && (
+                                                <div
+                                                  style={{
+                                                    marginTop: 4,
+                                                    color: "#f87171",
+                                                    fontSize: "0.76rem",
+                                                    fontWeight: 700,
+                                                  }}
+                                                >
+                                                  Reupload this document from the Services page
+                                                </div>
+                                              )}
+                                              {isReuploaded && !isRejected && !isRejectedByExecutor && <div style={{ marginTop: 4, color: "#38bdf8", fontSize: "0.76rem", fontWeight: 700 }}>Reuploaded</div>}
+                                            </div>
+                                          </div>
+                                        </td>
+                                        <td style={{ verticalAlign: "middle" }}>
+                                          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: statusColor, fontSize: isCompactMobile ? "0.74rem" : "0.82rem", fontWeight: 700, whiteSpace: isCompactMobile ? "normal" : "nowrap" }}>
+                                            {displayStatus}
+                                          </span>
+                                        </td>
+                                        <td style={{ textAlign: "right" }}>
+                                          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                                            {hasFile && (
+                                              <button
+                                                type="button"
+                                                onClick={() => viewDocument(doc.publicId, doc.url || doc.secure_url || doc.uploadedUrl || doc.viewUrl, activeLead._id)}
+                                                style={{
+                                                  padding: isCompactMobile ? "0 10px" : "0 14px",
+                                                  height: isCompactMobile ? 32 : 34,
+                                                  borderRadius: 10,
+                                                  border: "1px solid rgba(17,24,39,0.08)",
+                                                  background: "rgba(255,255,255,0.62)",
+                                                  color: "#111111",
+                                                  display: "inline-flex",
+                                                  alignItems: "center",
+                                                  justifyContent: "center",
+                                                  gap: 8,
+                                                  cursor: "pointer",
+                                                  fontSize: isCompactMobile ? "0.7rem" : "0.75rem",
+                                                  fontWeight: 600
+                                                }}
+                                                title="View Document"
+                                              >
+                                                VIEW <Eye size={15} />
+                                              </button>
+                                            )}
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })
+                                ) : (
+                                  <tr>
+                                    <td colSpan={3} style={{ color: "#6b7280", textAlign: "center", padding: "24px 20px" }}>No documents uploaded yet.</td>
+                                  </tr>
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      </PremiumCard>
+
+                      <div style={{ position: "absolute", width: 1, height: 1, opacity: 0, overflow: "hidden" }}>
+                        <input
+                          ref={uploadInputRef}
+                          id="dashboard-upload-input"
+                          type="file"
+                          multiple={!reuploadingDocName}
+                          accept=".pdf,application/pdf"
+                          style={{ display: "none" }}
+                          disabled={!!uploadingId}
+                          onChange={(e) => {
+                            if (e.target.files && e.target.files.length > 0) {
+                              handleUploadDocuments(activeLead._id, e.target.files, reuploadingDocName);
+                              // Reset reuploading name after trigger
+                              setReuploadingDocName(null);
+                              e.target.value = "";
+                            }
+                          }}
+                        />
+                      </div>
+
+                      <PremiumCard className="inner-card" style={{ padding: 16, borderRadius: 18, background: "#ffffff", border: "1px solid rgba(17,24,39,0.14)", boxShadow: "none" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 500, color: "#111111" }}>
+                            Message to PR
+                          </div>
+                        </div>
+                        <div style={{ position: "relative" }}>
+                          <textarea
+                            className="dashboard-input"
+                            value={messageByLead[activeLead._id] || ""}
+                            onChange={(e) => handleMessageChange(activeLead._id, e.target.value)}
+                            placeholder="Need help or have updates? Message your PR advisor here..."
+                            style={{
+                              width: "100%",
+                              minHeight: 100,
+                              background: "rgba(255,255,255,0.7)",
+                              border: "1px solid rgba(17,24,39,0.08)",
+                              borderRadius: 16,
+                              padding: "0.95rem",
+                              color: "#111111",
+                              fontSize: "0.88rem",
+                              resize: "none",
+                              outline: "none",
+                            }}
+                          />
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSendMessageToPR(activeLead._id);
+                            }}
+                            style={{
+                              position: "absolute",
+                              bottom: 12,
+                              right: 12,
+                              background: "#10b981",
+                              border: "none",
+                              color: "white",
+                              padding: "7px 14px",
+                              borderRadius: 10,
+                              fontSize: "0.72rem",
+                              fontWeight: 800,
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 8,
+                            }}
+                          >
+                            Send Message <ArrowUpRight size={14} />
+                          </button>
+                        </div>
+                      </PremiumCard>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ padding: "52px 24px", textAlign: "center", color: "#6b7280" }}>
+                    <LayoutDashboard size={48} style={{ marginBottom: 14 }} />
+                    <h3 style={{ color: "#111111", fontSize: "1.25rem", fontWeight: 800, marginBottom: 8 }}>No active services found</h3>
+                    <p style={{ maxWidth: 420, margin: "0 auto 20px", lineHeight: 1.6, color: "#6b7280" }}>Start your journey by selecting a service from our curated recommendations.</p>
+                    <button onClick={() => navigate("/services")} style={{ padding: "0.85rem 1.2rem", borderRadius: 12, border: "1px solid rgba(34,197,94,0.25)", background: "rgba(34,197,94,0.08)", color: "#34d399", fontWeight: 700, cursor: "pointer" }}>Explore Services</button>
+                  </div>
+                )}
               </div>
-            )}
-          </PremiumCard>
+            </div>
+          </div>
         </div>
       </div>
 

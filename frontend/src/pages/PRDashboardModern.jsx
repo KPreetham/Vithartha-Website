@@ -26,21 +26,50 @@ const PremiumCard = ({ children, style = {}, className = "" }) => (
   <div
     className={className}
     style={{
-      background:
-        "linear-gradient(145deg, rgba(18, 20, 34, 0.92) 0%, rgba(11, 13, 24, 0.94) 100%)",
+      background: "linear-gradient(145deg, #ffffff 0%, #f9fafb 100%)",
       backdropFilter: "blur(16px)",
       borderRadius: 24,
-      border: "1px solid rgba(255,255,255,0.08)",
-      boxShadow: "0 18px 40px -24px rgba(0,0,0,0.7)",
+      border: "1px solid rgba(17,24,39,0.08)",
+      boxShadow: "0 18px 40px -28px rgba(17,24,39,0.18)",
       overflow: "hidden",
       position: "relative",
-      color: "#ffffff",
+      color: "#111111",
       ...style,
     }}
   >
     {children}
   </div>
 );
+
+const CountUp = ({ end, duration = 1200, formatter = (v) => v }) => {
+  const [count, setCount] = React.useState(0);
+
+  React.useEffect(() => {
+    let startTime = null;
+    const startValue = 0;
+    let animationFrame;
+
+    const animate = (timestamp) => {
+      if (!startTime) startTime = timestamp;
+      const progress = Math.min((timestamp - startTime) / duration, 1);
+      const easedProgress = 1 - Math.pow(1 - progress, 3); // easeOutCubic
+      const currentValue = Math.floor(easedProgress * (end - startValue) + startValue);
+      
+      setCount(currentValue);
+
+      if (progress < 1) {
+        animationFrame = requestAnimationFrame(animate);
+      } else {
+        setCount(end);
+      }
+    };
+
+    animationFrame = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animationFrame);
+  }, [end, duration]);
+
+  return <>{formatter(count)}</>;
+};
 
 const PRDashboardModern = ({
   navigate,
@@ -55,6 +84,7 @@ const PRDashboardModern = ({
   getEffectiveLeadStatus,
   getDisplayStatus,
   getVisibleDocuments,
+  getLeadRevenueAmount,
   handleUpdateLeadStatus,
   handleDocumentStatus,
   handleAssignExecutor,
@@ -86,9 +116,16 @@ const PRDashboardModern = ({
   deleteConfirm,
   handleConfirmDelete,
   setDeleteConfirm,
+  executors,
 }) => {
   const [documentsOpen, setDocumentsOpen] = React.useState(false);
+  const [isMessageTargetOpen, setIsMessageTargetOpen] = React.useState(false);
   const [messageTarget, setMessageTarget] = React.useState("user");
+  const [syncedSidebarHeight, setSyncedSidebarHeight] = React.useState(null);
+  const detailsPanelRef = React.useRef(null);
+  const [isCompactMobile, setIsCompactMobile] = React.useState(() =>
+    typeof window !== "undefined" ? window.innerWidth <= 480 : false,
+  );
   const draftInputRef = React.useRef(null);
   const finalInputRef = React.useRef(null);
 
@@ -98,6 +135,50 @@ const PRDashboardModern = ({
   React.useEffect(() => {
     setDocumentsOpen(false);
   }, [activeLead?._id]);
+
+  React.useEffect(() => {
+    const handleResize = () => setIsCompactMobile(window.innerWidth <= 480);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const syncSidebarHeight = () => {
+      if (window.innerWidth <= 1200) {
+        setSyncedSidebarHeight(null);
+        return;
+      }
+
+      const detailsNode = detailsPanelRef.current;
+      if (!detailsNode) {
+        setSyncedSidebarHeight(null);
+        return;
+      }
+
+      const nextHeight = Math.ceil(detailsNode.getBoundingClientRect().height);
+      setSyncedSidebarHeight((current) => (current === nextHeight ? current : nextHeight));
+    };
+
+    syncSidebarHeight();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", syncSidebarHeight);
+      return () => window.removeEventListener("resize", syncSidebarHeight);
+    }
+
+    const observer = new ResizeObserver(syncSidebarHeight);
+    if (detailsPanelRef.current) {
+      observer.observe(detailsPanelRef.current);
+    }
+    window.addEventListener("resize", syncSidebarHeight);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", syncSidebarHeight);
+    };
+  }, [activeLead?._id, documentsOpen]);
 
   const systemPhrases = [
     "status changed",
@@ -129,24 +210,33 @@ const PRDashboardModern = ({
   const isDraftUploading = lead ? uploadingId === `${lead._id}-Draft` : false;
   const isFinalUploading = lead ? uploadingId === `${lead._id}-Final` : false;
   const rawDocs = Array.isArray(lead?.documents) ? lead.documents : [];
+  const hasFinalDocument = rawDocs.some((doc) => String(doc?.type || "").trim().toLowerCase() === "final");
+  const effectiveServiceStatus = hasFinalDocument && !["Rejected", "InformationRequired"].includes(leadStatus)
+    ? "Completed"
+    : leadStatus;
   const docs = lead ? getVisibleDocuments(lead) : [];
-  const clientDocs = docs.filter((d) => d.type === "Client");
+  const clientDocs = docs;
   const draftFinalDocs = rawDocs.filter((d) => ["Draft", "Final"].includes(String(d?.type || "").trim()));
   const uploadedClientDocs = clientDocs.filter((d) => {
     const status = String(d?.status || "").trim().toLowerCase();
     return ["uploaded", "accepted", "verified", "approved", "completed", "reuploaded", "under review"].includes(status) || !!d?.url;
   });
   const hasReuploadedDocs = rawDocs.some((d) => !!d?.displayReuploaded || !!d?.reuploaded || String(d?.status || "").trim().toLowerCase() === "reuploaded");
-  const serviceAccepted = ["PR_Accepted", "AssignedToExecutor", "InProgress", "ExecutionFinished", "DraftSent", "DraftRejected", "DraftAccepted", "UserAccepted", "Completed"].includes(leadStatus);
+  const serviceAccepted = ["PR_Accepted", "AssignedToExecutor", "InProgress", "ExecutionFinished", "DraftSent", "DraftRejected", "DraftAccepted", "UserAccepted", "Completed"].includes(effectiveServiceStatus);
   const draftWorkflowStarted =
-    ["InProgress", "ExecutionFinished", "DraftSent", "DraftRejected", "DraftAccepted", "UserAccepted", "Completed"].includes(leadStatus);
+    ["InProgress", "ExecutionFinished", "DraftSent", "DraftRejected", "DraftAccepted", "UserAccepted", "Completed"].includes(effectiveServiceStatus);
   const serviceProgressPercent = (() => {
     if (!lead) return 0;
-    const status = String(leadStatus || "").trim();
+    
+    // Standardize percentages across all dashboards
+    if (effectiveServiceStatus === "Rejected" && String(lead?.executorMessage || "").length > 0) return 20;
+    if (effectiveServiceStatus === "InformationRequired") return 20;
+
+    const status = String(effectiveServiceStatus || "").trim();
     const progressByStatus = {
       Open: 10,
       PendingReview: 20,
-      InformationRequired: 18,
+      InformationRequired: 20,
       PR_Accepted: 32,
       AssignedToExecutor: 45,
       InProgress: 60,
@@ -162,24 +252,25 @@ const PRDashboardModern = ({
   })();
   const serviceProgressMessage = lead
     ? {
-        Open: "New request received. PR review will begin shortly.",
-        PendingReview: "Documents are under PR review.",
-        InformationRequired: "Client action is needed to continue.",
-        PR_Accepted: "Service accepted. Executor assignment is in progress.",
-        AssignedToExecutor: "Executor has been assigned and is preparing the service.",
-        InProgress: "Executor is working on the service.",
-        ExecutionFinished: "Executor work is complete. Review the draft and continue.",
-        DraftSent: "Draft is ready for user review.",
-        DraftAccepted: "Draft approved. Upload the final return document.",
-        UserAccepted: "Draft approved. Upload the final return document.",
-        DraftRejected: "Draft was rejected by the user. Revise and resubmit.",
+        Open: "Pending verification and initial review.",
+        PendingReview: "Documents are being reviewed by PR.",
+        InformationRequired: "Service rejected by PR. Action required.",
+        PR_Accepted: "Documents verified. Awaiting executor assignment.",
+        AssignedToExecutor: "Executor assigned. Service is starting.",
+        InProgress: "Accepted by Executor.",
+        ExecutionFinished: "Execution finished. Undergoing quality review.",
+        DraftSent: "Draft is awaiting user approval.",
+        DraftAccepted: "Draft approved by user. Waiting for final completion.",
+        UserAccepted: "Draft approved by user. Waiting for final completion.",
+        DraftRejected: "Draft rejected. Waiting for revision.",
+        Rejected: "Service has been rejected.",
         Completed: "Service completed successfully.",
-        Rejected: "Service was rejected.",
-      }[leadStatus] || getDisplayStatus(leadStatus, lead)
+      }[String(effectiveServiceStatus || "").trim()] || "Service is in progress."
     : "";
+    const showFinalUploadSection = ["DraftAccepted", "UserAccepted", "Completed"].includes(effectiveServiceStatus);
   const uploadedDocumentCount = uploadedClientDocs.length;
-  const isDraftApprovedByWorkflow = ["DraftAccepted", "UserAccepted", "Completed"].includes(leadStatus);
-  const isFinalApprovedByWorkflow = leadStatus === "Completed";
+  const isDraftApprovedByWorkflow = ["DraftAccepted", "UserAccepted", "Completed"].includes(effectiveServiceStatus);
+  const isFinalApprovedByWorkflow = effectiveServiceStatus === "Completed";
   const getDraftFinalStatusInfo = (doc) => {
     const docType = String(doc?.type || "").trim();
     const rawStatus = String(doc?.status || "").trim().toLowerCase();
@@ -190,10 +281,9 @@ const PRDashboardModern = ({
 
     if (draftRejectedByUser && docType === "Draft") {
       return {
-        label: "REJECTED",
         color: "#ef4444",
-        bg: "rgba(239,68,68,0.12)",
-        border: "rgba(239,68,68,0.2)",
+        bg: "rgba(239,68,68,0.08)",
+        border: "rgba(239,68,68,0.15)",
         note: "Rejected by the user and awaiting revision.",
       };
     }
@@ -202,8 +292,8 @@ const PRDashboardModern = ({
       return {
         label: "REJECTED",
         color: "#ef4444",
-        bg: "rgba(239,68,68,0.12)",
-        border: "rgba(239,68,68,0.2)",
+        bg: "rgba(239,68,68,0.08)",
+        border: "rgba(239,68,68,0.15)",
         note: doc?.rejectionMessage
           ? `Rejected: ${doc.rejectionMessage}`
           : "Rejected and awaiting user revision.",
@@ -213,17 +303,17 @@ const PRDashboardModern = ({
     if (docType === "Draft") {
       return isDraftApprovedByWorkflow
         ? {
-            label: "APPROVED",
-            color: "#10b981",
-            bg: "rgba(16,185,129,0.12)",
-            border: "rgba(16,185,129,0.2)",
-            note: "Approved by the user.",
+            label: "DRAFT APPROVED BY USER",
+            color: "#16a34a",
+            bg: "rgba(22, 163, 74, 0.08)",
+            border: "rgba(22, 163, 74, 0.15)",
+            note: "Approved by user.",
           }
         : {
             label: "UPLOADED",
             color: "#f59e0b",
-            bg: "rgba(245,158,11,0.12)",
-            border: "rgba(245,158,11,0.2)",
+            bg: "rgba(245,158,11,0.08)",
+            border: "rgba(245,158,11,0.15)",
             note: "Awaiting user approval.",
           };
     }
@@ -231,17 +321,17 @@ const PRDashboardModern = ({
     if (docType === "Final") {
       return (isFinalApprovedByWorkflow || rawStatus === "accepted")
         ? {
-            label: "APPROVED",
-            color: "#10b981",
-            bg: "rgba(16,185,129,0.12)",
-            border: "rgba(16,185,129,0.2)",
+            label: "DRAFT APPROVED BY USER",
+            color: "#16a34a",
+            bg: "rgba(22, 163, 74, 0.08)",
+            border: "rgba(22, 163, 74, 0.15)",
             note: "Final return completed and accepted.",
           }
         : {
             label: "UPLOADED",
             color: "#f59e0b",
-            bg: "rgba(245,158,11,0.12)",
-            border: "rgba(245,158,11,0.2)",
+            bg: "rgba(245,158,11,0.08)",
+            border: "rgba(245,158,11,0.15)",
             note: "Awaiting final completion.",
           };
     }
@@ -249,36 +339,40 @@ const PRDashboardModern = ({
     return {
       label: doc?.status || "Waiting Review",
       color: "#f59e0b",
-      bg: "rgba(245,158,11,0.12)",
-      border: "rgba(245,158,11,0.2)",
+      bg: "rgba(245,158,11,0.08)",
+      border: "rgba(245,158,11,0.15)",
       note: "Waiting review.",
     };
   };
 
   const statusPill = lead
     ? {
-        color:
-          leadStatus === "Completed"
-            ? "#10b981"
-            : leadStatus === "DraftSent"
-              ? "#8b5cf6"
-              : leadStatus === "InformationRequired"
-                ? "#f59e0b"
-                : leadStatus === "Rejected"
+      color:
+          effectiveServiceStatus === "Completed"
+            ? "#16a34a"
+            : effectiveServiceStatus === "DraftSent"
+              ? "#16a34a"
+              : effectiveServiceStatus === "DraftRejected"
+                ? "#ef4444"
+              : effectiveServiceStatus === "InformationRequired"
+                ? "#ef4444"
+                : effectiveServiceStatus === "Rejected"
                   ? "#ef4444"
-                  : "#22c55e",
+                  : "#16a34a",
         bg:
-          leadStatus === "Completed"
-            ? "rgba(16,185,129,0.1)"
-            : leadStatus === "DraftSent"
-              ? "rgba(139,92,246,0.12)"
-              : leadStatus === "InformationRequired"
-                ? "rgba(245,158,11,0.12)"
-                : leadStatus === "Rejected"
-                  ? "rgba(239,68,68,0.1)"
-                  : "rgba(34,197,94,0.1)",
+          effectiveServiceStatus === "Completed"
+            ? "rgba(22, 163, 74, 0.08)"
+            : effectiveServiceStatus === "DraftSent"
+              ? "rgba(22, 163, 74, 0.08)"
+              : effectiveServiceStatus === "DraftRejected"
+                ? "rgba(239, 68, 68, 0.08)"
+              : effectiveServiceStatus === "InformationRequired"
+                ? "rgba(239, 68, 68, 0.08)"
+                : effectiveServiceStatus === "Rejected"
+                  ? "rgba(239, 68, 68, 0.08)"
+                  : "rgba(22, 163, 74, 0.08)",
       }
-    : { color: "#9ca3af", bg: "rgba(255,255,255,0.04)" };
+    : { color: "#6b7280", bg: "rgba(17,24,39,0.04)" };
 
   const handleDraftUpload = (type, file) => {
     if (!lead || !file) return;
@@ -290,38 +384,144 @@ const PRDashboardModern = ({
     clientDocs.every((doc) => doc.status === "Accepted");
   const draftReadyToSend = lead?.draftReadyToSend === true;
   const canSendDraftNow = canSendDraftToClient(lead) && draftReadyToSend;
-  const canMarkCompleted = draftFinalDocs.some((d) => d.type === "Final") && leadStatus !== "Completed";
+  const canMarkCompleted = draftFinalDocs.some((d) => d.type === "Final") && effectiveServiceStatus !== "Completed";
+
+  const containerStyle = {
+    minHeight: "100vh",
+    background: "radial-gradient(circle at top, rgba(248, 250, 252, 1) 0%, rgba(241, 245, 249, 1) 50%, rgba(226, 232, 240, 1) 100%)",
+    color: "#111111",
+    "--text": "#111111",
+    "--text-secondary": "#4b5563",
+    "--text-muted": "#6b7280",
+    "--card-content-text": "#111111",
+    "--card-content-muted": "#6b7280",
+    paddingTop: isCompactMobile ? "clamp(112px, 16vw, 126px)" : "clamp(130px, 14vw, 150px)",
+    paddingBottom: 64,
+    position: "relative",
+    overflow: "hidden",
+  };
 
   return (
-    <div className="home-page-shell pr-dashboard-shell" style={{ minHeight: "100vh", background: "var(--bg)", color: "#ffffff", paddingTop: "clamp(102px, 12vw, 124px)", paddingBottom: 64, position: "relative", overflow: "hidden" }}>
-      <div className="home-page-backdrop" aria-hidden="true" />
+    <div className="home-page-shell pr-dashboard-shell" style={containerStyle}>
+      <div className="home-page-backdrop" style={{ background: "#f8fafc" }} aria-hidden="true" />
       <style>{`
         .pr-dashboard-shell .dashboard-stat-grid {
           display: grid;
           grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 14px;
-          margin-bottom: 18px;
+          gap: 10px;
+          margin-bottom: 0;
+          align-items: stretch;
+        }
+        .pr-dashboard-shell .dashboard-shell {
+          width: 100%;
+          background: #f4f4f5;
+          border: 1px solid rgba(17,24,39,0.08);
+          border-radius: 0;
+          box-shadow: none;
+          overflow: hidden;
+        }
+        .pr-dashboard-shell .stat-card {
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          cursor: default;
+        }
+        .pr-dashboard-shell .stat-card:hover {
+          transform: translateY(-6px) scale(1.03);
+          box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04) !important;
+          border-color: rgba(17,24,39,0.18) !important;
+          z-index: 10;
+        }
+        .pr-dashboard-shell .dashboard-shell-inner {
+          padding: 10px 14px 10px;
         }
         .pr-dashboard-shell .dashboard-main-grid {
           display: grid;
-          grid-template-columns: 360px minmax(0, 1fr);
-          gap: 14px;
-          align-items: stretch;
+          grid-template-columns: 360px 1px minmax(0, 1fr);
+          gap: 0;
+          align-items: start;
+          background: #ffffff;
+          border: 1px solid rgba(17,24,39,0.12);
+          border-radius: 24px;
+          overflow: hidden;
+          box-shadow: 0 4px 20px -12px rgba(0, 0, 0, 0.08);
         }
-        .pr-dashboard-shell .dashboard-sidebar-panel,
+        .pr-dashboard-shell .dashboard-panels-divider {
+          background: rgba(17,24,39,0.08);
+          align-self: stretch;
+          border-radius: 0;
+        }
+        .pr-dashboard-shell .dashboard-service-row {
+          transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .pr-dashboard-shell .dashboard-service-row:hover {
+          transform: scale(1.015) translateY(-2px);
+          box-shadow: 0 6px 15px -4px rgba(0, 0, 0, 0.08);
+          border-color: rgba(34, 197, 94, 0.2) !important;
+          z-index: 2;
+        }
+        .pr-dashboard-shell .inner-card {
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .pr-dashboard-shell .inner-card:hover {
+          transform: translateY(-4px);
+          box-shadow: 0 12px 20px -10px rgba(0, 0, 0, 0.12) !important;
+          border-color: rgba(17,24,39,0.18) !important;
+        }
+        .pr-dashboard-shell .dashboard-panels-shell {
+          padding: 18px 0 0 0;
+          border-radius: 0;
+          margin-top: 0;
+          background: transparent;
+          border: none;
+          box-shadow: none;
+        }
+        .pr-dashboard-shell .dashboard-section-divider {
+          height: 1px;
+          width: 100%;
+          background: rgba(17,24,39,0.08);
+          margin: 6px 0 8px 0;
+        }
+        .pr-dashboard-shell .dashboard-sidebar-panel {
+          height: auto;
+          min-height: 0;
+          display: flex;
+          flex-direction: column;
+          align-self: start;
+        }
         .pr-dashboard-shell .dashboard-details-panel {
-          min-height: 560px;
           height: auto;
           display: flex;
           flex-direction: column;
+          align-self: start;
         }
-        .pr-dashboard-shell .dashboard-sidebar-scroll,
         .pr-dashboard-shell .dashboard-details-scroll {
+          flex: 0 0 auto;
+          min-height: auto;
+          overflow: visible;
+          padding-right: 0;
+          margin-right: 0;
+        }
+        .pr-dashboard-shell .dashboard-sidebar-scroll {
           flex: 1;
+          height: 0;
           min-height: 0;
           overflow-y: auto;
           padding-right: 4px;
           margin-right: -4px;
+          scrollbar-width: thin;
+          scrollbar-color: #b8b8b8 transparent;
+        }
+        .pr-dashboard-shell .dashboard-sidebar-scroll::-webkit-scrollbar {
+          width: 6px;
+        }
+        .pr-dashboard-shell .dashboard-sidebar-scroll::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .pr-dashboard-shell .dashboard-sidebar-scroll::-webkit-scrollbar-thumb {
+          background: #b8b8b8;
+          border-radius: 999px;
+        }
+        .pr-dashboard-shell .dashboard-sidebar-scroll::-webkit-scrollbar-thumb:hover {
+          background: #9ca3af;
         }
         .pr-dashboard-shell .dashboard-pill {
           display: inline-flex;
@@ -329,8 +529,9 @@ const PRDashboardModern = ({
           gap: 8px;
           padding: 8px 12px;
           border-radius: 999px;
-          font-size: 0.8rem;
+          font-size: 0.86rem;
           font-weight: 700;
+          line-height: 1.1;
           white-space: nowrap;
         }
         .pr-dashboard-shell .dashboard-pill .dot {
@@ -344,23 +545,59 @@ const PRDashboardModern = ({
           border-collapse: separate;
           border-spacing: 0;
         }
+        .pr-dashboard-shell .dashboard-docs-scrollbar {
+          scrollbar-width: thin;
+          scrollbar-color: #a1a1aa #ffffff;
+        }
+        .pr-dashboard-shell .dashboard-docs-scrollbar::-webkit-scrollbar {
+          height: 10px;
+        }
+        .pr-dashboard-shell .dashboard-docs-scrollbar::-webkit-scrollbar-track {
+          background: #ffffff;
+        }
+        .pr-dashboard-shell .dashboard-docs-scrollbar::-webkit-scrollbar-thumb {
+          background-color: #a1a1aa;
+          border-radius: 999px;
+          border: 2px solid #ffffff;
+        }
+        .pr-dashboard-shell .dashboard-docs-scrollbar::-webkit-scrollbar-thumb:hover {
+          background-color: #8b8b94;
+        }
         .pr-dashboard-shell .dashboard-table th,
         .pr-dashboard-shell .dashboard-table td {
           padding: 13px 16px;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+          border-bottom: 1px solid rgba(17, 24, 39, 0.08);
           text-align: left;
-          vertical-align: top;
         }
         .pr-dashboard-shell .dashboard-table th {
-          color: rgba(255, 255, 255, 0.55);
+          color: #6b7280;
           font-size: 0.8rem;
           font-weight: 700;
         }
         .pr-dashboard-shell .dashboard-table tr:last-child td {
           border-bottom: none;
         }
+        .pr-dashboard-shell .dashboard-dropzone {
+          border: 1px dashed rgba(34, 197, 94, 0.7);
+          background: rgba(255, 255, 255, 0.03);
+          transition: all 0.2s ease;
+        }
+        .pr-dashboard-shell .dashboard-dropzone:hover {
+          border-color: rgba(34, 197, 94, 0.95);
+          background: rgba(34, 197, 94, 0.05);
+        }
+        .pr-dashboard-shell .dashboard-search,
+        .pr-dashboard-shell .dashboard-input {
+          transition: all 0.2s ease;
+        }
+        .pr-dashboard-shell .dashboard-search:focus,
+        .pr-dashboard-shell .dashboard-input:focus {
+          border-color: #16a34a !important;
+          box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.1);
+          outline: none;
+        }
         .pr-dashboard-shell .dashboard-search::placeholder {
-          color: rgba(255, 255, 255, 0.35);
+          color: #6b7280;
         }
         @media (max-width: 1200px) {
           .pr-dashboard-shell .dashboard-stat-grid {
@@ -369,9 +606,20 @@ const PRDashboardModern = ({
           .pr-dashboard-shell .dashboard-main-grid {
             grid-template-columns: 1fr;
           }
-          .pr-dashboard-shell .dashboard-sidebar-panel,
+          .pr-dashboard-shell .dashboard-panels-divider {
+            display: none;
+          }
+          .pr-dashboard-shell .dashboard-sidebar-panel {
+            height: auto;
+            min-height: 0;
+            max-height: 350px;
+          }
+          .pr-dashboard-shell .dashboard-sidebar-scroll {
+            height: auto;
+          }
           .pr-dashboard-shell .dashboard-details-panel {
             min-height: 0;
+            max-height: none;
           }
         }
         @media (max-width: 768px) {
@@ -383,676 +631,947 @@ const PRDashboardModern = ({
             padding: 12px 12px;
           }
         }
+        @media (max-width: 480px) {
+          .pr-dashboard-shell .dashboard-shell-inner {
+            padding: 8px 10px 10px;
+          }
+          .pr-dashboard-shell .dashboard-main-grid {
+            border-radius: 18px;
+          }
+          .pr-dashboard-shell .dashboard-sidebar-panel,
+          .pr-dashboard-shell .dashboard-details-panel {
+            padding: 14px 12px;
+          }
+          .pr-dashboard-shell .dashboard-service-row {
+            padding: 14px 12px 14px 14px !important;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 10px;
+          }
+          .pr-dashboard-shell .dashboard-pill {
+            width: fit-content;
+            white-space: normal;
+          }
+          .pr-dashboard-shell .dashboard-table th,
+          .pr-dashboard-shell .dashboard-table td {
+            padding: 10px 10px;
+            font-size: 0.76rem;
+          }
+          .pr-dashboard-shell .dashboard-documents-scroll {
+            overflow-x: auto;
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
+            scrollbar-color: #b8b8b8 transparent;
+            padding-bottom: 4px;
+          }
+          .pr-dashboard-shell .dashboard-documents-scroll::-webkit-scrollbar {
+            height: 6px;
+          }
+          .pr-dashboard-shell .dashboard-documents-scroll::-webkit-scrollbar-track {
+            background: transparent;
+          }
+          .pr-dashboard-shell .dashboard-documents-scroll::-webkit-scrollbar-thumb {
+            background: #b8b8b8;
+            border-radius: 999px;
+          }
+          .pr-dashboard-shell .dashboard-documents-scroll::-webkit-scrollbar-thumb:hover {
+            background: #9ca3af;
+          }
+          .pr-dashboard-shell .dashboard-documents-scroll .dashboard-table {
+            min-width: 540px;
+          }
+        }
       `}</style>
 
-      <div style={{ maxWidth: 1360, margin: "0 auto", padding: "0 1.25rem 0.5rem", position: "relative", zIndex: 1 }}>
-        <div style={{ textAlign: "center", marginBottom: 34 }}>
-          <h1 style={{ fontSize: "clamp(2.2rem, 4.6vw, 4rem)", fontWeight: 500, letterSpacing: "-0.04em", lineHeight: 1.05, marginBottom: 10, color: "var(--text)" }}>
-            PR Dashboard
+      <div
+        style={{
+          width: "100%",
+          maxWidth: "none",
+          margin: 0,
+          padding: "0 0 0.5rem",
+          position: "relative",
+          zIndex: 1,
+        }}
+      >
+        <div style={{ marginBottom: isCompactMobile ? 28 : 40, textAlign: "center" }}>
+          <h1 style={{ fontSize: isCompactMobile ? "1.65rem" : "2.2rem", fontWeight: 800, color: "#111111", letterSpacing: "-0.02em", marginBottom: isCompactMobile ? 10 : 12, lineHeight: 1.15 }}>
+            PR <span style={{ color: "#16a34a" }}>Dashboard</span>
           </h1>
-          <p style={{ maxWidth: 760, margin: "0 auto", color: "var(--text-secondary)", fontSize: "1rem", lineHeight: 1.7 }}>
-            Efficiency control for client verifications, executor coordination, document review, and service lifecycle management.
+          <p style={{ color: "#4b5563", fontSize: isCompactMobile ? "0.92rem" : "1.05rem", marginTop: 8, maxWidth: 700, margin: "0 auto", lineHeight: 1.6, textAlign: "center" }}>
+            Track and Manage Client Service Documents
           </p>
         </div>
 
-        <div className="dashboard-stat-grid">
-          {[
-            { label: "Total Requests", value: stats.total, icon: Users, color: "#22c55e" },
-            { label: "Pending Review", value: stats.pending, icon: Clock, color: "#f59e0b" },
-            { label: "Completed", value: stats.completed, icon: CheckCircle, color: "#10b981" },
-            { label: "Revenue", value: stats.revenue, icon: TrendingUp, color: "#22c55e" },
-          ].map((card) => {
-            return (
-              <PremiumCard
-                key={card.label}
+        <div className="dashboard-shell">
+          <div className="dashboard-shell-inner">
+            <div className="dashboard-stat-grid">
+              {[
+                { label: "Total Requests", value: stats.total, color: "#16a34a" },
+                { label: "Pending Review", value: stats.pending, color: "#16a34a" },
+                { label: "Completed Services", value: stats.completed, color: "#16a34a" },
+                { label: "Revenue (₹)", value: stats.revenueValue || 0, color: "#16a34a", isMoney: true, moneyValue: stats.revenue },
+              ].map((card) => {
+                return (
+                  <PremiumCard
+                    key={card.label}
+                    className="stat-card"
+                    style={{
+                      padding: 12,
+                      minHeight: 92,
+                      background: "#ffffff",
+                      border: "1px solid rgba(17,24,39,0.08)",
+                      boxShadow: "0 2px 4px rgba(0,0,0,0.02)",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      textAlign: "center",
+                      borderRadius: 16,
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: "0.78rem",
+                        fontWeight: 700,
+                        color: "#111111",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.08em",
+                        marginBottom: 4,
+                      }}
+                    >
+                      {card.label}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "1.44rem",
+                        fontWeight: 500,
+                        lineHeight: 1,
+                        color: card.color,
+                      }}
+                    >
+                      {card.isMoney ? (
+                        <CountUp end={card.value} formatter={(v) => formatInr(v)} />
+                      ) : (
+                        <CountUp end={card.value} />
+                      )}
+                    </div>
+                  </PremiumCard>
+                );
+              })}
+            </div>
+          </div>
+          <div className="dashboard-section-divider" />
+          <div className="dashboard-shell-inner" style={{ paddingTop: 0 }}>
+            <div className="dashboard-main-grid">
+              <div
+                className="dashboard-sidebar-panel"
                 style={{
-                  padding: 18,
-                  minHeight: 115,
-                  borderColor: `${card.color}22`,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  textAlign: "center",
+                  padding: isCompactMobile ? "16px 12px" : "20px 18px",
+                  background: "#ffffff",
+                  height: syncedSidebarHeight ? `${syncedSidebarHeight}px` : "auto",
+                  maxHeight: syncedSidebarHeight ? `${syncedSidebarHeight}px` : "none",
+                  overflow: syncedSidebarHeight ? "hidden" : "visible",
                 }}
               >
-                <div
-                  style={{
-                    fontSize: "0.88rem",
-                    fontWeight: 700,
-                    color: "#f5f5f5",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.1em",
-                    marginBottom: 10,
-                  }}
-                >
-                  {card.label}
+                <div style={{ marginBottom: 14 }}>
+                  <h2 style={{ fontSize: isCompactMobile ? "0.98rem" : "1.05rem", fontWeight: 700, marginBottom: 4, color: "#111111" }}>All User Services</h2>
+                  <p style={{ color: "#6b7280", fontSize: isCompactMobile ? "0.77rem" : "0.82rem" }}>{filteredLeads.length} request{filteredLeads.length === 1 ? "" : "s"}</p>
                 </div>
-                <div
-                  style={{
-                    fontSize: "1.9rem",
-                    fontWeight: 800,
-                    lineHeight: 1,
-                    color: "#ffffff",
-                  }}
-                >
-                  {card.value}
-                </div>
-              </PremiumCard>
-            );
-          })}
-        </div>
 
-        <div className="dashboard-main-grid">
-          <PremiumCard className="dashboard-sidebar-panel" style={{ padding: 18 }}>
-            <div style={{ marginBottom: 14 }}>
-              <h2 style={{ fontSize: "1.05rem", fontWeight: 700, marginBottom: 4, color: "#ffffff" }}>All User Services</h2>
-              <p style={{ color: "rgba(255,255,255,0.65)", fontSize: "0.82rem" }}>{filteredLeads.length} request{filteredLeads.length === 1 ? "" : "s"}</p>
-            </div>
-
-            <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
-              <div style={{ position: "relative", flex: 1 }}>
-                <Search size={16} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "rgba(255,255,255,0.45)" }} />
-                <input
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search services..."
-                  className="dashboard-search"
-                  style={{
-                    width: "100%",
-                    padding: "0.82rem 1rem 0.82rem 2.65rem",
-                    background: "rgba(255,255,255,0.03)",
-                    border: "1px solid rgba(255,255,255,0.06)",
-                    borderRadius: 12,
-                    color: "#ffffff",
-                    outline: "none",
-                  }}
-                />
-              </div>
-            </div>
-
-            <div className="dashboard-sidebar-scroll" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {filteredLeads.length > 0 ? (
-                filteredLeads.map((item, index) => {
-                  const selected = item._id === activeLead?._id;
-                  const pricing = getServicePricing(item?.serviceName);
-                  const itemStatus = getEffectiveLeadStatus(item);
-                  const statusLabel = getDisplayStatus(itemStatus, item);
-                  const itemPill = {
-                    color:
-                      itemStatus === "Completed"
-                        ? "#10b981"
-                        : itemStatus === "DraftSent"
-                          ? "#8b5cf6"
-                          : itemStatus === "InformationRequired"
-                            ? "#f59e0b"
-                            : itemStatus === "Rejected"
-                              ? "#ef4444"
-                              : "#22c55e",
-                    bg:
-                      itemStatus === "Completed"
-                        ? "rgba(16,185,129,0.1)"
-                        : itemStatus === "DraftSent"
-                          ? "rgba(139,92,246,0.12)"
-                          : itemStatus === "InformationRequired"
-                            ? "rgba(245,158,11,0.12)"
-                            : itemStatus === "Rejected"
-                              ? "rgba(239,68,68,0.1)"
-                              : "rgba(34,197,94,0.1)",
-                  };
-                  return (
-                    <motion.div
-                      key={item._id}
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.14, delay: Math.min(index * 0.02, 0.12) }}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => setSelectedLeadId?.(item._id)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          setSelectedLeadId?.(item._id);
-                        }
-                      }}
+                <div style={{ display: "flex", gap: 10, marginBottom: isCompactMobile ? 12 : 14 }}>
+                  <div style={{ position: "relative", flex: 1 }}>
+                    <Search size={16} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "#6b7280" }} />
+                    <input
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Search services..."
+                      className="dashboard-search"
                       style={{
-                        textAlign: "left",
                         width: "100%",
-                        padding: "16px 16px 16px 18px",
-                        borderRadius: 16,
-                        border: selected ? "1px solid rgba(34,197,94,0.75)" : "1px solid rgba(255,255,255,0.06)",
-                        background: selected ? "rgba(16,185,129,0.08)" : "rgba(255,255,255,0.03)",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 12,
+                        padding: isCompactMobile ? "0.76rem 0.9rem 0.76rem 2.45rem" : "0.82rem 1rem 0.82rem 2.65rem",
+                        background: "#ffffff",
+                        border: "1px solid rgba(17,24,39,0.08)",
+                        borderRadius: 12,
+                        color: "#111111",
+                        outline: "none",
                       }}
-                    >
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 6 }}>
-                          <div style={{ minWidth: 0, flex: 1 }}>
-                            <div style={{ fontSize: "0.98rem", fontWeight: 700, marginBottom: 4, whiteSpace: "normal", lineHeight: 1.25 }}>{item.serviceName}</div>
-                            <div style={{ color: "rgba(255,255,255,0.65)", fontSize: "0.8rem" }}>{item.name} • {item.email}</div>
-                          </div>
-                          <span className="dashboard-pill" style={{ color: itemPill.color, background: itemPill.bg, border: `1px solid ${itemPill.color}33`, flexShrink: 0 }}>
-                            {itemStatus === "Completed" ? <CheckCircle size={14} /> : <span className="dot" />}
-                            {statusLabel}
-                          </span>
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                          <span style={{ color: "rgba(255,255,255,0.65)", fontSize: "0.86rem" }}>{formatInr(pricing.amount)}</span>
-                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                            <span style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "6px 12px", borderRadius: 999, fontSize: "0.78rem", fontWeight: 700, color: "#fbbf24", background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.15)" }}>
-                              <FileText size={14} />
-                              {item.documents?.length || 0} Docs
-                            </span>
-                            <button type="button" onClick={(e) => { e.stopPropagation(); handleDeleteService(item, e); }} title="Remove service" style={{ width: 28, height: 28, borderRadius: 999, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)", color: "rgba(255,255,255,0.55)", display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
-                              <X size={14} />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </motion.div>
-                  );
-                })
-              ) : (
-                <div style={{ padding: "28px 16px", textAlign: "center", color: "rgba(255,255,255,0.65)" }}>No requests in pipeline.</div>
-              )}
-            </div>
-          </PremiumCard>
-
-          <PremiumCard className="dashboard-details-panel" style={{ padding: 22 }}>
-            {lead ? (
-              <div className="dashboard-details-scroll" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 18, flexWrap: "wrap" }}>
-                  <div style={{ minWidth: 0 }}>
-                    <h2 style={{ fontSize: "1.45rem", fontWeight: 700, marginBottom: 8, color: "#ffffff" }}>{lead.serviceName}</h2>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 14, color: "rgba(255,255,255,0.65)", fontSize: "0.84rem" }}>
-                      <span>{lead.name}</span>
-                      <span>{lead.email}</span>
-                      <span>Order ID: #{String(lead._id || "").slice(-6).toUpperCase()}</span>
-                      <span>Fee <strong style={{ color: "#34d399", marginLeft: 8 }}>{formatInr(getServicePricing(lead?.serviceName).amount)}</strong></span>
-                    </div>
+                    />
+                    {searchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setSearchQuery("")}
+                        style={{
+                          position: "absolute",
+                          right: 12,
+                          top: "50%",
+                          transform: "translateY(-50%)",
+                          background: "none",
+                          border: "none",
+                          color: "rgba(0,0,0,0.4)",
+                          cursor: "pointer",
+                          padding: 4,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center"
+                        }}
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
                   </div>
-                  <span className="dashboard-pill" style={{ color: statusPill.color, background: statusPill.bg, border: `1px solid ${statusPill.color}33` }}>
-                    {leadStatus === "Completed" ? <CheckCircle size={14} /> : <span className="dot" />}
-                    {getDisplayStatus(leadStatus, lead)}
-                  </span>
                 </div>
 
-                <PremiumCard style={{ padding: 16, borderRadius: 18 }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1.35fr auto", gap: 14, alignItems: "center" }}>
-                    <div>
-                      <div style={{ color: "rgba(255,255,255,0.65)", fontSize: "0.82rem", marginBottom: 8 }}>Service Progress</div>
-                      <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-                        <span style={{ fontSize: "1.55rem", fontWeight: 800 }}>{uploadedDocumentCount} / {clientDocs.length || 0}</span>
-                        <span style={{ color: "rgba(255,255,255,0.65)", fontSize: "0.88rem" }}>uploaded</span>
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                      <div style={{ width: "100%", height: 10, background: "rgba(255,255,255,0.05)", borderRadius: 999, overflow: "hidden" }}>
-                        <div style={{ width: `${serviceProgressPercent}%`, height: "100%", borderRadius: 999, background: "linear-gradient(90deg, #22c55e, #14b8a6)" }} />
-                      </div>
-                      <div style={{ color: "rgba(255,255,255,0.72)", fontSize: "0.9rem", lineHeight: 1.5, minHeight: 22 }}>
-                        {serviceProgressMessage}
-                      </div>
-                    </div>
-                    <div style={{ fontSize: "0.9rem", fontWeight: 700, color: "#e5e7eb" }}>{Math.round(serviceProgressPercent)}%</div>
-                  </div>
-                </PremiumCard>
+                <div className="dashboard-sidebar-scroll" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {filteredLeads.length > 0 ? (
+                    filteredLeads.map((item, index) => {
+                      const selected = item._id === activeLead?._id;
+                      const pricing = getServicePricing(item?.serviceName);
+                      const itemHasFinalDocument = Array.isArray(item?.documents)
+                        && item.documents.some((doc) => {
+                          const docType = String(doc?.type || "").trim().toLowerCase();
+                          const docName = String(doc?.name || "").trim().toLowerCase();
+                          return docType === "final" || docName.startsWith("final");
+                        });
+                      const itemStatus = itemHasFinalDocument && !["rejected", "informationrequired"].includes(String(item?.status || "").trim().toLowerCase())
+                        ? "Completed"
+                        : getEffectiveLeadStatus(item);
+                      const statusLabel = getDisplayStatus(itemStatus, item);
+                      
+                      const itemPillColor = 
+                        itemStatus === "Completed"
+                          ? "#16a34a"
+                          : itemStatus === "DraftSent"
+                            ? "#16a34a"
+                            : itemStatus === "DraftRejected"
+                              ? "#ef4444"
+                            : itemStatus === "InformationRequired"
+                              ? "#ef4444"
+                              : itemStatus === "Rejected"
+                                ? "#ef4444"
+                                : "#16a34a";
 
-                {lead.adminToPrMessage && !isSystemMessage(lead.adminToPrMessage) && (
-                  <div style={{ padding: 16, borderRadius: 18, border: "1px solid rgba(16,185,129,0.22)", background: "rgba(16,185,129,0.05)" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 8, color: "#34d399" }}>
-                      <strong style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><MessageSquare size={16} /> Message from Admin</strong>
-                      <button type="button" onClick={(e) => handleClearAdminPrMessage(lead._id, e)} style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "inherit", cursor: "pointer" }}>×</button>
-                    </div>
-                    <div style={{ color: "#ffffff", fontSize: "0.95rem", fontStyle: "italic" }}>{lead.adminToPrMessage}</div>
-                  </div>
-                )}
-
-                {lead.userMessage && String(lead.userMessage || "").trim() && !isSystemMessage(lead.userMessage) && (
-                  <div style={{ padding: 16, borderRadius: 18, border: "1px solid rgba(239,68,68,0.22)", background: "rgba(239,68,68,0.05)" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 8, color: "#fb7185" }}>
-                      <strong style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><AlertCircle size={16} /> Message from User</strong>
-                      <button type="button" onClick={(e) => handleClearUserRejectedMessage(lead._id, e)} style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "inherit", cursor: "pointer" }}>×</button>
-                    </div>
-                    <div style={{ color: "#ffffff", fontSize: "0.95rem" }}>{lead.userMessage}</div>
-                  </div>
-                )}
-
-                <div style={{ display: "grid", gap: 18 }}>
-                  <PremiumCard style={{ padding: 0, overflow: "hidden" }}>
-                    <div 
-                      onClick={() => setDocumentsOpen((prev) => !prev)} 
-                      style={{ width: "100%", padding: "14px 16px", background: "transparent", color: "inherit", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, textAlign: "left", borderBottom: documentsOpen ? "1px solid rgba(255,255,255,0.06)" : "none", userSelect: "none" }}
-                    >
-                      <div>
-                        <h3 style={{ fontSize: "0.98rem", fontWeight: 600, marginBottom: 3, color: "#ffffff" }}>Client Files</h3>
-                        <p style={{ color: "rgba(255,255,255,0.65)", fontSize: "0.8rem" }}>Accept or reject uploaded client documents.</p>
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                        <span style={{ color: "rgba(255,255,255,0.65)", fontSize: "0.8rem" }}>{uploadedDocumentCount} / {clientDocs.length || 0} uploaded</span>
-                        <ChevronDown size={18} style={{ transform: documentsOpen ? "rotate(180deg)" : "rotate(0)", transition: "transform 0.3s ease", color: "rgba(255,255,255,0.4)" }} />
-                      </div>
-                    </div>
-
-                    <AnimatePresence>
-                      {documentsOpen && (
+                      return (
                         <motion.div
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: "auto", opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          style={{ overflow: "hidden" }}
-                        >
-                          <div style={{ overflowX: "auto" }}>
-                            <table className="dashboard-table">
-                              <thead>
-                                <tr>
-                                  <th style={{ width: "54%" }}>Document</th>
-                                  <th>Status</th>
-                                  <th style={{ width: 220, textAlign: "right" }}>Action</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                              {clientDocs.length > 0 ? (
-                                clientDocs.map((doc) => {
-                                  const docKey = `${lead._id}:${doc._id}`;
-                                  const isDraftDocument = String(doc?.type || "").trim().toLowerCase() === "draft";
-                                  const draftRejected = String(lead?.status || "").trim().toLowerCase() === "draftrejected";
-                                  const isReuploaded = !!doc.displayReuploaded;
-                                  const actualStatus = String(doc.status || "").trim().toLowerCase();
-                                  const isReuploadPending =
-                                    isReuploaded &&
-                                    !["accepted", "rejected"].includes(actualStatus);
-                                  const docStatus = serviceRejected
-                                    ? "Rejected"
-                                    : draftRejected && isDraftDocument
-                                      ? isReuploaded
-                                        ? "Draft Reuploaded"
-                                        : "Draft Rejected"
-                                      : isDraftDocument && isReuploaded
-                                        ? "Draft Reuploaded"
-                                        : isDraftDocument
-                                          ? "Draft Shared"
-                                      : ["accepted", "rejected"].includes(actualStatus)
-                                        ? doc.status
-                                        : isReuploadPending
-                                          ? "Under Review"
-                                          : String(doc.status || "Waiting Review");
-                                  const showReviewActions =
-                                    ["Open", "PendingReview", "InformationRequired", "Rejected"].includes(lead.status) &&
-                                    (!serviceRejected || docStatus !== "Rejected");
-                                  return (
-                                    <React.Fragment key={doc._id}>
-                                      <tr>
-                                        <td>
-                                          <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-                                              <FileText size={18} color={docStatus === "Accepted" ? "#22c55e" : docStatus === "Rejected" ? "#ef4444" : "#fbbf24"} style={{ flexShrink: 0 }} />
-                                              <div style={{ minWidth: 0 }}>
-                                                <div style={{ fontSize: "0.92rem", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.name}</div>
-                                                {isReuploaded && <div style={{ marginTop: 4, color: "#38bdf8", fontSize: "0.76rem", fontWeight: 700 }}>{isDraftDocument ? "Draft Reuploaded" : "Reuploaded"}</div>}
-                                              </div>
-                                            </div>
-                                          </td>
-                                          <td>
-                                            <span style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 12px", borderRadius: 999, color: docStatus === "Accepted" ? "#22c55e" : docStatus === "Rejected" ? "#ef4444" : "#fbbf24", background: docStatus === "Accepted" ? "rgba(34,197,94,0.12)" : docStatus === "Rejected" ? "rgba(239,68,68,0.12)" : "rgba(245,158,11,0.12)", border: `1px solid ${docStatus === "Accepted" ? "rgba(34,197,94,0.2)" : docStatus === "Rejected" ? "rgba(239,68,68,0.2)" : "rgba(245,158,11,0.2)"}`, fontSize: "0.8rem", fontWeight: 700, whiteSpace: "nowrap" }}>
-                                              <span className="dot" />
-                                              {docStatus}
-                                            </span>
-                                          </td>
-                                          <td style={{ textAlign: "right" }}>
-                                              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, alignItems: "center" }}>
-                                                <button 
-                                                  type="button" 
-                                              onClick={() => viewDocument(doc.publicId, doc.url || doc.secure_url || doc.uploadedUrl || doc.viewUrl, lead._id)}
-                                                  style={{ 
-                                                    height: 38,
-                                                    padding: "0 12px",
-                                                    borderRadius: 10, 
-                                                    border: "1px solid rgba(255,255,255,0.08)", 
-                                                    background: "rgba(255,255,255,0.03)", 
-                                                    color: "#e2e8f0", 
-                                                    display: "inline-flex", 
-                                                    alignItems: "center", 
-                                                    justifyContent: "center", 
-                                                    gap: 8,
-                                                    cursor: "pointer",
-                                                    fontSize: "0.75rem",
-                                                    fontWeight: 700
-                                                  }} 
-                                                  title="View"
-                                                  >
-                                                    VIEW <Eye size={14} />
-                                                  </button>
-                                                
-                                                {((serviceRejected || draftRejected) && !isReuploaded && actualStatus === "rejected") ? (
-                                                  <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#ef4444", fontSize: "0.75rem", fontWeight: 800, padding: "0 10px" }}>
-                                                    <X size={18} strokeWidth={3} /> REJECTED
-                                                  </div>
-                                                ) : String(docStatus || "").toLowerCase() === "accepted" ? (
-                                                  <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#10b981", fontSize: "0.75rem", fontWeight: 800, padding: "0 10px" }}>
-                                                    <CheckCircle size={18} /> ACCEPTED
-                                                  </div>
-                                                ) : String(docStatus || "").toLowerCase() === "rejected" ? (
-                                                  <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#ef4444", fontSize: "0.75rem", fontWeight: 800, padding: "0 10px" }}>
-                                                    <X size={18} strokeWidth={3} /> REJECTED
-                                                  </div>
-                                                ) : showReviewActions ? (
-                                                  <>
-                                                    <button 
-                                                      type="button" 
-                                                      onClick={() => handleDocumentStatus(lead._id, doc._id, "Accepted")} 
-                                                      style={{ 
-                                                        height: 38,
-                                                        padding: "0 14px", 
-                                                        borderRadius: 10, 
-                                                        border: "1px solid rgba(16,185,129,0.3)", 
-                                                        background: "rgba(16,185,129,0.05)", 
-                                                        color: "#10b981", 
-                                                        fontWeight: 800, 
-                                                        cursor: "pointer", 
-                                                        fontSize: "0.75rem" 
-                                                      }}
-                                                    >
-                                                      ACCEPT
-                                                    </button>
-                                                    
-                                                    <button 
-                                                      type="button" 
-                                                      onClick={() => openDocRejectForm(lead._id, doc)} 
-                                                      style={{ 
-                                                        height: 38,
-                                                        padding: "0 14px", 
-                                                        borderRadius: 10, 
-                                                        border: "1px solid rgba(239,68,68,0.35)", 
-                                                        background: "rgba(239,68,68,0.12)", 
-                                                        color: "#fff", 
-                                                        fontWeight: 800, 
-                                                        cursor: "pointer", 
-                                                        fontSize: "0.75rem" 
-                                                      }}
-                                                    >
-                                                      REJECT
-                                                    </button>
-                                                  </>
-                                                ) : null}
-                                              </div>
-                                          </td>
-                                        </tr>
-                                        {rejectingDocKey === docKey && (
-                                          <tr>
-                                            <td colSpan={3}>
-                                              <div style={{ marginTop: 8, padding: 14, borderRadius: 14, background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.2)" }}>
-                                                <div style={{ fontSize: "0.72rem", fontWeight: 800, color: "#ef4444", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Send Rejection Message to Client</div>
-                                                <textarea value={docRejectDrafts[docKey] || ""} onChange={(e) => setDocRejectDrafts((prev) => ({ ...prev, [docKey]: e.target.value }))} rows={3} placeholder={`Explain why ${doc.name} was rejected...`} style={{ width: "100%", resize: "vertical", borderRadius: 12, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(0,0,0,0.25)", color: "#fff", padding: "0.8rem", outline: "none", fontSize: "0.85rem" }} />
-                                                <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
-                                                  <button type="button" onClick={() => handleRejectDocumentWithMessage(lead._id, doc)} style={{ padding: "0.7rem 1rem", borderRadius: 10, border: "none", background: "#ef4444", color: "#fff", fontSize: "0.78rem", fontWeight: 800, cursor: "pointer" }}>Reject and Notify Client</button>
-                                                  <button type="button" onClick={() => setRejectingDocKey(null)} style={{ padding: "0.7rem 1rem", borderRadius: 10, border: "1px solid rgba(255,255,255,0.2)", background: "transparent", color: "var(--text-secondary)", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer" }}>Cancel</button>
-                                                </div>
-                                              </div>
-                                            </td>
-                                          </tr>
-                                        )}
-                                      </React.Fragment>
-                                    );
-                                  })
-                                ) : (
-                                  <tr>
-                                    <td colSpan={3} style={{ color: "rgba(255,255,255,0.65)", textAlign: "center", padding: "24px 20px" }}>No client documents uploaded yet.</td>
-                                  </tr>
-                                )}
-                              </tbody>
-                            </table>
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </PremiumCard>
-
-                    <PremiumCard style={{ padding: 16 }}>
-                      {draftFinalDocs.length > 0 && (
-                        <div style={{ marginBottom: 24, padding: 16, background: "rgba(16,185,129,0.02)", border: "1px solid rgba(16,185,129,0.1)", borderRadius: 16 }}>
-                          <div style={{ fontSize: "0.9rem", color: "#ffffff", display: "flex", alignItems: "center", gap: 8, marginBottom: 12, fontWeight: 600 }}>
-                            <FileText size={16} color="#22c55e" /> Draft & Final Files
-                          </div>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                            {draftFinalDocs.map((doc) => (
-                              (() => {
-                                const statusInfo = getDraftFinalStatusInfo(doc);
-
-                                return (
-                              <div key={doc._id} style={{ padding: "14px 16px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                                <div style={{ overflow: "hidden", flex: 1 }}>
-                                  <p style={{ fontSize: "0.92rem", fontWeight: 700, color: "#fff", textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap", margin: 0 }}>{doc.name}</p>
-                                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
-                                    <span style={{ fontSize: "0.7rem", fontWeight: 800, textTransform: "uppercase", color: doc.type === "Draft" ? "#8b5cf6" : "#10b981", background: doc.type === "Draft" ? "rgba(139,92,246,0.12)" : "rgba(16,185,129,0.12)", borderRadius: 999, padding: "3px 8px" }}>{doc.type}</span>
-                                    <span style={{ fontSize: "0.7rem", fontWeight: 800, textTransform: "uppercase", color: statusInfo.color }}>{statusInfo.label}</span>
-                                  </div>
-                                  <div style={{ marginTop: 8, fontSize: "0.76rem", color: "rgba(255,255,255,0.65)" }}>{statusInfo.note}</div>
-                                </div>
-                                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                                  <button 
-                                    type="button" 
-                                        onClick={() => viewDocument(doc.publicId, doc.url || doc.secure_url || doc.uploadedUrl || doc.viewUrl, lead._id)}
-                                    title="View Document" 
-                                    style={{ 
-                                      height: 38,
-                                      padding: "0 12px",
-                                      background: "rgba(255,255,255,0.04)", 
-                                      border: "1px solid rgba(255,255,255,0.08)", 
-                                      color: "var(--text-secondary)", 
-                                      cursor: "pointer", 
-                                      borderRadius: 10, 
-                                      display: "flex", 
-                                      alignItems: "center", 
-                                      justifyContent: "center", 
-                                      gap: 8, 
-                                      fontSize: "0.75rem", 
-                                      fontWeight: 700 
-                                    }}
-                                  >
-                                    <Eye size={16} /> VIEW
-                                  </button>
-                                  <div style={{ display: "flex", alignItems: "center", gap: 6, color: statusInfo.color, fontSize: "0.75rem", fontWeight: 800, padding: "0 10px" }}>
-                                    {statusInfo.label === "APPROVED" ? <CheckCircle size={18} /> : <Clock size={18} />}
-                                    {statusInfo.label}
-                                  </div>
-                                </div>
-                              </div>
-                                );
-                              })()
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
-                        <div>
-                          <div style={{ fontSize: "0.88rem", fontWeight: 600, marginBottom: 4 }}>Workflow Controls</div>
-                        <div style={{ color: "rgba(255,255,255,0.65)", fontSize: "0.8rem" }}>Accept the service only after every client document is approved, then manage drafts from one panel.</div>
-                      </div>
-                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                        {serviceAccepted ? (
-                          <div style={{ display: "flex", alignItems: "center", gap: 10, color: "#10b981", fontSize: "1rem", fontWeight: 800, padding: "8px 16px", background: "rgba(16,185,129,0.1)", borderRadius: 12, border: "1px solid rgba(16,185,129,0.2)" }}>
-                            <CheckCircle size={20} /> SERVICE ACCEPTED
-                          </div>
-                        ) : (lead.status === "Rejected" && !hasReuploadedDocs) ? (
-                          <div style={{ display: "flex", alignItems: "center", gap: 10, color: "#ef4444", fontSize: "1rem", fontWeight: 800, padding: "8px 16px", background: "rgba(239,68,68,0.1)", borderRadius: 12, border: "1px solid rgba(239,68,68,0.2)" }}>
-                            <X size={20} strokeWidth={3} /> SERVICE REJECTED
-                          </div>
-                        ) : (
-                          <>
-                          <button 
-                            type="button" 
-                            onClick={() => handleUpdateLeadStatus(lead._id, "PR_Accepted")} 
-                            disabled={!canAcceptService}
-                            style={{ 
-                              padding: "0.75rem 0.95rem", 
-                              borderRadius: 12, 
-                              border: "none", 
-                              background: canAcceptService ? "#10b981" : "rgba(255,255,255,0.05)", 
-                              color: canAcceptService ? "#fff" : "rgba(255,255,255,0.25)", 
-                              fontWeight: 800, 
-                              cursor: canAcceptService ? "pointer" : "not-allowed",
-                              opacity: canAcceptService ? 1 : 0.6
-                            }}
-                          >
-                            Accept Service
-                          </button>
-                            <button 
-                              type="button" 
-                              onClick={() => openRejectForm(lead._id)} 
-                              style={{ padding: "0.75rem 0.95rem", borderRadius: 12, border: "1px solid rgba(239,68,68,0.25)", background: "rgba(239,68,68,0.08)", color: "#fb7185", fontWeight: 800, cursor: "pointer" }}
-                            >
-                              Reject Service
-                            </button>
-                          </>
-                        )}
-                      </div>
-                      {!serviceAccepted && !draftWorkflowStarted && (
-                        <div style={{ marginTop: 12, padding: "8px 14px", borderRadius: 10, background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)", color: "#f59e0b", fontSize: "0.78rem", fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
-                          <AlertCircle size={14} /> Accept all client documents to enable service approval.
-                        </div>
-                      )}
-                    </div>
-
-                    {rejectingLeadId === lead._id && (
-                      <div style={{ marginTop: 12, padding: 14, borderRadius: 14, background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.2)" }}>
-                        <div style={{ fontSize: "0.72rem", fontWeight: 800, color: "#ef4444", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Send Rejection Message to User</div>
-                        <textarea value={rejectDrafts[lead._id] || ""} onChange={(e) => setRejectDrafts((prev) => ({ ...prev, [lead._id]: e.target.value }))} rows={3} placeholder="Explain clearly why this service is rejected..." style={{ width: "100%", resize: "vertical", borderRadius: 12, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(0,0,0,0.25)", color: "#fff", padding: "0.8rem", outline: "none", fontSize: "0.85rem" }} />
-                        <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
-                          <button type="button" onClick={() => handleRejectService(lead._id)} style={{ padding: "0.7rem 1rem", borderRadius: 10, border: "none", background: "#ef4444", color: "#fff", fontSize: "0.78rem", fontWeight: 800, cursor: "pointer" }}>Reject Service and Notify User</button>
-                          <button type="button" onClick={() => setRejectingLeadId(null)} style={{ padding: "0.7rem 1rem", borderRadius: 10, border: "1px solid rgba(255,255,255,0.2)", background: "transparent", color: "var(--text-secondary)", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer" }}>Cancel</button>
-                        </div>
-                      </div>
-                    )}
-
-                    {lead.adminToPrMessage && (
-                      <div style={{ marginTop: 14, padding: 14, background: "rgba(16,185,129,0.05)", border: "1px dashed rgba(16,185,129,0.3)", borderRadius: 16, color: "#34d399" }}>
-                        <div style={{ fontSize: "0.7rem", fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><MessageSquare size={14} /> Message from Admin</span>
-                          <button type="button" onClick={(e) => handleClearAdminPrMessage(lead._id, e)} style={{ border: "1px solid rgba(239,68,68,0.35)", background: "rgba(239,68,68,0.18)", color: "#fff", width: 24, height: 24, borderRadius: 999, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><X size={14} strokeWidth={2.8} /></button>
-                        </div>
-                        <p style={{ margin: 0, fontStyle: "italic" }}>{lead.adminToPrMessage}</p>
-                      </div>
-                    )}
-
-                    {leadStatus === "DraftRejected" && String(lead.userMessage || "").trim() && (
-                      <div style={{ marginTop: 14, padding: 14, borderRadius: 14, background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.22)", color: "#fecaca" }}>
-                        <div style={{ fontSize: "0.7rem", fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                          <span>Message from User</span>
-                          <button type="button" onClick={(e) => handleClearUserRejectedMessage(lead._id, e)} style={{ border: "1px solid rgba(239,68,68,0.35)", background: "rgba(239,68,68,0.18)", color: "#fff", width: 24, height: 24, borderRadius: 999, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><X size={14} strokeWidth={2.8} /></button>
-                        </div>
-                        <p style={{ margin: 0 }}>{lead.userMessage}</p>
-                      </div>
-                    )}
-
-                    {draftWorkflowStarted && (
-                      <div style={{ marginTop: 16, padding: 16, background: "rgba(16,185,129,0.02)", border: "1px solid rgba(16,185,129,0.1)", borderRadius: 16 }}>
-                        <div style={{ fontSize: "0.7rem", fontWeight: 900, color: "#10b981", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 12 }}>Draft & Completion Management</div>
-
-                        {(lead.status === "DraftAccepted" || lead.status === "UserAccepted" || lead.status === "Completed") ? (
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                            {isPRRole && (
-                              <>
-                                <input ref={finalInputRef} type="file" accept=".pdf" hidden onChange={(e) => handleDraftUpload("Final", e.target.files?.[0])} />
-                                <button type="button" onClick={() => finalInputRef.current?.click()} style={{ padding: "1rem", borderRadius: 14, background: "rgba(255,255,255,0.04)", color: "#fff", border: "1px solid rgba(255,255,255,0.1)", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, cursor: "pointer" }}>
-                                  {isFinalUploading ? (
-                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
-                                      <Loader2 size={18} className="animate-spin" /> UPLOADING...
-                                    </span>
-                                  ) : (
-                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
-                                      <Upload size={18} /> UPLOAD FINAL
-                                    </span>
-                                  )}
-                                </button>
-                              </>
-                            )}
-                            <button type="button" disabled={!canMarkCompleted} onClick={() => handleUpdateLeadStatus(lead._id, "Completed")} style={{ padding: "1rem", borderRadius: 14, background: "#10b981", color: "#fff", border: "none", fontWeight: 800, cursor: canMarkCompleted ? "pointer" : "not-allowed", opacity: canMarkCompleted ? 1 : 0.3 }}>MARK COMPLETED</button>
-                          </div>
-                        ) : (
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                            <div>
-                              {isPRRole && (
-                                <>
-                                  <input ref={draftInputRef} type="file" accept=".pdf" hidden onChange={(e) => handleDraftUpload("Draft", e.target.files?.[0])} />
-                                  <button type="button" disabled={!canManageDraftForLead(lead)} onClick={() => draftInputRef.current?.click()} style={{ padding: "1rem", borderRadius: 14, background: canManageDraftForLead(lead) ? "rgba(67,97,238,0.1)" : "rgba(255,255,255,0.02)", color: canManageDraftForLead(lead) ? "#4361ee" : "rgba(255,255,255,0.2)", border: "1px solid rgba(67,97,238,0.2)", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, cursor: canManageDraftForLead(lead) ? "pointer" : "not-allowed" }}>
-                                    {isDraftUploading ? (
-                                      <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
-                                        <Loader2 size={18} className="animate-spin" /> UPLOADING...
-                                      </span>
-                                    ) : (
-                                      <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
-                                        <Upload size={18} /> UPLOAD DRAFT
-                                      </span>
-                                    )}
-                                  </button>
-                                </>
-                              )}
-                            </div>
-
-                            <button type="button" disabled={!canSendDraftNow} onClick={() => handleSendDraftToClient(lead._id)} style={{ padding: "1rem", borderRadius: 14, background: canSendDraftNow ? "#10b981" : "rgba(255,255,255,0.02)", color: canSendDraftNow ? "#fff" : "rgba(255,255,255,0.2)", border: "none", fontWeight: 800, cursor: canSendDraftNow ? "pointer" : "not-allowed" }}>SEND DRAFT TO CLIENT</button>
-                            {lead.status === "ExecutionFinished" && (
-                              <div style={{ gridColumn: "span 2", padding: 12, background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.2)", borderRadius: 12, fontSize: "0.8rem", color: "#10b981", fontWeight: 800, textAlign: "center" }}>Executor has finished work. Review and Send to Client.</div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {!draftWorkflowStarted && ["Open", "PendingReview", "InformationRequired", "PR_Accepted", "AssignedToExecutor"].includes(lead.status) && (
-                      <div style={{ marginTop: 16, padding: "1.2rem 1.4rem", background: "rgba(245, 158, 11, 0.05)", border: "1px solid rgba(245, 158, 11, 0.18)", borderRadius: 16, color: "#f59e0b", fontSize: "0.78rem", fontWeight: 700, textAlign: "center" }}>
-                        Draft controls will appear after the executor accepts this service.
-                      </div>
-                    )}
-
-                    <div style={{ marginTop: 16, padding: 16, background: "rgba(255,255,255,0.02)", borderRadius: 16, border: "1px solid rgba(255,255,255,0.05)" }}>
-                      <div style={{ fontSize: "0.65rem", fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 12 }}>Communicate</div>
-                      <div style={{ display: "grid", gridTemplateColumns: "120px 1fr auto", gap: 10 }}>
-                        <select 
-                          value={messageTarget}
-                          onChange={(e) => setMessageTarget(e.target.value)}
+                          key={item._id}
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.14, delay: Math.min(index * 0.02, 0.12) }}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => setSelectedLeadId?.(item._id)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setSelectedLeadId?.(item._id);
+                            }
+                          }}
+                          className={`dashboard-service-row ${selected ? "active" : ""}`}
                           style={{
-                            padding: "0.8rem",
-                            borderRadius: 12,
-                            background: "rgba(0,0,0,0.3)",
-                            color: "#fff",
-                            border: "1px solid rgba(255,255,255,0.1)",
-                            outline: "none",
-                            fontSize: "0.8rem",
-                            fontWeight: 700,
-                            cursor: "pointer"
+                            textAlign: "left",
+                            width: "100%",
+                            padding: isCompactMobile ? "14px 12px 14px 14px" : "16px 16px 16px 18px",
+                            borderRadius: 16,
+                            border: selected ? "1px solid rgba(34,197,94,0.45)" : "1px solid rgba(17,24,39,0.08)",
+                            background: selected ? "rgba(16,185,129,0.08)" : "#ffffff",
+                            cursor: "pointer",
+                            display: "flex",
+                            flexDirection: isCompactMobile ? "column" : "row",
+                            alignItems: isCompactMobile ? "stretch" : "flex-start",
+                            gap: isCompactMobile ? 10 : 12,
                           }}
                         >
-                          <option value="user" style={{ background: "#1a1b23" }}>User</option>
-                          <option value="admin" style={{ background: "#1a1b23" }}>Admin</option>
-                          <option value="executor" style={{ background: "#1a1b23" }}>Executor</option>
-                        </select>
-                        <input 
-                          placeholder={`Message to ${messageTarget}...`} 
-                          value={messageDrafts[lead._id] || ""} 
-                          onChange={(e) => setMessageDrafts({ ...messageDrafts, [lead._id]: e.target.value })} 
-                          style={{ flex: 1, padding: "1rem", borderRadius: 12, background: "rgba(0,0,0,0.2)", color: "#fff", border: "1px solid rgba(255,255,255,0.1)", outline: "none", fontSize: "0.85rem" }} 
-                        />
-                        <button 
-                          type="button" 
-                          onClick={() => handleSendMessage(lead._id, messageDrafts[lead._id], messageTarget)} 
-                          style={{ width: 50, height: 50, borderRadius: 12, background: "#4361ee", color: "#fff", border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
-                        >
-                          <Send size={18} />
-                        </button>
-                      </div>
-                    </div>
-
-                  </PremiumCard>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: "grid", gridTemplateColumns: isCompactMobile ? "1fr" : "minmax(0, 1fr) minmax(132px, 160px)", alignItems: "start", gap: isCompactMobile ? 8 : 12, marginBottom: 6 }}>
+                              <div style={{ minWidth: 0, alignSelf: "start" }}>
+                                <div style={{ fontSize: isCompactMobile ? "0.92rem" : "0.98rem", fontWeight: 700, marginBottom: 4, whiteSpace: "normal", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.2, color: "#111111", marginTop: 0, wordBreak: "break-word" }}>{item.serviceName}</div>
+                                <div style={{ color: "#6b7280", fontSize: "0.8rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.35, wordBreak: "normal" }}>
+                                  {item.name}
+                                </div>
+                                <div style={{ color: "#6b7280", fontSize: "0.8rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.35, wordBreak: "normal" }}>
+                                  {item.email}
+                                </div>
+                              </div>
+                              <span style={{ color: itemPillColor, padding: 0, flexShrink: 0, marginLeft: isCompactMobile ? 0 : "auto", alignSelf: "start", fontSize: "0.86rem", fontWeight: 700, display: "inline-flex", alignItems: "flex-start", justifyContent: isCompactMobile ? "flex-start" : "flex-end", gap: 6, textAlign: isCompactMobile ? "left" : "right", lineHeight: 1.25, whiteSpace: "normal", overflowWrap: "anywhere", wordBreak: "break-word", maxWidth: "100%" }}>
+                                {itemStatus === "Completed" && <CheckCircle size={11} style={{ flexShrink: 0 }} />}
+                                {statusLabel}
+                              </span>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: isCompactMobile ? "wrap" : "nowrap" }}>
+                              <span style={{ color: "#6b7280", fontSize: "0.86rem" }}>{formatInr(getLeadRevenueAmount(item))}</span>
+                              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: "0.75rem", fontWeight: 700, color: "#f59e0b" }}>
+                                  <FileText size={12} />
+                                  {item.documents?.length || 0} Docs
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteService(item, e);
+                                  }}
+                                  title="Remove service"
+                                  style={{
+                                    width: 28,
+                                    height: 28,
+                                    borderRadius: 999,
+                                    border: "1px solid rgba(17,24,39,0.08)",
+                                    background: "rgba(255,255,255,0.62)",
+                                    color: "#6b7280",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  <X size={14} />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </motion.div>
+                      );
+                    })
+                  ) : (
+                    <div style={{ padding: "28px 16px", textAlign: "center", color: "#6b7280" }}>No requests in pipeline.</div>
+                  )}
                 </div>
               </div>
-            ) : (
-              <div style={{ display: "grid", placeItems: "center", minHeight: 320, color: "rgba(255,255,255,0.65)" }}>No requests in pipeline.</div>
-            )}
-          </PremiumCard>
+
+              <div className="dashboard-panels-divider" aria-hidden="true" />
+
+              <div
+                ref={detailsPanelRef}
+                className="dashboard-details-panel"
+                style={{ padding: isCompactMobile ? "16px 12px" : "22px 24px", background: "#ffffff" }}
+              >
+                {lead ? (
+                  <div className="dashboard-details-scroll" style={{ display: "flex", flexDirection: "column", gap: isCompactMobile ? 14 : 18 }}>
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 18, flexWrap: "wrap", flexDirection: isCompactMobile ? "column" : "row" }}>
+                      <div style={{ minWidth: 0 }}>
+                        <h2 style={{ fontSize: isCompactMobile ? "1.2rem" : "1.45rem", fontWeight: 700, marginBottom: 8, color: "#111111" }}>{lead.serviceName}</h2>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: isCompactMobile ? 10 : 14, color: "#6b7280", fontSize: "0.84rem" }}>
+                          <span>{lead.name}</span>
+                          <span>{lead.email}</span>
+                          <span>Order ID: #{String(lead._id || "").slice(-6).toUpperCase()}</span>
+                          <span>Fee <strong style={{ color: "#16a34a", marginLeft: 8 }}>{formatInr(getLeadRevenueAmount(lead))}</strong></span>
+                        </div>
+                      </div>
+                      <span style={{ color: statusPill.color, fontWeight: 700, fontSize: "1rem", display: "flex", alignItems: "center", gap: 8 }}>
+                        {effectiveServiceStatus === "Completed" && <CheckCircle size={16} />}
+                        {getDisplayStatus(effectiveServiceStatus, lead)}
+                      </span>
+                    </div>
+
+                    <PremiumCard className="inner-card" style={{ padding: isCompactMobile ? 14 : 16, borderRadius: 18, background: "#ffffff", border: "1px solid rgba(17,24,39,0.14)", boxShadow: "none" }}>
+                      <div className="responsive-progress-grid" style={{ display: "grid", gridTemplateColumns: isCompactMobile ? "1fr" : "1fr 1.35fr auto", gap: 14, alignItems: "center" }}>
+                        <div>
+                          <div style={{ color: "#6b7280", fontSize: "0.82rem", marginBottom: 8, fontWeight: 500 }}>Service Progress</div>
+                          <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+                            <span style={{ fontSize: "1.55rem", fontWeight: 700 }}>
+                              <CountUp end={uploadedDocumentCount} /> / {clientDocs.length || 0}
+                            </span>
+                            <span style={{ color: "#6b7280", fontSize: "0.88rem" }}>uploaded</span>
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                          <div style={{ width: "100%", height: 10, background: "rgba(17,24,39,0.08)", borderRadius: 999, overflow: "hidden" }}>
+                            <div style={{ width: `${serviceProgressPercent}%`, height: "100%", borderRadius: 999, background: "linear-gradient(90deg, #22c55e, #14b8a6)" }} />
+                          </div>
+                          <div style={{ color: "#6b7280", fontSize: "0.84rem" }}>
+                            {serviceProgressMessage}
+                          </div>
+                        </div>
+                        <div style={{ fontSize: "0.9rem", fontWeight: 700, color: "#111111" }}>
+                          <CountUp end={Math.round(serviceProgressPercent)} />%
+                        </div>
+                      </div>
+                    </PremiumCard>
+
+                    {lead.adminToPrMessage && !isSystemMessage(lead.adminToPrMessage) && (
+                      <div className="inner-card" style={{ padding: 16, borderRadius: 18, border: "1px solid rgba(16,185,129,0.22)", background: "rgba(16,185,129,0.05)" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 8, color: "#16a34a" }}>
+                          <strong style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><MessageSquare size={16} /> Message from Admin</strong>
+                          <button type="button" onClick={(e) => handleClearAdminPrMessage(lead._id, e)} style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid rgba(0,0,0,0.1)", background: "transparent", color: "inherit", cursor: "pointer" }}>×</button>
+                        </div>
+                        <div style={{ color: "#111111", fontSize: "0.95rem", fontStyle: "italic" }}>{lead.adminToPrMessage}</div>
+                      </div>
+                    )}
+
+                    {lead.executorMessage && !isSystemMessage(lead.executorMessage) && (
+                      <div className="inner-card" style={{ padding: 16, borderRadius: 18, border: "1px solid rgba(59,130,246,0.22)", background: "rgba(59,130,246,0.05)" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 8, color: "#3b82f6" }}>
+                          <strong style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><MessageSquare size={16} /> Message from Executor</strong>
+                          <button type="button" onClick={(e) => handleClearExecutorMessage(lead._id, e)} style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid rgba(0,0,0,0.1)", background: "transparent", color: "inherit", cursor: "pointer" }}>×</button>
+                        </div>
+                        <div style={{ color: "#111111", fontSize: "0.95rem", fontStyle: "italic" }}>{lead.executorMessage}</div>
+                      </div>
+                    )}
+
+                    {lead.userMessage && String(lead.userMessage || "").trim() && !isSystemMessage(lead.userMessage) && (
+                      <div className="inner-card" style={{ padding: 16, borderRadius: 18, border: "1px solid rgba(239,68,68,0.22)", background: "rgba(239,68,68,0.05)" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 8, color: "#ef4444" }}>
+                          <strong style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><AlertCircle size={16} /> Message from User</strong>
+                          <button type="button" onClick={(e) => handleClearUserRejectedMessage(lead._id, e)} style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid rgba(0,0,0,0.1)", background: "transparent", color: "inherit", cursor: "pointer" }}>×</button>
+                        </div>
+                        <div style={{ color: "#111111", fontSize: "0.95rem" }}>{lead.userMessage}</div>
+                      </div>
+                    )}
+
+                    <div style={{ display: "grid", gap: isCompactMobile ? 14 : 18 }}>
+                      <PremiumCard className="inner-card" style={{ padding: 0, overflow: "hidden", background: "#ffffff", border: "1px solid rgba(17,24,39,0.14)", boxShadow: "none" }}>
+                        <button
+                          type="button"
+                          onClick={() => setDocumentsOpen((prev) => !prev)}
+                          aria-expanded={documentsOpen}
+                          style={{
+                            width: "100%",
+                            padding: isCompactMobile ? "12px 12px" : "14px 16px",
+                            border: "none",
+                            background: "transparent",
+                            color: "inherit",
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 12,
+                            textAlign: "left",
+                            borderBottom: "none",
+                            userSelect: "none"
+                          }}
+                        >
+                          <div>
+                            <h3 style={{ fontSize: isCompactMobile ? "0.92rem" : "0.98rem", fontWeight: 700, marginBottom: 3, color: "#111111" }}>Service Documents</h3>
+                            <p style={{ color: "#6b7280", fontSize: isCompactMobile ? "0.74rem" : "0.8rem", fontWeight: 400 }}>Review and manage all documents for this service.</p>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                            <span style={{ color: "#6b7280", fontSize: isCompactMobile ? "0.74rem" : "0.8rem", fontWeight: 500 }}>{uploadedDocumentCount} / {clientDocs.length || 0} uploaded</span>
+                            <ChevronDown size={18} style={{ transform: documentsOpen ? "rotate(180deg)" : "rotate(0)", transition: "transform 0.3s ease", color: "#6b7280" }} />
+                          </div>
+                        </button>
+
+                        <AnimatePresence>
+                          {documentsOpen && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: "auto", opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              style={{ overflow: "hidden" }}
+                            >
+                              <div className="dashboard-docs-scrollbar dashboard-documents-scroll" style={{ overflowX: "auto" }}>
+                                <table className="dashboard-table">
+                                  <thead>
+                                    <tr>
+                                      <th style={{ width: isCompactMobile ? "52%" : "54%" }}>Document</th>
+                                      <th>Status</th>
+                                      <th style={{ width: isCompactMobile ? 180 : 220, textAlign: "right" }}>Action</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                  {clientDocs.length > 0 ? (
+                                    clientDocs.map((doc) => {
+                                      const docKey = `${lead._id}:${doc._id}`;
+                                      const isDraftDocument = String(doc?.type || "").trim().toLowerCase() === "draft";
+                                      const draftRejected = String(lead?.status || "").trim().toLowerCase() === "draftrejected";
+                                      const draftAccepted = ["draftaccepted", "useraccepted", "completed"].includes(String(lead?.status || "").trim().toLowerCase());
+                                      const isReuploaded = !!doc.displayReuploaded;
+                                      const actualStatus = String(doc.status || "").trim().toLowerCase();
+                                      const draftShared = ["draftsent", "draftrejected", "draftaccepted", "useraccepted", "completed"].includes(String(lead?.status || "").trim().toLowerCase());
+                                      const isReuploadPending =
+                                        isReuploaded &&
+                                        !["accepted", "rejected"].includes(actualStatus);
+                                      const docStatus = serviceRejected
+                                        ? "Rejected"
+                                        : draftRejected && isDraftDocument
+                                          ? isReuploaded
+                                            ? "Draft Shared"
+                                            : "Draft Rejected"
+                                          : isDraftDocument && draftAccepted
+                                            ? "Accepted"
+                                          : isDraftDocument && isReuploaded
+                                            ? "Draft Shared"
+                                          : isDraftDocument
+                                            ? (draftShared ? "Draft Shared" : "Draft Uploaded")
+                                          : ["accepted", "rejected"].includes(actualStatus)
+                                            ? doc.status
+                                            : isReuploadPending
+                                              ? "Under Review"
+                                              : String(doc.status || "Waiting Review");
+                                        const docStatusLower = String(docStatus || "").trim().toLowerCase();
+                                        const isDraftSentState =
+                                          isDraftDocument &&
+                                          ["draft shared", "draft sent", "draft approved"].includes(docStatusLower);
+                                        const rejectedByExecutor =
+                                          String(lead?.status || "").trim().toLowerCase() === "rejected" &&
+                                          (
+                                            String(lead?.executorMessage || "").trim().length > 0 ||
+                                            String(lead?.prFeedback || "").toLowerCase().includes("executor") ||
+                                            String(lead?.prFeedback || "").toLowerCase().includes("assignment") ||
+                                            String(lead?.adminMessage || "").toLowerCase().includes("executor") ||
+                                            String(lead?.adminMessage || "").toLowerCase().includes("assignment")
+                                          );
+                                        const showReuploadRequired = rejectedByExecutor && docStatusLower.includes("rejected");
+                                      const showReviewActions =
+                                        ["Open", "PendingReview", "InformationRequired", "Rejected"].includes(lead.status) &&
+                                        !serviceRejected &&
+                                        actualStatus !== "accepted" &&
+                                        actualStatus !== "rejected";
+                                      
+                                      const isDone = docStatus === "Accepted";
+                                      const isDraftRejectedDoc = draftRejected && isDraftDocument;
+                                      const isError = docStatus === "Rejected" || isDraftRejectedDoc;
+
+                                      return (
+                                        <React.Fragment key={doc._id}>
+                                          <tr>
+                                            <td>
+                                              <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0, flexWrap: isCompactMobile ? "wrap" : "nowrap" }}>
+                                                  <div style={{ padding: 8, background: isDone ? "rgba(22,163,74,0.06)" : isError ? "rgba(239,68,68,0.06)" : "rgba(17,24,39,0.04)", borderRadius: 10 }}>
+                                                    <FileText size={18} color={isDone ? "#16a34a" : isError ? "#ef4444" : "#6b7280"} style={{ flexShrink: 0 }} />
+                                                  </div>
+                                                <div style={{ minWidth: 0 }}>
+                                                    <div style={{ fontSize: isCompactMobile ? "0.84rem" : "0.9rem", fontWeight: 700, color: "#111111", whiteSpace: isCompactMobile ? "normal" : "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.name}</div>
+                                                    {showReuploadRequired ? (
+                                                      <div style={{ marginTop: 2, color: "#ef4444", fontSize: "0.74rem", fontWeight: 700 }}>Reupload Required</div>
+                                                    ) : isReuploaded ? (
+                                                      <div style={{ marginTop: 2, color: "#16a34a", fontSize: "0.74rem", fontWeight: 700 }}>{isDraftDocument ? "Draft Reuploaded" : "Reuploaded"}</div>
+                                                      ) : null}
+                                                  </div>
+                                                </div>
+                                              </td>
+                                              <td>
+                                                <span style={{ display: "flex", alignItems: "center", color: isDone || isDraftSentState ? "#16a34a" : isError ? "#ef4444" : "#f59e0b", fontSize: isCompactMobile ? "0.74rem" : "0.84rem", fontWeight: 700 }}>
+                                                  {docStatus}
+                                                </span>
+                                              </td>
+                                              <td style={{ textAlign: "right" }}>
+                                                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, alignItems: "center" }}>
+                                                    <button 
+                                                      type="button" 
+                                                      onClick={() => viewDocument(doc.publicId, doc.url || doc.secure_url || doc.uploadedUrl || doc.viewUrl, lead._id)}
+                                                      style={{ 
+                                                        height: isCompactMobile ? 30 : 32,
+                                                        padding: isCompactMobile ? "0 10px" : "0 12px",
+                                                        borderRadius: 10, 
+                                                        border: "1px solid rgba(17,24,39,0.08)", 
+                                                        background: "#ffffff", 
+                                                        color: "#111111", 
+                                                        display: "inline-flex", 
+                                                        alignItems: "center", 
+                                                        justifyContent: "center", 
+                                                        gap: 6,
+                                                        cursor: "pointer",
+                                                        fontSize: isCompactMobile ? "0.68rem" : "0.72rem",
+                                                        fontWeight: 800,
+                                                        transition: "all 0.2s ease"
+                                                      }} 
+                                                      onMouseEnter={(e) => e.currentTarget.style.background = "#f9fafb"}
+                                                      onMouseLeave={(e) => e.currentTarget.style.background = "#ffffff"}
+                                                      title="View"
+                                                      >
+                                                        VIEW <Eye size={14} />
+                                                      </button>
+                                                    
+                                                    {showReviewActions && (
+                                                      <>
+                                                        <button 
+                                                          type="button" 
+                                                          onClick={() => handleDocumentStatus(lead._id, doc._id, "Accepted")} 
+                                                          style={{ 
+                                                            height: isCompactMobile ? 30 : 32,
+                                                            padding: isCompactMobile ? "0 10px" : "0 14px", 
+                                                            borderRadius: 10, 
+                                                            border: "none", 
+                                                            background: "#16a34a", 
+                                                            color: "#fff", 
+                                                            fontWeight: 800, 
+                                                            cursor: "pointer", 
+                                                            fontSize: isCompactMobile ? "0.68rem" : "0.72rem" 
+                                                          }}
+                                                        >
+                                                          ACCEPT
+                                                        </button>
+                                                        
+                                                        <button 
+                                                          type="button" 
+                                                          onClick={() => openDocRejectForm(lead._id, doc)} 
+                                                          style={{ 
+                                                            height: isCompactMobile ? 30 : 32,
+                                                            padding: isCompactMobile ? "0 10px" : "0 14px", 
+                                                            borderRadius: 10, 
+                                                            border: "1px solid rgba(239, 68, 68, 0.15)", 
+                                                            background: "rgba(239, 68, 68, 0.08)", 
+                                                            color: "#ef4444", 
+                                                            fontWeight: 800, 
+                                                            cursor: "pointer", 
+                                                            fontSize: isCompactMobile ? "0.68rem" : "0.72rem" 
+                                                          }}
+                                                        >
+                                                          REJECT
+                                                        </button>
+                                                      </>
+                                                    )}
+                                                  </div>
+                                              </td>
+                                            </tr>
+                                            {rejectingDocKey === docKey && (
+                                              <tr>
+                                                <td colSpan={3}>
+                                                  <div style={{ marginTop: 8, padding: 14, borderRadius: 14, background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.2)" }}>
+                                                    <div style={{ fontSize: "0.72rem", fontWeight: 800, color: "#ef4444", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Send Rejection Message to Client</div>
+                                                    <textarea value={docRejectDrafts[docKey] || ""} onChange={(e) => setDocRejectDrafts((prev) => ({ ...prev, [docKey]: e.target.value }))} rows={3} placeholder={`Explain why ${doc.name} was rejected...`} style={{ width: "100%", resize: "vertical", borderRadius: 12, border: "1px solid rgba(17,24,39,0.08)", background: "#ffffff", color: "#111111", padding: "0.8rem", outline: "none", fontSize: "0.85rem" }} />
+                                                    <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
+                                                      <button type="button" onClick={() => handleRejectDocumentWithMessage(lead._id, doc)} style={{ padding: "0.7rem 1rem", borderRadius: 10, border: "none", background: "#ef4444", color: "#fff", fontSize: "0.78rem", fontWeight: 800, cursor: "pointer" }}>Reject and Notify Client</button>
+                                                      <button type="button" onClick={() => setRejectingDocKey(null)} style={{ padding: "0.7rem 1rem", borderRadius: 10, border: "1px solid rgba(17,24,39,0.08)", background: "#ffffff", color: "#6b7280", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer" }}>Cancel</button>
+                                                    </div>
+                                                  </div>
+                                                </td>
+                                              </tr>
+                                            )}
+                                          </React.Fragment>
+                                        );
+                                      })
+                                    ) : (
+                                      <tr>
+                                        <td colSpan={3} style={{ color: "#6b7280", textAlign: "center", padding: "32px 20px", fontSize: "0.88rem" }}>No documents uploaded yet.</td>
+                                      </tr>
+                                    )}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </PremiumCard>
+
+                      {/* Draft & Final Fulfillment Control */}
+                      {draftWorkflowStarted && (
+                        <PremiumCard className="inner-card" style={{ padding: isCompactMobile ? "14px" : "18px 22px", background: "#ffffff", border: "1px solid rgba(17,24,39,0.12)", borderRadius: 20 }}>
+                          <div style={{ marginBottom: 18 }}>
+                            <h3 style={{ fontSize: "1.1rem", fontWeight: 800, marginBottom: 2, color: "#111111" }}>Draft & Final Documents</h3>
+                            <p style={{ color: "#6b7280", fontSize: "0.82rem" }}>Upload and manage draft/final return documents.</p>
+                          </div>
+                          <div className="fulfillment-upload-grid" style={{ display: "grid", gridTemplateColumns: isCompactMobile ? "1fr" : "1fr 1fr", gap: isCompactMobile ? 12 : 16, marginBottom: 20 }}>
+                            {/* Draft Section */}
+                            <div style={{ padding: isCompactMobile ? 12 : 16, borderRadius: 16, border: "1px solid rgba(17,24,39,0.08)", background: "rgba(17,24,39,0.02)" }}>
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                                <span style={{ fontSize: "0.85rem", fontWeight: 800, color: "#111111" }}>DRAFT RETURN</span>
+                              </div>
+                              <input type="file" ref={draftInputRef} style={{ display: "none" }} onChange={(e) => handleDraftUpload("Draft", e.target.files[0])} />
+                              <div className="draft-actions-flex" style={{ display: "flex", gap: 8, alignItems: "stretch", flexDirection: isCompactMobile ? "column" : "row" }}>
+                                <button
+                                  className="fulfillment-btn"
+                                  onClick={() => draftInputRef.current.click()}
+                                  disabled={isDraftUploading}
+                                  style={{ flex: isCompactMobile ? "none" : "1 1 0", width: isCompactMobile ? "100%" : "auto", minWidth: 0, padding: "12px 10px", borderRadius: 12, border: "1px dashed rgba(22, 163, 74, 0.4)", background: "white", color: "#16a34a", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, whiteSpace: "nowrap" }}
+                                >
+                                  {isDraftUploading ? <Loader2 className="animate-spin" size={18} /> : <Upload size={18} />}
+                                  {isDraftUploading ? "Uploading..." : "Upload Draft"}
+                                </button>
+                                <button
+                                  className="fulfillment-btn"
+                                  onClick={() => handleSendDraftToClient(lead._id)}
+                                  disabled={!canSendDraftNow}
+                                  style={{ flex: isCompactMobile ? "none" : "1 1 0", width: isCompactMobile ? "100%" : "auto", minWidth: 0, padding: "12px 10px", borderRadius: 12, border: canSendDraftNow ? "none" : "1px solid rgba(17,24,39,0.08)", background: canSendDraftNow ? "#16a34a" : "rgba(17,24,39,0.04)", color: canSendDraftNow ? "#fff" : "#9ca3af", fontWeight: 700, fontSize: "0.82rem", cursor: canSendDraftNow ? "pointer" : "not-allowed", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, whiteSpace: "nowrap" }}
+                                >
+                                  <Send size={18} />
+                                  Send Draft to Client
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Final Section */}
+                            {showFinalUploadSection ? (
+                            <div style={{ padding: isCompactMobile ? 12 : 16, borderRadius: 16, border: "1px solid rgba(17,24,39,0.08)", background: "rgba(17,24,39,0.02)" }}>
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                                <span style={{ fontSize: "0.85rem", fontWeight: 800, color: "#111111" }}>FINAL RETURN</span>
+                              </div>
+                              <input type="file" ref={finalInputRef} style={{ display: "none" }} onChange={(e) => handleDraftUpload("Final", e.target.files[0])} />
+                              <button
+                                className="fulfillment-btn"
+                                onClick={() => finalInputRef.current.click()}
+                                disabled={isFinalUploading}
+                                style={{ width: "100%", padding: "12px", borderRadius: 12, border: "1px dashed rgba(22, 163, 74, 0.4)", background: "white", color: "#16a34a", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}
+                              >
+                                {isFinalUploading ? <Loader2 className="animate-spin" size={18} /> : <Upload size={18} />}
+                                {isFinalUploading ? "Uploading..." : "Upload Final"}
+                              </button>
+                            </div>
+                            ) : (
+                              <div style={{ padding: isCompactMobile ? 12 : 16, borderRadius: 16, border: "1px dashed rgba(17,24,39,0.1)", background: "rgba(17,24,39,0.015)", display: "flex", alignItems: "center", justifyContent: "center", color: "#6b7280", fontSize: "0.8rem", fontWeight: 700, textAlign: "center" }}>
+                                Final upload becomes available after the user accepts the draft.
+                              </div>
+                            )}
+                          </div>
+                          
+                          {draftFinalDocs.length > 0 && (
+                            <div style={{ marginBottom: 20, padding: 16, borderRadius: 16, background: "rgba(17,24,39,0.02)", border: "1px solid rgba(17,24,39,0.05)" }}>
+                              <div style={{ fontSize: "0.75rem", fontWeight: 800, color: "#6b7280", textTransform: "uppercase", marginBottom: 12, letterSpacing: "0.05em" }}>Uploaded Draft and Return Documents</div>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                                {draftFinalDocs.map((doc) => (
+                                  <div key={doc._id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", borderRadius: 12, background: "#ffffff", border: "1px solid rgba(17,24,39,0.08)" }}>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                                      <FileText size={16} color="#6b7280" />
+                                      <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+                                        <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "#111111", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.name}</span>
+                                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+                                          <span style={{ fontSize: "0.65rem", fontWeight: 800, color: doc.type === "Draft" ? "#8b5cf6" : "#10b981" }}>{doc.type.toUpperCase()}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <button 
+                                      onClick={() => viewDocument(doc.publicId, doc.url || doc.secure_url || doc.uploadedUrl || doc.viewUrl, lead._id)}
+                                      style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(17,24,39,0.1)", background: "#ffffff", color: "#111111", fontSize: "0.7rem", fontWeight: 800, cursor: "pointer", transition: "all 0.2s ease" }}
+                                      onMouseEnter={(e) => e.currentTarget.style.background = "#f9fafb"}
+                                      onMouseLeave={(e) => e.currentTarget.style.background = "#ffffff"}
+                                    >
+                                      VIEW
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                           <div style={{ display: "flex", gap: 12, justifyContent: isCompactMobile ? "stretch" : "flex-end", width: "100%" }}>
+                            {canMarkCompleted && (
+                              <button onClick={() => handleUpdateLeadStatus(lead._id, "Completed")} style={{ width: isCompactMobile ? "100%" : "auto", padding: "12px 20px", borderRadius: 12, background: "#16a34a", color: "#fff", border: "none", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><CheckCircle size={16} /> Mark Completed</button>
+                            )}
+                          </div>
+                        </PremiumCard>
+                      )}
+
+                      {/* Service Management Control */}
+                      <PremiumCard style={{ padding: "18px 22px", background: "#ffffff", border: "1px solid rgba(17,24,39,0.12)", borderRadius: 20 }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                            <div>
+                              <h3 style={{ fontSize: "1.1rem", fontWeight: 800, marginBottom: 2, color: "#111111" }}>Service Status Control</h3>
+                              <p style={{ color: "#6b7280", fontSize: "0.82rem" }}>Accept or Reject the service request.</p>
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                            {/* Service Status Control - Accept/Reject */}
+                            {(leadStatus === "Open" || leadStatus === "PendingReview" || leadStatus === "InformationRequired") && (
+                              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                                <button 
+                                  onClick={() => handleUpdateLeadStatus(lead._id, "PR_Accepted")} 
+                                  disabled={!canAcceptService}
+                                  style={{ 
+                                    padding: "10px 20px", 
+                                    borderRadius: 12, 
+                                    background: canAcceptService ? "#16a34a" : "rgba(17,24,39,0.05)", 
+                                    color: canAcceptService ? "#ffffff" : "#9ca3af", 
+                                    border: canAcceptService ? "none" : "1px solid rgba(17,24,39,0.08)", 
+                                    fontWeight: 700, 
+                                    fontSize: "0.85rem", 
+                                    cursor: canAcceptService ? "pointer" : "not-allowed", 
+                                    display: "flex", 
+                                    alignItems: "center", 
+                                    gap: 8,
+                                    transition: "all 0.2s ease"
+                                  }}
+                                >
+                                  <CheckCircle size={16} /> Accept Service
+                                </button>
+
+                                {!serviceRejected && (
+                                  <button 
+                                    onClick={() => openRejectForm(lead._id)} 
+                                    style={{ 
+                                      padding: "10px 20px", 
+                                      borderRadius: 12, 
+                                      background: "rgba(239, 68, 68, 0.08)", 
+                                      color: "#ef4444", 
+                                      border: "1px solid rgba(239, 68, 68, 0.15)", 
+                                      fontWeight: 700, 
+                                      fontSize: "0.85rem", 
+                                      cursor: "pointer", 
+                                      display: "flex", 
+                                      alignItems: "center", 
+                                      gap: 8 
+                                    }}
+                                  >
+                                    <X size={16} /> Reject Service
+                                  </button>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Show Reject for other statuses except Rejected/Completed/PR_Accepted/Open/PendingReview/InformationRequired (which are handled above) */}
+                            {!["Open", "PendingReview", "InformationRequired", "PR_Accepted", "Completed", "Rejected"].includes(leadStatus) && !serviceRejected && !serviceAccepted && (
+                              <button onClick={() => openRejectForm(lead._id)} style={{ padding: "10px 20px", borderRadius: 12, background: "rgba(239, 68, 68, 0.08)", color: "#ef4444", border: "1px solid rgba(239, 68, 68, 0.15)", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}><X size={16} /> Reject Service</button>
+                            )}
+
+                            <div style={{ height: 24, width: 1, background: "rgba(17,24,39,0.08)", margin: "0 4px" }} />
+                            <span style={{ color: statusPill.color, fontWeight: 700, fontSize: "0.95rem", display: "flex", alignItems: "center", gap: 8 }}>
+                              {effectiveServiceStatus === "Completed" && <CheckCircle size={16} />}
+                              {getDisplayStatus(effectiveServiceStatus, lead)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {rejectingLeadId === lead._id && (
+                          <div style={{ marginTop: 20, padding: 20, borderRadius: 18, background: "rgba(239,68,68,0.05)", border: "1px solid rgba(239,68,68,0.15)" }}>
+                            <h4 style={{ fontSize: "0.85rem", fontWeight: 800, color: "#ef4444", marginBottom: 12, textTransform: "uppercase" }}>Confirm Service Rejection</h4>
+                            <textarea value={rejectDrafts[lead._id] || ""} onChange={(e) => setRejectDrafts((prev) => ({ ...prev, [lead._id]: e.target.value }))} rows={4} placeholder="Explain the reason for rejection to the user..." style={{ width: "100%", padding: 14, borderRadius: 14, border: "1px solid rgba(17,24,39,0.08)", background: "white", color: "#111111", fontSize: "0.9rem", outline: "none", marginBottom: 14 }} />
+                            <div style={{ display: "flex", gap: 10 }}>
+                              <button onClick={() => handleRejectService(lead._id)} style={{ padding: "10px 22px", borderRadius: 12, background: "#ef4444", color: "#fff", border: "none", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer" }}>Confirm Rejection</button>
+                              <button onClick={() => setRejectingLeadId(null)} style={{ padding: "10px 22px", borderRadius: 12, border: "1px solid rgba(17,24,39,0.08)", background: "white", color: "#6b7280", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer" }}>Cancel</button>
+                            </div>
+                          </div>
+                        )}
+                      </PremiumCard>
+
+                      {/* Communication Hub */}
+                      <PremiumCard style={{ padding: "18px 22px", background: "#ffffff", border: "1px solid rgba(17,24,39,0.12)", borderRadius: 20, overflow: "visible" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+                          <div>
+                            <h3 style={{ fontSize: "1.1rem", fontWeight: 800, marginBottom: 2, color: "#111111" }}>Communication with the Client, Team</h3>
+                            <p style={{ color: "#6b7280", fontSize: "0.82rem" }}>Direct coordination with clients and team members.</p>
+                          </div>
+                        </div>
+
+                        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                            <label style={{ fontSize: "0.75rem", fontWeight: 800, color: "#111111", textTransform: "uppercase", letterSpacing: "0.05em" }}>Message Recipient</label>
+                            <div 
+                              onClick={() => setIsMessageTargetOpen(!isMessageTargetOpen)}
+                              style={{ 
+                                width: "100%",
+                                background: "#f9fafb", 
+                                border: "1px solid rgba(17,24,39,0.08)", 
+                                color: "#111111", 
+                                padding: "0.72rem 1.2rem", 
+                                borderRadius: 16, 
+                                fontSize: "0.9rem", 
+                                fontWeight: 600, 
+                                cursor: "pointer", 
+                                display: "flex", 
+                                alignItems: "center", 
+                                justifyContent: "space-between", 
+                                position: "relative", 
+                                userSelect: "none" 
+                              }}
+                            >
+                              <span>{messageTarget === "user" ? "Client" : messageTarget === "admin" ? "Admin" : "Executor"}</span>
+                              <ChevronDown size={18} style={{ color: "#6b7280", transform: isMessageTargetOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
+                              
+                              {isMessageTargetOpen && (
+                                <div style={{ 
+                                  position: "absolute", 
+                                  top: "calc(100% + 6px)", 
+                                  left: 0, 
+                                  right: 0, 
+                                  background: "#ffffff", 
+                                  border: "1px solid rgba(17,24,39,0.08)", 
+                                  borderRadius: 16, 
+                                  boxShadow: "0 12px 30px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08)", 
+                                  zIndex: 100, 
+                                  overflow: "hidden" 
+                                }}>
+                                  {[
+                                    { value: "user", label: "Client" },
+                                    { value: "admin", label: "Admin" },
+                                    { value: "executor", label: "Executor" }
+                                  ].map((opt) => (
+                                    <div 
+                                      key={opt.value}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setMessageTarget(opt.value);
+                                        setIsMessageTargetOpen(false);
+                                      }}
+                                      style={{ 
+                                        padding: "0.72rem 1.2rem", 
+                                        cursor: "pointer", 
+                                        fontSize: "0.9rem", 
+                                        fontWeight: 600, 
+                                        color: messageTarget === opt.value ? "#16a34a" : "#111111", 
+                                        background: messageTarget === opt.value ? "rgba(22, 163, 74, 0.05)" : "transparent", 
+                                        transition: "all 0.15s ease", 
+                                        borderBottom: opt.value !== "executor" ? "1px solid rgba(17,24,39,0.04)" : "none" 
+                                      }}
+                                      onMouseEnter={(e) => { if (messageTarget !== opt.value) e.currentTarget.style.background = "#f9fafb"; }}
+                                      onMouseLeave={(e) => { if (messageTarget !== opt.value) e.currentTarget.style.background = "transparent"; }}
+                                    >
+                                      {opt.label}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                            <label style={{ fontSize: "0.75rem", fontWeight: 800, color: "#111111", textTransform: "uppercase", letterSpacing: "0.05em" }}>Message Content</label>
+                            <textarea 
+                              value={messageDrafts[lead._id] || ""} 
+                              onChange={(e) => setMessageDrafts((prev) => ({ ...prev, [lead._id]: e.target.value }))} 
+                              placeholder={`Send a message to the ${messageTarget === "user" ? "client" : messageTarget}...`}
+                              style={{ 
+                                minHeight: 140, 
+                                resize: "vertical", 
+                                padding: "1.2rem", 
+                                borderRadius: 16, 
+                                border: "1px solid rgba(17,24,39,0.08)", 
+                                background: "#f9fafb", 
+                                color: "#111111", 
+                                outline: "none", 
+                                fontSize: "0.95rem",
+                                lineHeight: 1.6,
+                                fontFamily: "inherit" 
+                              }} 
+                            />
+                          </div>
+
+                          <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+                            <button 
+                              type="button" 
+                              onClick={() => handleSendMessage(lead._id, messageDrafts[lead._id], messageTarget)}
+                              style={{ 
+                                padding: "0.9rem 2.2rem", 
+                                borderRadius: 14, 
+                                border: "none", 
+                                background: "#16a34a", 
+                                color: "#ffffff", 
+                                fontWeight: 800, 
+                                fontSize: "0.95rem",
+                                cursor: "pointer", 
+                                display: "inline-flex", 
+                                alignItems: "center", 
+                                gap: 10,
+                                boxShadow: "0 4px 15px rgba(22, 163, 74, 0.25)",
+                                transition: "all 0.2s ease"
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.transform = "translateY(-2px)";
+                                e.currentTarget.style.boxShadow = "0 6px 20px rgba(22, 163, 74, 0.35)";
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.transform = "none";
+                                e.currentTarget.style.boxShadow = "0 4px 15px rgba(22, 163, 74, 0.25)";
+                              }}
+                            >
+                              <Send size={18} /> Send Message
+                            </button>
+                          </div>
+                        </div>
+                      </PremiumCard>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 60, textAlign: "center" }}>
+                    <div style={{ width: 80, height: 80, borderRadius: "50%", background: "rgba(17,24,39,0.04)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 24 }}>
+                      <Search size={32} color="#9ca3af" />
+                    </div>
+                    <h3 style={{ fontSize: "1.25rem", fontWeight: 800, color: "#111111", marginBottom: 8 }}>No Service Selected</h3>
+                    <p style={{ color: "#6b7280", fontSize: "0.95rem", maxWidth: 320, lineHeight: 1.6 }}>Select a service request from the sidebar to manage documents and coordinate approvals.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
 
         <ConfirmationModal

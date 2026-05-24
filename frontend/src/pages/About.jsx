@@ -14,7 +14,7 @@ import {
   Twitter,
   Facebook,
   Send,
-  Globe,
+  ArrowRight,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 
@@ -23,9 +23,9 @@ const About = () => {
     name: "Fin2Line Consulting",
     tagline: "Your direct path to compliance",
     mission:
-      "To simplify compliance, finance, and business advisory for startups and growing enterprises across India, delivering expert-led, technology-driven solutions that accelerate growth.",
+      "To simplify compliance, finance and business advisory for startups and growing enterprises across India, delivering expert-led, technology-driven solutions that accelerate growth.",
     vision:
-      "To become India's most trusted partner for startup compliance, financial management, and business consulting.",
+      "To become India's most trusted partner for startup compliance, financial management and business consulting.",
   };
 
   const services = [
@@ -44,612 +44,537 @@ const About = () => {
     { label: "Satisfaction", value: "99%", icon: Target },
   ];
 
-  const cardStyle = {
-    background: "var(--about-card-bg)",
-    border: "1px solid var(--border)",
-    borderRadius: "20px",
-    position: "relative",
-    overflow: "hidden",
-    padding: "1.5rem",
-  };
-
   const containerStyle = {
-    maxWidth: "1000px",
+    maxWidth: "1100px",
     margin: "0 auto",
     padding: "0 2rem",
   };
 
+  const sectionHeadingStyle = {
+    fontSize: "0.85rem",
+    fontWeight: 700,
+    color: "#10b981",
+    textTransform: "uppercase",
+    letterSpacing: "0.15em",
+    marginBottom: "1rem",
+    display: "block"
+  };
+
   return (
     <div
-      className="home-page-shell about-pad-top"
+      className="about-page-wrapper"
       style={{
-        background: "var(--bg)",
+        background: "#ffffff",
         minHeight: "100vh",
-        color: "var(--text)",
-        paddingTop: "clamp(140px, 16vw, 180px)",
-        paddingBottom: "5rem",
-        position: "relative",
+        color: "#1a1a1a",
+        paddingTop: "clamp(150px, 18vw, 200px)",
+        paddingBottom: "8rem",
+        fontFamily: "'Inter', sans-serif",
       }}
     >
-      <div className="home-page-backdrop" aria-hidden="true" />
-
       <style>{`
-                @media (max-width: 768px) {
-                    .about-grid-mission, .about-grid-services, .about-grid-contact {
-                        grid-template-columns: 1fr !important;
-                        gap: 1.5rem !important;
-                    }
-                    .about-grid-stats {
-                        grid-template-columns: 1fr 1fr !important;
-                    }
-                    .about-hero-title {
-                        font-size: 2rem !important;
-                    }
-                    .about-hero-subtitle {
-                        font-size: 1.5rem !important;
-                        display: block;
-                        margin-top: 5px;
-                    }
-                    .about-hero-text {
-                        font-size: 0.95rem !important;
-                        padding: 0 10px;
-                    }
-                    .about-container {
-                        padding: 0 1rem !important;
-                    }
-                    .about-pad-top {
-                        padding-top: clamp(100px, 12vw, 120px) !important;
-                    }
-                    .about-section-margin {
-                        margin-bottom: 2.5rem !important;
-                    }
-                    .about-story-card {
-                        padding: 1.5rem !important;
-                    }
-                    .about-story-card h2 {
-                        font-size: 1.5rem !important;
-                    }
-                    .about-story-card p {
-                        font-size: 0.95rem !important;
-                    }
-                    .about-contact-form {
-                        padding: 1.5rem !important;
-                    }
-                    .about-contact-form h2 {
-                        font-size: 1.25rem !important;
-                    }
-                    .about-form-name-email {
-                        grid-template-columns: 1fr !important;
-                    }
-                    .about-sidebar-card {
-                        padding: 1.5rem !important;
-                    }
-                    .about-social-icons {
-                        justify-content: center !important;
-                        flex-wrap: wrap !important;
-                    }
-                }
-                @media (max-width: 480px) {
-                    .about-grid-stats {
-                        grid-template-columns: 1fr 1fr !important;
-                        gap: 0.7rem !important;
-                    }
-                    .about-pad-top {
-                        padding-top: 90px !important;
-                    }
-                    .about-hero-title {
-                        font-size: 1.6rem !important;
-                    }
-                    .about-hero-subtitle {
-                        font-size: 1.2rem !important;
-                    }
-                    .about-story-card {
-                        padding: 1.2rem !important;
-                    }
-                    .about-contact-form {
-                        padding: 1.2rem !important;
-                    }
-                }
-            `}</style>
+        .about-page-wrapper {
+          --accent: #10b981;
+          --text-main: #000000;
+          --text-sub: #4b5563;
+          --border-light: #f3f4f6;
+        }
 
-      {/* ── Hero Section ── */}
-      <section
-        className="about-section-margin"
-        style={{ marginBottom: "4rem" }}
+        .about-container {
+          width: 100%;
+        }
+        
+        .hero-heading {
+          font-size: clamp(1.8rem, 4vw, 2.8rem);
+          font-weight: 800;
+          color: var(--text-main);
+          line-height: 1.3;
+          letter-spacing: -0.02em;
+          margin-bottom: 1.5rem;
+          text-align: center;
+        }
+
+        .hero-description {
+          font-size: 1.1rem;
+          font-weight: 400;
+          color: var(--text-sub);
+          line-height: 1.6;
+          max-width: 850px;
+          margin: 0 auto 5rem auto;
+          text-align: center;
+          padding: 0;
+        }
+
+        .content-section {
+          margin-bottom: 6rem;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+        }
+
+        .text-block {
+          font-size: 1.1rem;
+          line-height: 1.8;
+          color: var(--text-sub);
+        }
+
+        .text-block p {
+          margin-bottom: 1.5rem;
+        }
+
+        .stat-item {
+          text-align: center;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+        }
+
+        .stat-item h3 {
+          font-size: clamp(1.8rem, 3vw, 2.4rem);
+          font-weight: 800;
+          color: var(--text-main);
+          margin-bottom: 0.5rem;
+        }
+
+        .stat-item p {
+          font-size: 0.75rem;
+          font-weight: 700;
+          color: var(--text-sub);
+          text-transform: uppercase;
+          letter-spacing: 0.1em;
+        }
+
+        .services-list {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 1.5rem;
+          margin-top: 2rem;
+        }
+
+        .service-item {
+          display: flex;
+          align-items: center;
+          gap: 1rem;
+          font-weight: 500;
+        }
+
+        .contact-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 4rem;
+          margin-top: 3rem;
+        }
+
+        .contact-info-item {
+          display: flex;
+          gap: 1.5rem;
+          margin-bottom: 2.5rem;
+        }
+
+        .contact-icon {
+          width: 50px;
+          height: 50px;
+          border-radius: 12px;
+          background: #f9fafb;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: var(--accent);
+          flex-shrink: 0;
+        }
+
+        .contact-form-minimal input, 
+        .contact-form-minimal textarea {
+          width: 100%;
+          padding: 1rem 0;
+          border: none;
+          border-bottom: 1px solid #e5e7eb;
+          background: transparent;
+          font-size: 1rem;
+          margin-bottom: 2rem;
+          outline: none;
+          transition: border-color 0.3s;
+        }
+
+        .contact-form-minimal input:focus, 
+        .contact-form-minimal textarea:focus {
+          border-bottom-color: var(--accent);
+        }
+
+        .submit-btn-minimal {
+          background: var(--text-main);
+          color: white;
+          padding: 1.2rem 2.5rem;
+          border: none;
+          font-weight: 700;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 0.8rem;
+          transition: transform 0.3s;
+        }
+
+        .submit-btn-minimal:hover {
+          transform: translateX(5px);
+        }
+
+        @media (max-width: 768px) {
+          .about-page-wrapper {
+            padding-top: 7rem !important;
+            padding-bottom: 5rem !important;
+          }
+
+          .about-container {
+            padding: 0 1.25rem !important;
+          }
+
+          .hero-heading {
+            font-size: clamp(1.7rem, 6vw, 2.2rem);
+          }
+
+          .hero-description {
+            font-size: 1rem;
+            margin-bottom: 3rem;
+          }
+
+          .about-stats-grid {
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+          }
+
+          .about-mv-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .about-offer-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .about-contact-grid {
+            grid-template-columns: 1fr;
+            gap: 2rem;
+          }
+
+          .about-contact-card {
+            padding: 2rem !important;
+            border-radius: 20px !important;
+          }
+
+          .contact-info-item {
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            align-items: flex-start;
+          }
+
+          .contact-icon {
+            width: 42px;
+            height: 42px;
+            border-radius: 10px;
+          }
+
+          .about-socials {
+            gap: 0.75rem !important;
+            flex-wrap: wrap;
+          }
+
+          .about-socials a {
+            width: 40px !important;
+            height: 40px !important;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .about-page-wrapper {
+            padding-top: 8.5rem !important;
+            padding-bottom: 4rem !important;
+          }
+
+          .about-container {
+            padding: 0 1rem !important;
+          }
+
+          .content-section {
+            margin-bottom: 3.5rem;
+          }
+
+          .hero-heading {
+            font-size: clamp(1.55rem, 8vw, 2rem);
+            margin-bottom: 1rem;
+            text-align: center;
+          }
+
+          .hero-description {
+            font-size: 0.95rem;
+            margin-bottom: 2.5rem;
+            text-align: left;
+          }
+
+          .about-stats-grid {
+            grid-template-columns: 1fr;
+            gap: 0.75rem;
+          }
+
+          .stat-item h3 {
+            font-size: 1.7rem;
+          }
+
+          .stat-item p {
+            font-size: 0.7rem;
+          }
+
+          .about-mv-card,
+          .about-expertise-card,
+          .about-contact-card {
+            padding: 1.4rem !important;
+            border-radius: 18px !important;
+          }
+
+          .about-mv-grid,
+          .about-offer-grid,
+          .about-contact-grid {
+            grid-template-columns: 1fr !important;
+          }
+
+          .service-item {
+            gap: 0.8rem;
+            align-items: flex-start;
+          }
+
+          .service-item span {
+            font-size: 0.92rem;
+            line-height: 1.45;
+          }
+
+          .contact-info-item {
+            gap: 0.85rem;
+            margin-bottom: 1.2rem;
+          }
+
+          .contact-info-item a,
+          .contact-info-item p {
+            word-break: break-word;
+            font-size: 0.95rem !important;
+          }
+
+          .about-socials a {
+            width: 38px !important;
+            height: 38px !important;
+            border-radius: 10px !important;
+          }
+        }
+      `}</style>
+
+      <div className="about-container" style={containerStyle}>
+        {/* ── Hero Section ── */}
+        <motion.section 
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8 }}
+          className="content-section"
+        >
+          <h1 className="hero-heading">
+            About {founderDetails.name}
+          </h1>
+          <p className="hero-description">
+            We are a premier financial consulting firm dedicated to simplifying compliance 
+            and accelerating growth for modern Indian enterprises through technology driven 
+            advisory and expert led financial solutions.
+          </p>
+        </motion.section>
+      </div>
+
+      {/* ── Stats Row (Full Width) ── */}
+      <section 
+        style={{ 
+          background: "#f1f5f9", 
+          padding: "3rem 0", 
+          marginBottom: "6rem",
+          borderTop: "1px solid #e2e8f0",
+          borderBottom: "1px solid #e2e8f0"
+        }}
       >
-        <div className="about-container" style={containerStyle}>
-          <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            style={{ textAlign: "center" }}
-          >
-            <h1
-              className="about-hero-title"
-              style={{
-                fontSize: "2.8rem",
-                fontWeight: 700,
-                letterSpacing: "-0.03em",
-                color: "var(--text)",
-                marginBottom: "1rem",
-                lineHeight: 1.2,
-              }}
-            >
-              {founderDetails.name} <br />
-              <span
-                className="about-hero-subtitle"
-                style={{ color: "#10b981", fontSize: "2.2rem" }}
-              >
-                Your direct path to compliance
-              </span>
-            </h1>
-            <p
-              className="about-hero-text"
-              style={{
-                color: "var(--text-muted)",
-                fontSize: "1.05rem",
-                maxWidth: "600px",
-                margin: "0 auto",
-                lineHeight: 1.5,
-                fontWeight: 400,
-              }}
-            >
-              {founderDetails.mission.split(",")[0]}. Simplifying the
-              complexities of financial growth.
-            </p>
-          </motion.div>
+        <div 
+          className="about-stats-grid"
+          style={{ 
+            display: "grid", 
+            gridTemplateColumns: "repeat(4, 1fr)", 
+            maxWidth: "1200px", 
+            margin: "0 auto", 
+            padding: "0 2rem" 
+          }}
+        >
+          {stats.map((stat, idx) => (
+            <div key={idx} className="stat-item" style={{ textAlign: "center" }}>
+              <h3 style={{ fontSize: "2.2rem", fontWeight: 700, color: "var(--text-main)", marginBottom: "0.5rem" }}>{stat.value}</h3>
+              <p style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-sub)", textTransform: "uppercase", letterSpacing: "0.1em" }}>{stat.label}</p>
+            </div>
+          ))}
         </div>
       </section>
 
-      {/* ── Stats Section ── */}
-      <section
-        className="about-section-margin"
-        style={{ marginBottom: "4rem" }}
-      >
-        <div className="about-container" style={containerStyle}>
-          <div
-            className="about-grid-stats"
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-              gap: "1rem",
-            }}
-          >
-            {stats.map((stat, idx) => (
-              <div key={idx} style={{ ...cardStyle, textAlign: "center" }}>
-                <div
-                  style={{
-                    fontSize: "1.8rem",
-                    fontWeight: 700,
-                    color: "#10b981",
-                    marginBottom: "0.2rem",
-                  }}
-                >
-                  {stat.value}
-                </div>
-                <div
-                  style={{
-                    fontSize: "0.65rem",
-                    fontWeight: 700,
-                    color: "var(--card-content-muted)",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.1em",
-                  }}
-                >
-                  {stat.label}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── Mission & Vision ── */}
-      <section
-        className="about-section-margin"
-        style={{ marginBottom: "4rem" }}
-      >
-        <div className="about-container" style={containerStyle}>
-          <div
-            className="about-grid-mission"
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(350px, 1fr))",
-              gap: "1.5rem",
-            }}
-          >
-            <div style={cardStyle}>
-              <div
-                style={{
-                  position: "absolute",
-                  left: 0,
-                  top: 0,
-                  bottom: 0,
-                  width: "3px",
-                  background: "#10b981",
-                  opacity: 0.6,
-                }}
-              />
-              <h3
-                style={{
-                  fontSize: "0.7rem",
-                  fontWeight: 800,
-                  color: "#10b981",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.1em",
-                  marginBottom: "1rem",
-                }}
-              >
-                Our Mission
-              </h3>
-              <p
-                style={{
-                  fontSize: "0.95rem",
-                  color: "var(--card-content-text)",
-                  lineHeight: 1.7,
-                }}
-              >
+      <div className="about-container" style={containerStyle}>
+        {/* ── Mission & Vision ── */}
+        <section className="content-section" style={{ borderTop: "1px solid #f3f4f6", paddingTop: "5rem" }}>
+          <div className="about-mv-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2.5rem" }}>
+            <motion.div 
+              whileHover={{ y: -8, scale: 1.01 }}
+              transition={{ type: "spring", stiffness: 400, damping: 25 }}
+              className="about-mv-card"
+              style={{ 
+                background: "#f9fafb", 
+                padding: "3rem", 
+                borderRadius: "24px", 
+                border: "1px solid #e5e7eb",
+                boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05)"
+              }}
+            >
+              <span style={sectionHeadingStyle}>Our Mission</span>
+              <p style={{ fontSize: "1.25rem", fontWeight: 500, lineHeight: 1.6, color: "var(--text-main)" }}>
                 {founderDetails.mission}
               </p>
-            </div>
-
-            <div style={cardStyle}>
-              <div
-                style={{
-                  position: "absolute",
-                  left: 0,
-                  top: 0,
-                  bottom: 0,
-                  width: "3px",
-                  background: "#10b981",
-                  opacity: 0.6,
-                }}
-              />
-              <h3
-                style={{
-                  fontSize: "0.7rem",
-                  fontWeight: 800,
-                  color: "#10b981",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.1em",
-                  marginBottom: "1rem",
-                }}
-              >
-                Our Vision
-              </h3>
-              <p
-                style={{
-                  fontSize: "0.95rem",
-                  color: "var(--card-content-text)",
-                  lineHeight: 1.7,
-                }}
-              >
-                {founderDetails.vision}
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Offerings ── */}
-      <section
-        className="about-section-margin"
-        style={{ marginBottom: "4rem" }}
-      >
-        <div className="about-container" style={containerStyle}>
-          <div style={{ ...cardStyle, padding: "2rem" }}>
-            <h2
-              style={{
-                fontSize: "1.4rem",
-                fontWeight: 700,
-                color: "var(--text)",
-                marginBottom: "1.5rem",
-                letterSpacing: "-0.02em",
+            </motion.div>
+            
+            <motion.div 
+              whileHover={{ y: -8, scale: 1.01 }}
+              transition={{ type: "spring", stiffness: 400, damping: 25 }}
+              style={{ 
+                background: "#f9fafb", 
+                padding: "3rem", 
+                borderRadius: "24px", 
+                border: "1px solid #e5e7eb",
+                boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05)"
               }}
             >
-              Core Expertise
-            </h2>
-            <div
-              className="about-grid-services"
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-                gap: "0.8rem",
+              <span style={sectionHeadingStyle}>Our Vision</span>
+              <p style={{ fontSize: "1.25rem", fontWeight: 500, lineHeight: 1.6, color: "var(--text-main)" }}>
+                {founderDetails.vision}
+              </p>
+            </motion.div>
+          </div>
+        </section>
+
+        {/* ── Core Expertise ── */}
+        <section className="content-section">
+          <div style={{ width: "100%" }}>
+            <span style={{ ...sectionHeadingStyle, textAlign: "center", marginBottom: "3rem" }}>Expertise</span>
+            <div 
+              className="about-offer-grid"
+              style={{ 
+                display: "grid", 
+                gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", 
+                gap: "1.2rem" 
               }}
             >
               {services.map((service, idx) => (
-                <div
-                  key={idx}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.8rem",
-                    padding: "0.8rem",
-                    background: "var(--bg-card-alt)",
-                    borderRadius: "12px",
-                    border: "1px solid var(--border)",
+                <motion.div 
+                  key={idx} 
+                  whileHover={{ y: -5, scale: 1.02, backgroundColor: "#ffffff" }}
+                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                  style={{ 
+                    display: "flex", 
+                    alignItems: "center", 
+                    gap: "1.2rem", 
+                    padding: "1.5rem", 
+                    background: "#f9fafb", 
+                    borderRadius: "16px", 
+                    border: "1px solid #e5e7eb",
+                    cursor: "default"
                   }}
                 >
-                  <CheckCircle2
-                    size={16}
-                    color="#10b981"
-                    style={{ opacity: 0.6 }}
-                  />
-                  <span
-                    style={{
-                      fontSize: "0.9rem",
-                      color: "var(--card-content-text)",
-                    }}
-                  >
-                    {service}
-                  </span>
-                </div>
+                  <div style={{ width: "40px", height: "40px", borderRadius: "10px", background: "#ecfdf5", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <CheckCircle2 size={20} color="#10b981" />
+                  </div>
+                  <span style={{ fontWeight: 600, color: "var(--text-main)", fontSize: "0.95rem" }}>{service}</span>
+                </motion.div>
               ))}
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* ── Detailed About Fin2Line ── */}
-      <section
-        className="about-section-margin"
-        style={{ marginBottom: "6rem" }}
-      >
-        <div className="about-container" style={containerStyle}>
-          <div className="about-story-card" style={{ ...cardStyle, padding: "3rem", position: "relative" }}>
-            <div
-              style={{
-                position: "absolute",
-                top: 0,
-                right: 0,
-                width: "300px",
-                height: "300px",
-                background: "radial-gradient(circle, rgba(16, 185, 129, 0.05) 0%, transparent 70%)",
-                pointerEvents: "none",
-              }}
-            />
-            <h2
-              style={{
-                fontSize: "2rem",
-                fontWeight: 800,
-                color: "var(--text)",
-                marginBottom: "2rem",
-                letterSpacing: "-0.03em",
-              }}
-            >
-              The Fin2Line Story <span style={{ color: "#10b981" }}>.</span>
-            </h2>
-            <div
-              style={{
-                fontSize: "1.1rem",
-                lineHeight: 1.8,
-                color: "var(--text-secondary)",
-                display: "flex",
-                flexDirection: "column",
-                gap: "1.5rem",
-              }}
-            >
-              <p>
-                Founded on the principles of <strong>Clarity, Compliance, and Growth</strong>, Fin2Line Consulting emerged as a response to the growing complexities faced by Indian startups and MSMEs. We recognized that while entrepreneurship is thriving, the administrative and financial burdens of compliance often stifle innovation.
-              </p>
-              <p>
-                Our team consists of seasoned Chartered Accountants, Legal Experts, and Strategic Advisors who believe that compliance shouldn't be a hurdle, but a foundation for scaling. We've built Fin2Line to be more than just a consultancy; we are your extended financial and legal department.
-              </p>
-              <p>
-                By integrating cutting-edge financial technology with deep domain expertise, we provide a seamless dashboard-driven experience where you can track every filing, every document, and every deadline in real-time.
-              </p>
-            </div>
+        {/* ── Contact Section ── */}
+        <section id="contact-section" className="content-section" style={{ borderTop: "1px solid #f3f4f6", paddingTop: "6rem" }}>
+          <div style={{ textAlign: "center", marginBottom: "4rem" }}>
+             <span style={sectionHeadingStyle}>Get in Touch</span>
+             <h2 style={{ fontSize: "2.5rem", fontWeight: 800, color: "var(--text-main)", marginTop: "1rem" }}>Let's build something great together.</h2>
           </div>
-        </div>
-      </section>
-
-      {/* ── Contact & Connect Section ── */}
-      <section id="contact-section" style={{ paddingBottom: "4rem" }}>
-        <div className="about-container" style={containerStyle}>
-          <div
-            className="about-grid-contact"
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1.2fr 0.8fr",
-              gap: "2.5rem",
-              alignItems: "stretch",
-            }}
-          >
-            {/* Contact Form */}
-            <motion.div
-              initial={{ opacity: 0, x: -20 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true }}
-              style={{ ...cardStyle, padding: "2.5rem" }}
-              className="about-contact-form"
+          
+          <div style={{ display: "flex", justifyContent: "center" }}>
+            {/* Centered Card: Info & Socials */}
+            <motion.div 
+              whileHover={{ y: -8, boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1)" }}
+              transition={{ type: "spring", stiffness: 400, damping: 25 }}
+              className="about-contact-card"
+              style={{ 
+                background: "#f9fafb", 
+                padding: "3.5rem", 
+                borderRadius: "24px", 
+                border: "1px solid #e5e7eb",
+                color: "var(--text-main)",
+                maxWidth: "800px",
+                width: "100%"
+              }}
             >
-              <div style={{ marginBottom: "2rem" }}>
-                <h2 style={{ fontSize: "1.5rem", fontWeight: 800, marginBottom: "0.5rem" }}>
-                  Get in Touch
-                </h2>
-                <p style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>
-                  Have questions? Drop us a message and our team will get back to you within 24 hours.
-                </p>
+              <div style={{ marginBottom: "3rem" }}>
+                <h3 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "2rem", color: "var(--text-main)" }}>Contact Information</h3>
+                <div className="contact-info-item">
+                  <div className="contact-icon"><Mail size={20} /></div>
+                  <div>
+                    <p style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--text-main)", opacity: 0.6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Email Us</p>
+                    <a href="mailto:vitrharthaconsulting@gmail.com" style={{ fontSize: "1rem", fontWeight: 600, color: "var(--text-main)", textDecoration: "none" }}>vitrharthaconsulting@gmail.com</a>
+                  </div>
+                </div>
+
+                <div className="contact-info-item">
+                  <div className="contact-icon"><Phone size={20} /></div>
+                  <div>
+                    <p style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--text-main)", opacity: 0.6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Call Us</p>
+                    <a href="tel:+917795114365" style={{ fontSize: "1rem", fontWeight: 600, color: "var(--text-main)", textDecoration: "none" }}>+91 7795114365</a>
+                  </div>
+                </div>
+
+                <div className="contact-info-item">
+                  <div className="contact-icon"><MapPin size={20} /></div>
+                  <div>
+                    <p style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--text-main)", opacity: 0.6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Office</p>
+                    <p style={{ fontSize: "1rem", fontWeight: 600, color: "var(--text-main)" }}>Mangaluru, Karnataka, India</p>
+                  </div>
+                </div>
               </div>
 
-              <form 
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  toast.success("Message sent! We'll get back to you soon.");
-                  e.target.reset();
-                }}
-                style={{ display: "flex", flexDirection: "column", gap: "1.2rem" }}
-              >
-                <div className="about-form-name-email" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                    <label style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>Full Name</label>
-                    <input 
-                      type="text" 
-                      required 
-                      placeholder="John Doe"
-                      style={{ 
-                        background: "rgba(255,255,255,0.03)", 
-                        border: "1px solid var(--border)", 
-                        borderRadius: "10px", 
-                        padding: "0.8rem", 
-                        color: "var(--text)",
-                        outline: "none"
-                      }} 
-                    />
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                    <label style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>Email ID</label>
-                    <input 
-                      type="email" 
-                      required 
-                      placeholder="john@example.com"
-                      style={{ 
-                        background: "rgba(255,255,255,0.03)", 
-                        border: "1px solid var(--border)", 
-                        borderRadius: "10px", 
-                        padding: "0.8rem", 
-                        color: "var(--text)",
-                        outline: "none"
-                      }} 
-                    />
-                  </div>
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                  <label style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>Subject</label>
-                  <input 
-                    type="text" 
-                    required 
-                    placeholder="Inquiry about GST Registration"
-                    style={{ 
-                      background: "rgba(255,255,255,0.03)", 
-                      border: "1px solid var(--border)", 
-                      borderRadius: "10px", 
-                      padding: "0.8rem", 
-                      color: "var(--text)",
-                      outline: "none"
-                    }} 
-                  />
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                  <label style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>Your Message</label>
-                  <textarea 
-                    required 
-                    rows="4" 
-                    placeholder="Tell us how we can help you..."
-                    style={{ 
-                      background: "rgba(255,255,255,0.03)", 
-                      border: "1px solid var(--border)", 
-                      borderRadius: "10px", 
-                      padding: "0.8rem", 
-                      color: "var(--text)",
-                      outline: "none",
-                      resize: "none"
-                    }} 
-                  />
-                </div>
-                <button 
-                  type="submit" 
-                  style={{ 
-                    background: "#10b981", 
-                    color: "white", 
-                    border: "none", 
-                    borderRadius: "12px", 
-                    padding: "1rem", 
-                    fontWeight: 700, 
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "0.6rem",
-                    marginTop: "0.5rem",
-                    transition: "all 0.3s ease"
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.transform = "translateY(-2px)"}
-                  onMouseLeave={(e) => e.currentTarget.style.transform = "none"}
-                >
-                  Send Message <Send size={18} />
-                </button>
-              </form>
-            </motion.div>
-
-            {/* Contact Details & Socials */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true }}
-                className="about-sidebar-card"
-                style={{ ...cardStyle, padding: "2rem" }}
-              >
-                <h3 style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: "1.5rem" }}>Connect with Us</h3>
-                <div style={{ display: "flex", flexDirection: "column", gap: "1.2rem" }}>
+              <div>
+                <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "1.5rem", color: "var(--text-main)" }}>Connect with Us</h3>
+                <div className="about-socials" style={{ display: "flex", gap: "1rem" }}>
                   {[
-                    { icon: Mail, label: "Email", value: "vitrharthaconsulting@gmail.com", link: "mailto:vitrharthaconsulting@gmail.com" },
-                    { icon: Phone, label: "Phone", value: "+91 7795114365", link: "tel:+917795114365" },
-                    { icon: MapPin, label: "Office", value: "Mangaluru, India", link: "#" },
-                  ].map((item, i) => (
-                    <div key={i} style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-                      <div style={{ width: "36px", height: "36px", borderRadius: "10px", background: "rgba(16,185,129,0.1)", display: "flex", alignItems: "center", justifyCenter: "center", border: "1px solid rgba(16,185,129,0.2)" }}>
-                         <item.icon size={16} color="#10b981" style={{ margin: "auto" }} />
-                      </div>
-                      <div>
-                        <div style={{ fontSize: "0.65rem", fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase" }}>{item.label}</div>
-                        <a href={item.link} style={{ fontSize: "0.9rem", color: "var(--text)", textDecoration: "none", fontWeight: 600 }}>{item.value}</a>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: 0.1 }}
-                className="about-sidebar-card"
-                style={{ ...cardStyle, padding: "2rem" }}
-              >
-                <h3 style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: "1.5rem" }}>Follow Our Insights</h3>
-                <div className="about-social-icons" style={{ display: "flex", gap: "0.8rem" }}>
-                  {[
-                    { icon: Linkedin, color: "#0077b5", link: "https://linkedin.com/company/fin2line" },
-                    { icon: Twitter, color: "#1da1f2", link: "https://twitter.com/fin2line" },
-                    { icon: Instagram, color: "#e4405f", link: "https://instagram.com/fin2line" },
-                    { icon: Facebook, color: "#1877f2", link: "https://facebook.com/fin2line" },
+                    { icon: Linkedin, color: "#0077b5" },
+                    { icon: Twitter, color: "#1da1f2" },
+                    { icon: Instagram, color: "#e4405f" },
                   ].map((social, i) => (
-                    <a 
-                      key={i} 
-                      href={social.link} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
+                    <motion.a 
+                      key={i}
+                      href="#"
+                      whileHover={{ scale: 1.1, backgroundColor: social.color, color: "#fff" }}
                       style={{ 
-                        width: "42px", 
-                        height: "42px", 
+                        width: "45px", 
+                        height: "45px", 
                         borderRadius: "12px", 
-                        background: social.color + "15", 
-                        display: "flex", 
-                        alignItems: "center", 
+                        background: "#fff", 
+                        border: "1px solid #e5e7eb",
+                        display: "flex",
+                        alignItems: "center",
                         justifyContent: "center",
-                        border: "1px solid " + social.color + "30",
+                        color: social.color,
                         transition: "all 0.3s ease"
                       }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = social.color;
-                        e.currentTarget.firstChild.style.stroke = "white";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = social.color + "15";
-                        e.currentTarget.firstChild.style.stroke = social.color;
-                      }}
                     >
-                      <social.icon size={20} color={social.color} />
-                    </a>
+                      <social.icon size={20} />
+                    </motion.a>
                   ))}
                 </div>
-              </motion.div>
-            </div>
+              </div>
+            </motion.div>
           </div>
-        </div>
-      </section>
+        </section>
+      </div>
     </div>
   );
 };

@@ -1,4 +1,5 @@
 import User from "../models/User.js";
+import Session from "../models/Session.js";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import axios from "axios";
@@ -32,6 +33,27 @@ const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET || "fallback_secret", {
     expiresIn: "30d",
   });
+};
+
+const createSession = async (token, userId, req) => {
+  try {
+    const decoded = jwt.decode(token);
+    const expiresAt = decoded?.exp ? new Date(decoded.exp * 1000) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+    const sessionData = {
+      token,
+      user: userId,
+      userAgent: req?.headers?.['user-agent'] || '',
+      ip: req?.ip || req?.headers?.['x-forwarded-for'] || '',
+      expiresAt,
+    };
+
+    const session = new Session(sessionData);
+
+    return await session.save();
+  } catch (err) {
+    console.error('Failed to create session record:', err?.message || err);
+  }
 };
 
 const generateGoogleSignupToken = ({ email, name, googleId }) => {
@@ -146,12 +168,14 @@ export const registerUser = async (req, res) => {
           }
 
           const savedUser = await userExists.save();
+          const token = generateToken(savedUser._id);
+          await createSession(token, savedUser._id, req);
           return res.status(200).json({
             _id: savedUser._id,
             name: savedUser.name,
             email: savedUser.email,
             role: savedUser.role,
-            token: generateToken(savedUser._id),
+            token,
           });
         }
 
@@ -173,12 +197,14 @@ export const registerUser = async (req, res) => {
           : String(userExists.password) === String(password);
 
         if (isPasswordValid) {
+          const token = generateToken(userExists._id);
+          await createSession(token, userExists._id, req);
           return res.status(200).json({
             _id: userExists._id,
             name: userExists.name,
             email: userExists.email,
             role: userExists.role,
-            token: generateToken(userExists._id),
+            token,
           });
         }
       }
@@ -198,12 +224,14 @@ export const registerUser = async (req, res) => {
     });
 
     if (user) {
+      const token = generateToken(user._id);
+      await createSession(token, user._id, req);
       res.status(201).json({
         _id: user._id,
         name: user.name,
         email: user.email,
         role: user.role,
-        token: generateToken(user._id),
+        token,
       });
     } else {
       res.status(400).json({ message: "Invalid user data" });
@@ -224,12 +252,10 @@ export const loginUser = async (req, res) => {
     }
 
     const normalizedEmail = normalizeEmail(email);
-    
 
     const matchedUsers = await findUsersByEmail(normalizedEmail);
 
     if (!matchedUsers.length) {
-      console.warn("[Auth] User not found for:", normalizedEmail);
       return res.status(404).json({ message: "User not found" });
     }
 
@@ -244,10 +270,6 @@ export const loginUser = async (req, res) => {
     const passwordCandidates = candidateUsers.filter((candidate) => candidate.password);
 
     if (!passwordCandidates.length) {
-      console.warn(
-        "[Auth] User has no password set (likely Google-only account):",
-        normalizedEmail,
-      );
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
@@ -260,21 +282,17 @@ export const loginUser = async (req, res) => {
     }
 
     if (user) {
+      const token = generateToken(user._id);
+      await createSession(token, user._id, req);
       res.json({
         _id: user._id,
         name: user.name,
         email: user.email,
         role: user.role,
-        token: generateToken(user._id),
+        token,
       });
     } else {
       const userForLog = passwordCandidates[0];
-      console.warn(
-        "[Auth] Invalid password for:",
-        normalizedEmail,
-        "bcrypt?",
-        isBcryptHash(userForLog.password),
-      );
       res.status(401).json({ message: "Invalid email or password" });
     }
   } catch (error) {
@@ -440,12 +458,14 @@ export const googleLogin = async (req, res) => {
       });
     }
 
+    const token = generateToken(user._id);
+    await createSession(token, user._id, req);
     res.json({
       _id: user._id,
       name: user.name,
       email: user.email,
       role: user.role,
-      token: generateToken(user._id),
+      token,
     });
   } catch (error) {
     console.error("Ã¢ÂÅ’ Google Login Error:", error);
@@ -514,13 +534,19 @@ export const updateUserProfile = async (req, res) => {
 
       const updatedUser = await user.save();
 
+      let returnedToken;
+      if (req.body.password) {
+        returnedToken = generateToken(updatedUser._id);
+        await createSession(returnedToken, updatedUser._id, req);
+      }
+
       res.json({
         _id: updatedUser._id,
         name: updatedUser.name,
         email: updatedUser.email,
         role: updatedUser.role,
         profile: updatedUser.profile,
-        token: req.body.password ? generateToken(updatedUser._id) : undefined,
+        token: returnedToken,
       });
     } else {
       res.status(404).json({ message: "User not found" });
@@ -544,6 +570,16 @@ export const getAllUsers = async (req, res) => {
     res.json(users);
   } catch (error) {
     res.status(500).json({ message: error.message });
+  }
+};
+
+export const logoutUser = async (req, res) => {
+  try {
+    // Keep session records in Atlas for manual review/deletion.
+    return res.json({ success: true, message: 'Logged out' });
+  } catch (err) {
+    console.error('Logout error:', err);
+    return res.status(500).json({ success: false, message: 'Logout failed' });
   }
 };
 

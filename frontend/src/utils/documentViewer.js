@@ -1,6 +1,55 @@
 import axios from 'axios';
 import { toast } from 'react-hot-toast';
 
+const DEFAULT_DOCUMENT_LINK_LIFETIME_SECONDS = 8;
+
+const getDocumentLinkLifetimeSeconds = () => {
+  const rawValue = import.meta.env.VITE_DOCUMENT_LINK_LIFETIME_SECONDS;
+  const parsedValue = Number.parseInt(rawValue, 10);
+  return Number.isFinite(parsedValue) && parsedValue > 0
+    ? parsedValue
+    : DEFAULT_DOCUMENT_LINK_LIFETIME_SECONDS;
+};
+
+const DOCUMENT_LINK_LIFETIME_MS = getDocumentLinkLifetimeSeconds() * 1000;
+
+const getExpiredDocumentHtml = () => `
+  <!doctype html>
+  <html>
+    <head>
+      <title>Document link expired</title>
+      <style>
+        body {
+          margin: 0;
+          min-height: 100vh;
+          display: grid;
+          place-items: center;
+          background: #0f1115;
+          color: #e5e7eb;
+          font-family: Arial, sans-serif;
+        }
+        .card {
+          padding: 24px 28px;
+          border-radius: 16px;
+          background: rgba(255,255,255,0.04);
+          border: 1px solid rgba(255,255,255,0.08);
+          box-shadow: 0 18px 50px rgba(0,0,0,0.35);
+          text-align: center;
+          max-width: 420px;
+        }
+        .title { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+        .sub { font-size: 14px; opacity: 0.8; line-height: 1.5; }
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <div class="title">Document link expired</div>
+        <div class="sub">This secure document view has expired. Please click View again to generate a fresh link.</div>
+      </div>
+    </body>
+  </html>
+`;
+
 const extractCloudinaryPublicIdFromUrl = (url) => {
   const rawUrl = String(url || "").trim();
   if (!rawUrl) return "";
@@ -98,6 +147,7 @@ export const getSecureDocumentUrl = async (publicId, url, leadId) => {
 export const viewDocument = async (publicId, url, leadId) => {
   const loadingToast = toast.loading("Preparing document...");
   const previewTab = window.open("about:blank", "_blank");
+  let expiryTimer = null;
 
   if (previewTab) {
     previewTab.document.write(`
@@ -142,12 +192,20 @@ export const viewDocument = async (publicId, url, leadId) => {
     const viewUrl = await getSecureDocumentUrl(publicId, url, leadId);
     if (previewTab && !previewTab.closed) {
       previewTab.location.href = viewUrl;
+      expiryTimer = window.setTimeout(() => {
+        if (previewTab && !previewTab.closed) {
+          previewTab.location.href = `data:text/html;charset=utf-8,${encodeURIComponent(getExpiredDocumentHtml())}`;
+        }
+      }, DOCUMENT_LINK_LIFETIME_MS);
     } else {
       window.open(viewUrl, "_blank", "noopener,noreferrer");
     }
     toast.dismiss(loadingToast);
   } catch (error) {
     console.error("[DocumentViewer] Error fetching view token:", error);
+    if (expiryTimer) {
+      window.clearTimeout(expiryTimer);
+    }
     if (previewTab && !previewTab.closed) {
       previewTab.close();
     }

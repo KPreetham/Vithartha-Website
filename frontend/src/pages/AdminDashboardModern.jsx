@@ -25,21 +25,50 @@ const PremiumCard = ({ children, style = {}, className = "" }) => (
   <div
     className={className}
     style={{
-      background:
-        "linear-gradient(145deg, rgba(18, 20, 34, 0.92) 0%, rgba(11, 13, 24, 0.94) 100%)",
+      background: "linear-gradient(145deg, #ffffff 0%, #f9fafb 100%)",
       backdropFilter: "blur(16px)",
       borderRadius: 24,
-      border: "1px solid rgba(255,255,255,0.08)",
-      boxShadow: "0 18px 40px -24px rgba(0,0,0,0.7)",
+      border: "1px solid rgba(17,24,39,0.08)",
+      boxShadow: "0 18px 40px -28px rgba(17,24,39,0.18)",
       overflow: "hidden",
       position: "relative",
-      color: "#ffffff",
+      color: "#111111",
       ...style,
     }}
   >
     {children}
   </div>
 );
+
+const CountUp = ({ end, duration = 1200, formatter = (v) => v }) => {
+  const [count, setCount] = React.useState(0);
+
+  React.useEffect(() => {
+    let startTime = null;
+    const startValue = 0;
+    let animationFrame;
+
+    const animate = (timestamp) => {
+      if (!startTime) startTime = timestamp;
+      const progress = Math.min((timestamp - startTime) / duration, 1);
+      const easedProgress = 1 - Math.pow(1 - progress, 3); // easeOutCubic
+      const currentValue = Math.floor(easedProgress * (end - startValue) + startValue);
+      
+      setCount(currentValue);
+
+      if (progress < 1) {
+        animationFrame = requestAnimationFrame(animate);
+      } else {
+        setCount(end);
+      }
+    };
+
+    animationFrame = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animationFrame);
+  }, [end, duration]);
+
+  return <>{formatter(count)}</>;
+};
 
 const AdminDashboardModern = ({
   navigate,
@@ -102,12 +131,62 @@ const AdminDashboardModern = ({
   handleDeleteRejectionMessage,
 }) => {
   const [documentsOpen, setDocumentsOpen] = React.useState(false);
+  const [isMessageTargetOpen, setIsMessageTargetOpen] = React.useState(false);
   const [uploadType, setUploadType] = React.useState("Draft");
+  const [syncedSidebarHeight, setSyncedSidebarHeight] = React.useState(null);
+  const detailsPanelRef = React.useRef(null);
+  const [isCompactMobile, setIsCompactMobile] = React.useState(() =>
+    typeof window !== "undefined" ? window.innerWidth <= 480 : false,
+  );
   const uploadInputRef = React.useRef(null);
 
   React.useEffect(() => {
     setDocumentsOpen(false);
   }, [activeLead?._id]);
+
+  React.useEffect(() => {
+    const handleResize = () => setIsCompactMobile(window.innerWidth <= 480);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const syncSidebarHeight = () => {
+      if (window.innerWidth <= 1200) {
+        setSyncedSidebarHeight(null);
+        return;
+      }
+
+      const detailsNode = detailsPanelRef.current;
+      if (!detailsNode) {
+        setSyncedSidebarHeight(null);
+        return;
+      }
+
+      const nextHeight = Math.ceil(detailsNode.getBoundingClientRect().height);
+      setSyncedSidebarHeight((current) => (current === nextHeight ? current : nextHeight));
+    };
+
+    syncSidebarHeight();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", syncSidebarHeight);
+      return () => window.removeEventListener("resize", syncSidebarHeight);
+    }
+
+    const observer = new ResizeObserver(syncSidebarHeight);
+    if (detailsPanelRef.current) {
+      observer.observe(detailsPanelRef.current);
+    }
+    window.addEventListener("resize", syncSidebarHeight);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", syncSidebarHeight);
+    };
+  }, [activeLead?._id, documentsOpen]);
 
   const currentUser = typeof window !== "undefined" ? JSON.parse(localStorage.getItem("user") || "{}") : {};
   const isUserRole = normalizeRole(currentUser.role) === "user";
@@ -127,20 +206,43 @@ const AdminDashboardModern = ({
   const rejectedDocs = documents.filter((doc) => String(doc?.status || "").toLowerCase() === "rejected");
   const reviewSummary = activeLead ? getServiceReviewSummary(activeLead) : "";
   const serviceOutcomeLabel = activeLead ? getServiceOutcomeLabel(activeLead) : "";
+  const activeLeadStatus = String(activeLead?.status || "").trim();
+  const activeLeadStatusLower = activeLeadStatus.toLowerCase();
+  const hasFinalDocument = documents.some((doc) => {
+    const docType = String(doc?.type || "").trim().toLowerCase();
+    const docName = String(doc?.name || "").trim().toLowerCase();
+    return docType === "final" || docName.startsWith("final");
+  });
+  const effectiveServiceStatus = hasFinalDocument && !["rejected", "informationrequired"].includes(activeLeadStatusLower)
+    ? "Completed"
+    : activeLeadStatus;
+  const activeLeadForDisplay = activeLead ? { ...activeLead, status: effectiveServiceStatus } : null;
+  const isPendingPrReviewStatus = ["Open", "PendingReview"].includes(effectiveServiceStatus);
+  const displayStatusLabel = (lead) => {
+    const rawLabel = getDisplayStatus(lead);
+    return ["Open", "PendingReview"].includes(String(rawLabel || "")) ? "Pending PR Review" : rawLabel;
+  };
   const topRightStatusLabel = serviceOutcomeLabel.startsWith("Rejected")
     ? serviceOutcomeLabel.split(":")[0]
-    : serviceOutcomeLabel;
+    : effectiveServiceStatus === "Completed"
+      ? "Completed"
+      : isPendingPrReviewStatus
+        ? "Pending PR Review"
+        : serviceOutcomeLabel;
+  const pendingReviewTextColor = "#16a34a";
   const getServiceProgressPercent = (lead) => {
     if (!lead) return 0;
 
     if (isExecutorRejectedState(lead)) return 20;
     if (isDetailsMissingState(lead)) return 20;
 
-    const status = String(lead.status || "").trim();
+    const status = String(
+      lead === activeLead ? effectiveServiceStatus : lead.status || "",
+    ).trim();
     const progressByStatus = {
       Open: 10,
       PendingReview: 20,
-      InformationRequired: 18,
+      InformationRequired: 20,
       PR_Accepted: 32,
       AssignedToExecutor: 45,
       InProgress: 60,
@@ -157,28 +259,37 @@ const AdminDashboardModern = ({
   };
   const serviceProgressPercent = getServiceProgressPercent(activeLead);
   const uploadedDocumentCount = uploadedDocs.length;
+  const hasReuploadedDocs = documents.some(doc => {
+    return !!doc?.displayReuploaded || !!doc?.reuploaded;
+  });
   const serviceProgressMessage = !activeLead
     ? "No service selected."
-    : activeLead.status === "Completed"
-      ? "Fulfillment complete. All requirements have been met."
+    : effectiveServiceStatus === "Completed"
+      ? "Service completed."
       : serviceOutcomeLabel.startsWith("Rejected")
-        ? `${serviceOutcomeLabel}.`
-      : isDetailsMissingState(activeLead)
-        ? "Action required! Please review missing or rejected documents."
-        : {
+          ? `${serviceOutcomeLabel}.`
+        : activeLeadStatus === "InformationRequired" && hasReuploadedDocs && rejectedDocs.length === 0
+          ? "Documents have been reuploaded and are pending PR review."
+        : isDetailsMissingState(activeLead)
+          ? "Service rejected by PR. Please review missing or rejected documents."
+          : {
             Open: "Pending verification and initial review.",
             PendingReview: "Documents are being reviewed by PR.",
-            InformationRequired: "Additional information is required.",
+            InformationRequired: "Service rejected by PR. Action required.",
             PR_Accepted: "Documents verified. Awaiting executor assignment.",
             AssignedToExecutor: "Executor assigned. Service is starting.",
-            InProgress: "Executor is currently working on the service.",
+            InProgress: "Accepted by Executor.",
             ExecutionFinished: "Execution finished. Undergoing quality review.",
-            DraftSent: "Draft is awaiting user approval.",
+            DraftSent: "Waiting for User Draft Approval.",
             DraftAccepted: "Draft approved. Waiting for final completion.",
             UserAccepted: "Draft approved. Waiting for final completion.",
             DraftRejected: "Draft rejected. Waiting for revision.",
             Rejected: "Service has been rejected.",
+            Completed: "Service completed successfully.",
           }[String(activeLead.status || "").trim()] || "Service is in progress.";
+  const reviewStatusMessage = ["Open", "PendingReview"].includes(effectiveServiceStatus)
+    ? serviceProgressMessage
+    : "";
 
   const handlePickUpload = (nextType) => {
     setUploadType(nextType);
@@ -196,36 +307,143 @@ const AdminDashboardModern = ({
     setSelectedLeadId?.(leadId);
   };
 
+  const containerStyle = {
+    minHeight: "100vh",
+    background:
+      "radial-gradient(circle at top, rgba(248, 250, 252, 1) 0%, rgba(241, 245, 249, 1) 50%, rgba(226, 232, 240, 1) 100%)",
+    color: "#111111",
+    "--text": "#111111",
+    "--text-secondary": "#4b5563",
+    "--text-muted": "#6b7280",
+    "--card-content-text": "#111111",
+    "--card-content-muted": "#6b7280",
+    paddingTop: isCompactMobile ? "clamp(112px, 16vw, 126px)" : "clamp(130px, 14vw, 150px)",
+    paddingBottom: 64,
+    position: "relative",
+    overflow: "hidden",
+  };
+
   return (
-    <div className="home-page-shell admin-dashboard-shell" style={{ minHeight: "100vh", background: "var(--bg)", color: "#ffffff", paddingTop: "clamp(102px, 12vw, 124px)", paddingBottom: 64, position: "relative", overflow: "hidden" }}>
-      <div className="home-page-backdrop" aria-hidden="true" />
+    <div className="home-page-shell admin-dashboard-shell" style={containerStyle}>
+      <div className="home-page-backdrop" style={{ background: "#f8fafc" }} aria-hidden="true" />
       <style>{`
         .admin-dashboard-shell .dashboard-stat-grid {
           display: grid;
           grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 14px;
-          margin-bottom: 18px;
+          gap: 10px;
+          margin-bottom: 0;
+          align-items: stretch;
+        }
+        .admin-dashboard-shell .dashboard-shell {
+          width: 100%;
+          background: #f4f4f5;
+          border: 1px solid rgba(17,24,39,0.08);
+          border-radius: 0;
+          box-shadow: none;
+          overflow: hidden;
+        }
+        .admin-dashboard-shell .stat-card {
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          cursor: default;
+        }
+        .admin-dashboard-shell .stat-card:hover {
+          transform: translateY(-6px) scale(1.03);
+          box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04) !important;
+          border-color: rgba(17,24,39,0.18) !important;
+          z-index: 10;
+        }
+        .admin-dashboard-shell .dashboard-shell-inner {
+          padding: 10px 14px 10px;
         }
         .admin-dashboard-shell .dashboard-main-grid {
           display: grid;
-          grid-template-columns: 360px minmax(0, 1fr);
-          gap: 14px;
-          align-items: stretch;
+          grid-template-columns: 360px 1px minmax(0, 1fr);
+          gap: 0;
+          align-items: start;
+          background: #ffffff;
+          border: 1px solid rgba(17,24,39,0.12);
+          border-radius: 24px;
+          overflow: hidden;
+          box-shadow: 0 4px 20px -12px rgba(0, 0, 0, 0.08);
         }
-        .admin-dashboard-shell .dashboard-sidebar-panel,
+        .admin-dashboard-shell .dashboard-panels-divider {
+          background: rgba(17,24,39,0.08);
+          align-self: stretch;
+          border-radius: 0;
+        }
+        .admin-dashboard-shell .dashboard-service-row {
+          transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .admin-dashboard-shell .dashboard-service-row:hover {
+          transform: scale(1.015) translateY(-2px);
+          box-shadow: 0 6px 15px -4px rgba(0, 0, 0, 0.08);
+          border-color: rgba(34, 197, 94, 0.2) !important;
+          z-index: 2;
+        }
+        .admin-dashboard-shell .inner-card {
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .admin-dashboard-shell .inner-card:hover {
+          transform: translateY(-4px);
+          box-shadow: 0 12px 20px -10px rgba(0, 0, 0, 0.12) !important;
+          border-color: rgba(17,24,39,0.18) !important;
+        }
+        .admin-dashboard-shell .dashboard-panels-shell {
+          padding: 18px 0 0 0;
+          border-radius: 0;
+          margin-top: 0;
+          background: transparent;
+          border: none;
+          box-shadow: none;
+        }
+        .admin-dashboard-shell .dashboard-section-divider {
+          height: 1px;
+          width: 100%;
+          background: rgba(17,24,39,0.08);
+          margin: 6px 0 8px 0;
+        }
+        .admin-dashboard-shell .dashboard-sidebar-panel {
+          height: auto;
+          min-height: 0;
+          display: flex;
+          flex-direction: column;
+          align-self: start;
+        }
         .admin-dashboard-shell .dashboard-details-panel {
-          min-height: 560px;
           height: auto;
           display: flex;
           flex-direction: column;
+          align-self: start;
         }
-        .admin-dashboard-shell .dashboard-sidebar-scroll,
         .admin-dashboard-shell .dashboard-details-scroll {
+          flex: 0 0 auto;
+          min-height: auto;
+          overflow: visible;
+          padding-right: 0;
+          margin-right: 0;
+        }
+        .admin-dashboard-shell .dashboard-sidebar-scroll {
           flex: 1;
+          height: 0;
           min-height: 0;
           overflow-y: auto;
           padding-right: 4px;
           margin-right: -4px;
+          scrollbar-width: thin;
+          scrollbar-color: #b8b8b8 transparent;
+        }
+        .admin-dashboard-shell .dashboard-sidebar-scroll::-webkit-scrollbar {
+          width: 6px;
+        }
+        .admin-dashboard-shell .dashboard-sidebar-scroll::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .admin-dashboard-shell .dashboard-sidebar-scroll::-webkit-scrollbar-thumb {
+          background: #b8b8b8;
+          border-radius: 999px;
+        }
+        .admin-dashboard-shell .dashboard-sidebar-scroll::-webkit-scrollbar-thumb:hover {
+          background: #9ca3af;
         }
         .admin-dashboard-shell .dashboard-pill {
           display: inline-flex;
@@ -233,8 +451,9 @@ const AdminDashboardModern = ({
           gap: 8px;
           padding: 8px 12px;
           border-radius: 999px;
-          font-size: 0.8rem;
+          font-size: 0.86rem;
           font-weight: 700;
+          line-height: 1.1;
           white-space: nowrap;
         }
         .admin-dashboard-shell .dashboard-pill .dot {
@@ -251,20 +470,38 @@ const AdminDashboardModern = ({
         .admin-dashboard-shell .dashboard-table th,
         .admin-dashboard-shell .dashboard-table td {
           padding: 13px 16px;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+          border-bottom: 1px solid rgba(17, 24, 39, 0.08);
           text-align: left;
-          vertical-align: top;
         }
         .admin-dashboard-shell .dashboard-table th {
-          color: rgba(255, 255, 255, 0.55);
+          color: #6b7280;
           font-size: 0.8rem;
           font-weight: 700;
         }
         .admin-dashboard-shell .dashboard-table tr:last-child td {
           border-bottom: none;
         }
+        .admin-dashboard-shell .dashboard-dropzone {
+          border: 1px dashed rgba(34, 197, 94, 0.7);
+          background: rgba(255, 255, 255, 0.03);
+          transition: all 0.2s ease;
+        }
+        .admin-dashboard-shell .dashboard-dropzone:hover {
+          border-color: rgba(34, 197, 94, 0.95);
+          background: rgba(34, 197, 94, 0.05);
+        }
+        .admin-dashboard-shell .dashboard-search,
+        .admin-dashboard-shell .dashboard-input {
+          transition: all 0.2s ease;
+        }
+        .admin-dashboard-shell .dashboard-search:focus,
+        .admin-dashboard-shell .dashboard-input:focus {
+          border-color: #16a34a !important;
+          box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.1);
+          outline: none;
+        }
         .admin-dashboard-shell .dashboard-search::placeholder {
-          color: rgba(255, 255, 255, 0.35);
+          color: #6b7280;
         }
         @media (max-width: 1200px) {
           .admin-dashboard-shell .dashboard-stat-grid {
@@ -273,139 +510,197 @@ const AdminDashboardModern = ({
           .admin-dashboard-shell .dashboard-main-grid {
             grid-template-columns: 1fr;
           }
-          .admin-dashboard-shell .dashboard-sidebar-panel,
+          .admin-dashboard-shell .dashboard-panels-divider {
+            display: none;
+          }
+          .admin-dashboard-shell .dashboard-sidebar-panel {
+            height: auto;
+            min-height: 0;
+            max-height: 350px;
+          }
+          .admin-dashboard-shell .dashboard-sidebar-scroll {
+            height: auto;
+          }
           .admin-dashboard-shell .dashboard-details-panel {
             min-height: 0;
-            height: auto;
+            max-height: none;
           }
         }
         @media (max-width: 768px) {
           .admin-dashboard-shell .dashboard-stat-grid {
-            grid-template-columns: repeat(2, 1fr);
-            gap: 10px;
+            grid-template-columns: 1fr;
           }
           .admin-dashboard-shell .dashboard-table th,
           .admin-dashboard-shell .dashboard-table td {
-            padding: 10px 8px;
-            font-size: 0.85rem;
-          }
-          .admin-dashboard-shell .dashboard-table th:nth-child(2),
-          .admin-dashboard-shell .dashboard-table td:nth-child(2) {
-            display: none; /* Hide status on tablet/mobile to save space */
-          }
-        }
-        @media (max-width: 640px) {
-          .admin-dashboard-shell .dashboard-stat-grid {
-            grid-template-columns: 1fr;
-          }
-          .admin-dashboard-shell .dashboard-details-panel {
-            padding: 16px !important;
-          }
-          .admin-dashboard-shell .responsive-form-grid {
-            grid-template-columns: 1fr !important;
-          }
-          .admin-dashboard-shell .responsive-progress-grid {
-            grid-template-columns: 1fr !important;
-            text-align: center;
-          }
-          .admin-dashboard-shell .responsive-progress-grid div:last-child {
-            display: none; /* Hide % text if needed or center it */
+            padding: 12px 12px;
           }
         }
         @media (max-width: 480px) {
-          .admin-dashboard-shell {
-            padding-top: 90px !important;
+          .admin-dashboard-shell .dashboard-shell-inner {
+            padding: 8px 10px 10px;
+          }
+          .admin-dashboard-shell .dashboard-main-grid {
+            border-radius: 18px;
           }
           .admin-dashboard-shell .dashboard-sidebar-panel,
           .admin-dashboard-shell .dashboard-details-panel {
-            border-radius: 18px !important;
+            padding: 14px 12px;
+          }
+          .admin-dashboard-shell .dashboard-service-row {
+            padding: 14px 12px 14px 14px !important;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 10px;
+          }
+          .admin-dashboard-shell .dashboard-pill {
+            width: fit-content;
+            white-space: normal;
+          }
+          .admin-dashboard-shell .dashboard-table th,
+          .admin-dashboard-shell .dashboard-table td {
+            padding: 10px 10px;
+            font-size: 0.76rem;
+          }
+          .admin-dashboard-shell .dashboard-documents-scroll {
+            overflow-x: auto;
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
+            scrollbar-color: #b8b8b8 transparent;
+            padding-bottom: 4px;
+          }
+          .admin-dashboard-shell .dashboard-documents-scroll::-webkit-scrollbar {
+            height: 6px;
+          }
+          .admin-dashboard-shell .dashboard-documents-scroll::-webkit-scrollbar-track {
+            background: transparent;
+          }
+          .admin-dashboard-shell .dashboard-documents-scroll::-webkit-scrollbar-thumb {
+            background: #b8b8b8;
+            border-radius: 999px;
+          }
+          .admin-dashboard-shell .dashboard-documents-scroll::-webkit-scrollbar-thumb:hover {
+            background: #9ca3af;
+          }
+          .admin-dashboard-shell .dashboard-documents-scroll .dashboard-table {
+            min-width: 520px;
           }
         }
       `}</style>
 
-      <div style={{ maxWidth: 1360, margin: "0 auto", padding: "0 1.25rem 0.5rem", position: "relative", zIndex: 1 }}>
-        <div style={{ textAlign: "center", marginBottom: 34 }}>
-          <h1 style={{ fontSize: "clamp(2.2rem, 4.6vw, 4rem)", fontWeight: 500, letterSpacing: "-0.04em", lineHeight: 1.05, marginBottom: 10, color: "var(--text)" }}>
-            Admin Dashboard
+      <div
+        style={{
+          width: "100%",
+          maxWidth: "none",
+          margin: 0,
+          padding: "0 0 0.5rem",
+          position: "relative",
+          zIndex: 1,
+        }}
+      >
+        <div style={{ marginBottom: isCompactMobile ? 28 : 40, textAlign: "center" }}>
+          <h1 style={{ fontSize: isCompactMobile ? "1.65rem" : "2.2rem", fontWeight: 800, color: "#111111", letterSpacing: "-0.02em", marginBottom: isCompactMobile ? 10 : 12, lineHeight: 1.15 }}>
+            Admin <span style={{ color: "#16a34a" }}>Dashboard</span>
           </h1>
-          <p style={{ maxWidth: 760, margin: "0 auto", color: "var(--text-secondary)", fontSize: "1rem", lineHeight: 1.7 }}>
-            Manage service requests, review documents, coordinate approvals, and track client progress from one centralized control panel.
+          <p style={{ color: "#4b5563", fontSize: isCompactMobile ? "0.92rem" : "1.05rem", marginTop: 8, maxWidth: isCompactMobile ? 640 : 700, margin: "0 auto", lineHeight: 1.6, textAlign: "center" }}>
+            Manage service requests, review documents, coordinate approvals and track client progress from one centralized control panel.
           </p>
         </div>
 
-        <div className="dashboard-stat-grid">
-          {[
-            { label: "Pending", value: stats.pending, icon: Clock, color: "#f59e0b" },
-            { label: "In Progress", value: stats.inProgress, icon: Sparkles, color: "#4f46e5" },
-            { label: "Fulfilled", value: stats.completed, icon: CheckCircle, color: "#10b981" },
-            { label: "Revenue (₹)", value: stats.revenue, icon: TrendingUp, color: "#22c55e" },
-          ].map((card) => {
-            return (
-              <PremiumCard
-                key={card.label}
+        <div className="dashboard-shell">
+          <div className="dashboard-shell-inner">
+            <div className="dashboard-stat-grid">
+              {[
+                { label: "Services Pending", value: stats.pending, color: "#16a34a" },
+                { label: "Services In Progress", value: stats.inProgress, color: "#16a34a" },
+                { label: "Services Completed", value: stats.completed, color: "#16a34a" },
+                { label: "Revenue (₹)", value: stats.revenueValue || 0, color: "#16a34a", isMoney: true },
+              ].map((card) => {
+                return (
+                  <PremiumCard
+                    key={card.label}
+                    className="stat-card"
+                    style={{
+                      padding: 12,
+                      minHeight: 92,
+                      background: "#ffffff",
+                      border: "1px solid rgba(17,24,39,0.08)",
+                      boxShadow: "0 2px 4px rgba(0,0,0,0.02)",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      textAlign: "center",
+                      borderRadius: 16,
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: "0.78rem",
+                        fontWeight: 700,
+                        color: "#111111",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.08em",
+                        marginBottom: 4,
+                      }}
+                    >
+                      {card.label}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "1.44rem",
+                        fontWeight: 500,
+                        lineHeight: 1,
+                        color: card.color,
+                      }}
+                    >
+                      {card.isMoney ? (
+                        <CountUp end={card.value} formatter={(v) => formatInr(v)} />
+                      ) : (
+                        <CountUp end={card.value} />
+                      )}
+                    </div>
+                  </PremiumCard>
+                );
+              })}
+            </div>
+          </div>
+          <div className="dashboard-section-divider" />
+          <div className="dashboard-shell-inner" style={{ paddingTop: 0 }}>
+            <div className="dashboard-main-grid">
+              <div
+                className="dashboard-sidebar-panel"
                 style={{
-                  padding: 18,
-                  minHeight: 115,
-                  borderColor: `${card.color}22`,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  textAlign: "center",
+                  padding: isCompactMobile ? "16px 12px" : "20px 18px",
+                  background: "#ffffff",
+                  height: syncedSidebarHeight ? `${syncedSidebarHeight}px` : "auto",
+                  maxHeight: syncedSidebarHeight ? `${syncedSidebarHeight}px` : "none",
+                  overflow: syncedSidebarHeight ? "hidden" : "visible",
                 }}
               >
-                <div
-                  style={{
-                    fontSize: "0.88rem",
-                    fontWeight: 700,
-                    color: "#f5f5f5",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.1em",
-                    marginBottom: 10,
-                  }}
-                >
-                  {card.label}
+                <div style={{ marginBottom: 14 }}>
+                  <h2 style={{ fontSize: isCompactMobile ? "0.98rem" : "1.05rem", fontWeight: 700, marginBottom: 4, color: "#111111" }}>Active User Services</h2>
+                  <p style={{ color: "#6b7280", fontSize: isCompactMobile ? "0.77rem" : "0.82rem" }}>{filteredLeads.length} request{filteredLeads.length === 1 ? "" : "s"}</p>
                 </div>
-                <div
-                  style={{
-                    fontSize: "1.9rem",
-                    fontWeight: 800,
-                    lineHeight: 1,
-                    color: "#ffffff",
-                  }}
-                >
-                  {card.value}
-                </div>
-              </PremiumCard>
-            );
-          })}
-        </div>
 
-        <div className="dashboard-main-grid">
-          <PremiumCard className="dashboard-sidebar-panel" style={{ padding: 18 }}>
-            <div style={{ marginBottom: 14 }}>
-              <h2 style={{ fontSize: "1.05rem", fontWeight: 700, marginBottom: 4, color: "#ffffff" }}>Active User Services</h2>
-              <p style={{ color: "rgba(255,255,255,0.65)", fontSize: "0.82rem" }}>{filteredLeads.length} request{filteredLeads.length === 1 ? "" : "s"}</p>
-            </div>
-
-            <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
-              <div style={{ position: "relative", flex: 1 }}>
-                <Search size={16} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "rgba(255,255,255,0.45)" }} />
-                <input
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search services..."
-                  className="dashboard-search"
-                  style={{
-                    width: "100%",
-                    padding: "0.82rem 2.5rem 0.82rem 2.65rem",
-                    background: "rgba(255,255,255,0.03)",
-                    border: "1px solid rgba(255,255,255,0.06)",
-                    borderRadius: 12,
-                    color: "#ffffff",
-                    outline: "none",
-                  }}
-                />
+                <div style={{ display: "flex", gap: 10, marginBottom: isCompactMobile ? 12 : 14 }}>
+                  <div style={{ position: "relative", flex: 1 }}>
+                    <Search size={16} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "#6b7280" }} />
+                    <input
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Search services..."
+                      className="dashboard-search"
+                      style={{
+                        width: "100%",
+                        padding: isCompactMobile ? "0.76rem 0.9rem 0.76rem 2.45rem" : "0.82rem 1rem 0.82rem 2.65rem",
+                        background: "#ffffff",
+                        border: "1px solid rgba(17,24,39,0.08)",
+                        borderRadius: 12,
+                        color: "#111111",
+                        outline: "none",
+                      }}
+                    />
                 {searchQuery && (
                   <button
                     type="button"
@@ -438,88 +733,66 @@ const AdminDashboardModern = ({
                   const selected = lead._id === activeLead?._id;
                   const amount = formatInr(getLeadRevenueAmount(lead));
                   const outcomeLabel = getServiceOutcomeLabel(lead) || getDisplayStatus(lead);
-                  const statusLabel = outcomeLabel;
+                  const statusLabel = outcomeLabel.startsWith("Rejected")
+                    ? outcomeLabel.split(":")[0]
+                    : ["Open", "PendingReview"].includes(String(outcomeLabel || ""))
+                      ? "Pending PR Review"
+                      : outcomeLabel;
                   const summaryChip = getDocumentSummaryChip(lead);
                   const summaryTheme = getDocumentStatusSummary(lead);
                   const hasActionMessage = Boolean(lead.userMessage);
                   return (
-                    <motion.div
-                      key={lead._id}
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.14, delay: Math.min(index * 0.02, 0.12) }}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => handleSelectLead(lead._id)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          handleSelectLead(lead._id);
-                        }
-                      }}
-                      className={`dashboard-service-row ${selected ? "active" : ""}`}
-                      style={{
-                        textAlign: "left",
-                        width: "100%",
-                        padding: "16px 16px 16px 18px",
-                        borderRadius: 16,
-                        border: selected ? "1px solid rgba(34,197,94,0.75)" : "1px solid rgba(255,255,255,0.06)",
-                        background: selected ? "rgba(16,185,129,0.08)" : "rgba(255,255,255,0.03)",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 12,
-                      }}
-                    >
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 6 }}>
-                          <div style={{ minWidth: 0, flex: 1 }}>
-                            <div style={{ fontSize: "0.98rem", fontWeight: 700, marginBottom: 4, whiteSpace: "normal", overflow: "visible", lineHeight: 1.25 }}>{lead.serviceName}</div>
-                            <div style={{ color: "rgba(255,255,255,0.65)", fontSize: "0.8rem" }}>
-                              {lead.name} • {lead.email}
+                      <motion.div
+                        key={lead._id}
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.14, delay: Math.min(index * 0.02, 0.12) }}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => handleSelectLead(lead._id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            handleSelectLead(lead._id);
+                          }
+                        }}
+                        className={`dashboard-service-row ${selected ? "active" : ""}`}
+                        style={{
+                          textAlign: "left",
+                          width: "100%",
+                          padding: isCompactMobile ? "14px 12px 14px 14px" : "16px 16px 16px 18px",
+                          borderRadius: 16,
+                          border: selected ? "1px solid rgba(34,197,94,0.45)" : "1px solid rgba(17,24,39,0.08)",
+                          background: selected ? "rgba(16,185,129,0.08)" : "#ffffff",
+                          cursor: "pointer",
+                          display: "flex",
+                          flexDirection: isCompactMobile ? "column" : "row",
+                          alignItems: isCompactMobile ? "stretch" : "flex-start",
+                          gap: isCompactMobile ? 10 : 12,
+                        }}
+                      >
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: isCompactMobile ? 6 : 10, marginBottom: 6, flexDirection: isCompactMobile ? "column" : "row" }}>
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <div style={{ fontSize: isCompactMobile ? "0.92rem" : "0.98rem", fontWeight: 700, marginBottom: 4, whiteSpace: "normal", overflow: "visible", lineHeight: 1.25, color: "#111111" }}>{lead.serviceName}</div>
+                              <div style={{ color: "#6b7280", fontSize: "0.8rem" }}>
+                                {lead.name} {lead.email}
+                              </div>
+                            </div>
+                            <div style={{ display: "flex", flexDirection: "column", alignItems: isCompactMobile ? "flex-start" : "flex-end", gap: 4, flexShrink: 0, textAlign: isCompactMobile ? "left" : "right" }}>
+                              <span style={{ color: statusLabel === "Pending PR Review" ? pendingReviewTextColor : theme.color, padding: 0, fontSize: "0.86rem", fontWeight: 700, display: "flex", alignItems: "center", gap: 6, lineHeight: 1.2, textAlign: "right" }}>
+                                {getDisplayStatus(lead) === "Completed" && <CheckCircle size={14} />}
+                                {statusLabel}
+                              </span>
+                              {displayStatusLabel(lead) === "Pending PR Review" ? (
+                                <span style={{ color: "#6b7280", fontSize: "0.73rem", fontWeight: 500, lineHeight: 1.3, maxWidth: 190 }}>
+                                  Pending verification and initial review.
+                                </span>
+                              ) : null}
                             </div>
                           </div>
-                          <span className="dashboard-pill" style={{ color: theme.color, background: theme.bg, border: `1px solid ${theme.color}33`, flexShrink: 0 }}>
-                            {getDisplayStatus(lead) === "Completed" ? <CheckCircle size={14} /> : <span className="dot" />}
-                            {statusLabel}
-                          </span>
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                          <span style={{ color: "rgba(255,255,255,0.65)", fontSize: "0.86rem" }}>{amount}</span>
-                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                            <span
-                              style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: 8,
-                                padding: "6px 12px",
-                                borderRadius: 999,
-                                fontSize: "0.78rem",
-                                fontWeight: 700,
-                                color:
-                                  summaryTheme.rejected.length > 0
-                                    ? "#ef4444"
-                                    : summaryTheme.accepted.length > 0
-                                      ? "#10b981"
-                                      : "#fbbf24",
-                                background:
-                                  summaryTheme.rejected.length > 0
-                                    ? "rgba(239,68,68,0.08)"
-                                    : summaryTheme.accepted.length > 0
-                                      ? "rgba(16,185,129,0.08)"
-                                      : "rgba(245,158,11,0.08)",
-                                border: `1px solid ${
-                                  summaryTheme.rejected.length > 0
-                                    ? "rgba(239,68,68,0.15)"
-                                    : summaryTheme.accepted.length > 0
-                                      ? "rgba(16,185,129,0.15)"
-                                      : "rgba(245,158,11,0.15)"
-                                }`,
-                              }}
-                            >
-                              <FileText size={14} />
-                              {summaryChip}
-                            </span>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: isCompactMobile ? "wrap" : "nowrap" }}>
+                            <span style={{ color: "#6b7280", fontSize: "0.86rem" }}>{amount}</span>
                             <button
                               type="button"
                               onClick={(e) => {
@@ -531,9 +804,9 @@ const AdminDashboardModern = ({
                                 width: 28,
                                 height: 28,
                                 borderRadius: 999,
-                                border: "1px solid rgba(255,255,255,0.08)",
-                                background: "rgba(255,255,255,0.03)",
-                                color: "rgba(255,255,255,0.55)",
+                                border: "1px solid rgba(17,24,39,0.08)",
+                                background: "rgba(255,255,255,0.62)",
+                                color: "#6b7280",
                                 display: "inline-flex",
                                 alignItems: "center",
                                 justifyContent: "center",
@@ -544,173 +817,172 @@ const AdminDashboardModern = ({
                             </button>
                           </div>
                         </div>
-                        {hasActionMessage && (
-                          <div style={{ marginTop: 8, color: "#10b981", fontSize: "0.76rem", fontWeight: 700 }}>Client message present</div>
-                        )}
-                      </div>
-                    </motion.div>
-                  );
-                })
-              ) : (
-                <div style={{ padding: "28px 16px", textAlign: "center", color: "rgba(255,255,255,0.65)" }}>No requests in pipeline.</div>
-              )}
+                      </motion.div>
+                    );
+                  })
+                ) : (
+                  <div style={{ padding: "28px 16px", textAlign: "center", color: "#6b7280" }}>No requests in pipeline.</div>
+                )}
+              </div>
+
+              <div style={{ marginTop: "auto", paddingTop: 32 }}>
+                <button
+                  type="button"
+                  onClick={() => navigate("/admin")}
+                  style={{
+                    width: "100%",
+                    padding: "0.95rem 1rem",
+                    borderRadius: 14,
+                    border: "1px solid rgba(17,24,39,0.08)",
+                    background: "rgba(255,255,255,0.72)",
+                    color: "#111111",
+                    fontWeight: 600,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 10,
+                    cursor: "pointer",
+                  }}
+                >
+                  View All Requests
+                  <ChevronRight size={16} />
+                </button>
+              </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => navigate("/admin")}
-              style={{
-                marginTop: 18,
-                width: "100%",
-                padding: "0.95rem 1rem",
-                borderRadius: 14,
-                border: "1px solid rgba(255,255,255,0.06)",
-                background: "rgba(255,255,255,0.03)",
-                color: "#ffffff",
-                fontWeight: 600,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 10,
-                cursor: "pointer",
-              }}
+            <div className="dashboard-panels-divider" aria-hidden="true" />
+
+            <div
+              ref={detailsPanelRef}
+              className="dashboard-details-panel"
+              style={{ padding: isCompactMobile ? "16px 12px" : "22px 24px", background: "#ffffff" }}
             >
-              View All Requests
-              <ChevronRight size={16} />
-            </button>
-          </PremiumCard>
-
-          <PremiumCard className="dashboard-details-panel" style={{ padding: 22 }}>
-            {activeLead ? (
-              <div className="dashboard-details-scroll" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 18, flexWrap: "wrap" }}>
-                  <div style={{ minWidth: 0 }}>
-                    <h2 style={{ fontSize: "1.45rem", fontWeight: 700, marginBottom: 8, color: "#ffffff" }}>{activeLead.serviceName}</h2>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 14, color: "rgba(255,255,255,0.65)", fontSize: "0.84rem" }}>
-                      <span>{activeLead.name}</span>
-                      <span>{activeLead.email}</span>
-                      <span>Order ID: #{String(activeLead._id || "").slice(-6).toUpperCase()}</span>
-                      <span>Total Commitment <strong style={{ color: "#34d399", marginLeft: 8 }}>{formatInr(getLeadRevenueAmount(activeLead))}</strong></span>
-                    </div>
-                  </div>
-                  <span className="dashboard-pill" style={{ color: getStatusTheme(activeLead).color, background: getStatusTheme(activeLead).bg, border: `1px solid ${getStatusTheme(activeLead).color}33` }}>
-                    {activeLead.status === "Completed" ? <CheckCircle size={14} /> : <span className="dot" />}
-                    {topRightStatusLabel || getDisplayStatus(activeLead)}
-                  </span>
-                </div>
-
-                <PremiumCard style={{ padding: 16, borderRadius: 18 }}>
-                  <div className="responsive-progress-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1.35fr auto", gap: 14, alignItems: "center" }}>
-                    <div>
-                      <div style={{ color: "rgba(255,255,255,0.65)", fontSize: "0.82rem", marginBottom: 8 }}>Service Progress</div>
-                      <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-                        <span style={{ fontSize: "1.55rem", fontWeight: 800 }}>{uploadedDocumentCount} / {documents.length || 0}</span>
-                        <span style={{ color: "rgba(255,255,255,0.65)", fontSize: "0.88rem" }}>uploaded</span>
+              {activeLead ? (
+                <div className="dashboard-details-scroll" style={{ display: "flex", flexDirection: "column", gap: isCompactMobile ? 14 : 18 }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 18, flexWrap: "wrap", flexDirection: isCompactMobile ? "column" : "row" }}>
+                    <div style={{ minWidth: 0 }}>
+                      <h2 style={{ fontSize: isCompactMobile ? "1.2rem" : "1.45rem", fontWeight: 700, marginBottom: 8, color: "#111111" }}>{activeLead.serviceName}</h2>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: isCompactMobile ? 10 : 14, color: "#6b7280", fontSize: "0.84rem" }}>
+                        <span>{activeLead.name}</span>
+                        <span>{activeLead.email}</span>
+                        <span>Order ID: #{String(activeLead._id || "").slice(-6).toUpperCase()}</span>
+                        <span>Total Commitment <strong style={{ color: "#16a34a", marginLeft: 8 }}>{formatInr(getLeadRevenueAmount(activeLead))}</strong></span>
                       </div>
                     </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                      <div style={{ width: "100%", height: 10, background: "rgba(255,255,255,0.05)", borderRadius: 999, overflow: "hidden" }}>
-                        <div style={{ width: `${serviceProgressPercent}%`, height: "100%", borderRadius: 999, background: "linear-gradient(90deg, #22c55e, #14b8a6)" }} />
-                      </div>
-                      <div style={{ color: "rgba(255,255,255,0.65)", fontSize: "0.84rem" }}>
-                        {serviceProgressMessage}
-                      </div>
-                    </div>
-                    <div style={{ fontSize: "0.9rem", fontWeight: 700, color: "#e5e7eb" }}>{Math.round(serviceProgressPercent)}%</div>
+                    <span style={{ color: displayStatusLabel(activeLeadForDisplay) === "Pending PR Review" ? pendingReviewTextColor : getStatusTheme(activeLead).color, fontWeight: 700, fontSize: "1rem", display: "flex", alignItems: "center", gap: 8 }}>
+                      {effectiveServiceStatus === "Completed" && <CheckCircle size={16} />}
+                      {displayStatusLabel(activeLeadForDisplay) === "Pending PR Review"
+                        ? "Pending PR Review"
+                        : topRightStatusLabel || getDisplayStatus(activeLeadForDisplay)}
+                    </span>
                   </div>
-                </PremiumCard>
 
-                {reviewSummary &&
-                  dismissedReviewSummarySignatureByLead[activeLead._id] !== getReviewSummarySignature(activeLead) && (
-                  <div style={{ padding: 16, borderRadius: 18, border: "1px solid rgba(245,158,11,0.18)", background: "rgba(245,158,11,0.05)" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 8, color: "#f59e0b" }}>
-                      <strong style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Sparkles size={16} /> Service Review Summary</strong>
-                      <button type="button" onClick={(e) => handleDismissReviewSummary(activeLead, e)} style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "inherit", cursor: "pointer" }}>×</button>
-                    </div>
-                    <div style={{ color: "#ffffff", fontSize: "0.95rem", lineHeight: 1.6 }}>
-                      <div>{reviewSummary}</div>
-                    </div>
-                  </div>
-                )}
-
-                {isDetailsMissingState(activeLead) && dismissedDetailsMissingSignatureByLead[activeLead._id] !== getDetailsMissingSignature(activeLead) && (
-                  <div style={{ padding: 16, borderRadius: 18, border: "1px solid rgba(239,68,68,0.18)", background: "rgba(239,68,68,0.05)" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 8, color: "#fb7185" }}>
-                      <strong style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><AlertCircle size={16} /> Action Required</strong>
-                      <button type="button" onClick={(e) => handleDismissDetailsMissingMessage(activeLead, e)} style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "inherit", cursor: "pointer" }}>×</button>
-                    </div>
-                    <div style={{ color: "#ffffff", fontSize: "0.95rem" }}>{getDetailsMissingMessage(activeLead)}</div>
-                  </div>
-                )}
-
-                {activeLead.executorMessage && !isSystemMessage(activeLead.executorMessage) && (
-                  <div style={{ padding: 16, borderRadius: 18, border: "1px solid rgba(139,92,246,0.22)", background: "rgba(139,92,246,0.05)" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 8, color: "#a78bfa" }}>
-                      <strong style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><MessageSquare size={16} /> Message from Executor</strong>
-                      <button type="button" onClick={(e) => handleDeleteExecutorMessage(activeLead._id, e)} style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "inherit", cursor: "pointer" }}>×</button>
-                    </div>
-                    <div style={{ color: "#ffffff", fontSize: "0.95rem", fontStyle: "italic" }}>{activeLead.executorMessage}</div>
-                  </div>
-                )}
-
-                {activeLead.prMessage && !isSystemMessage(activeLead.prMessage) && (
-                  <div style={{ padding: 16, borderRadius: 18, border: "1px solid rgba(34,197,94,0.22)", background: "rgba(34,197,94,0.05)" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 8, color: "#34d399" }}>
-                      <strong style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><MessageSquare size={16} /> Message from PR</strong>
-                      <button type="button" onClick={(e) => handleDeletePrMessage(activeLead._id, e)} style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "inherit", cursor: "pointer" }}>×</button>
-                    </div>
-                    <div style={{ color: "#ffffff", fontSize: "0.95rem", fontStyle: "italic" }}>{activeLead.prMessage}</div>
-                  </div>
-                )}
-
-                {activeLead.userMessage && String(activeLead.userMessage || "").trim() && !isSystemMessage(activeLead.userMessage) && (
-                  <div style={{ padding: 16, borderRadius: 18, border: "1px solid rgba(239,68,68,0.22)", background: "rgba(239,68,68,0.05)" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 8, color: "#fb7185" }}>
-                      <strong style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><AlertCircle size={16} /> Message from User</strong>
-                      <button type="button" onClick={(e) => handleDeleteUserMessage(activeLead._id, e)} style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "inherit", cursor: "pointer" }}>×</button>
-                    </div>
-                    <div style={{ color: "#ffffff", fontSize: "0.95rem" }}>{activeLead.userMessage}</div>
-                  </div>
-                )}
-
-                <div style={{ display: "grid", gap: 18 }}>
-                  <PremiumCard style={{ padding: 0, overflow: "hidden" }}>
-                    <button
-                      type="button"
-                      onClick={() => setDocumentsOpen((prev) => !prev)}
-                      aria-expanded={documentsOpen}
-                      style={{
-                        width: "100%",
-                        padding: "14px 16px",
-                        border: "none",
-                        background: "transparent",
-                        color: "inherit",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 12,
-                        textAlign: "left",
-                        borderBottom: documentsOpen ? "1px solid rgba(255,255,255,0.06)" : "none",
-                      }}
-                    >
+                  <PremiumCard className="inner-card" style={{ padding: isCompactMobile ? 14 : 16, borderRadius: 18, background: "#ffffff", border: "1px solid rgba(17,24,39,0.14)", boxShadow: "none" }}>
+                    <div className="responsive-progress-grid" style={{ display: "grid", gridTemplateColumns: isCompactMobile ? "1fr" : "1fr 1.35fr auto", gap: 14, alignItems: "center" }}>
                       <div>
-                        <h3 style={{ fontSize: "0.98rem", fontWeight: 800, marginBottom: 3, color: "#ffffff" }}>User Documents</h3>
-                        <p style={{ color: "rgba(255,255,255,0.65)", fontSize: "0.8rem" }}>Review uploaded and pending files for this service.</p>
+                        <div style={{ color: "#6b7280", fontSize: "0.82rem", marginBottom: 8, fontWeight: 500 }}>Service Progress</div>
+                        <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+                          <span style={{ fontSize: "1.55rem", fontWeight: 700 }}>{uploadedDocumentCount} / {documents.length || 0}</span>
+                          <span style={{ color: "#6b7280", fontSize: "0.88rem" }}>uploaded</span>
+                        </div>
                       </div>
-                      <span style={{ color: "rgba(255,255,255,0.65)", fontSize: "0.8rem" }}>
-                        {uploadedDocumentCount} / {documents.length || 0} uploaded {documentsOpen ? "▴" : "▾"}
-                      </span>
-                    </button>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        <div style={{ width: "100%", height: 10, background: "rgba(17,24,39,0.08)", borderRadius: 999, overflow: "hidden" }}>
+                          <div style={{ width: `${serviceProgressPercent}%`, height: "100%", borderRadius: 999, background: "linear-gradient(90deg, #22c55e, #14b8a6)" }} />
+                        </div>
+                        <div style={{ color: "#6b7280", fontSize: "0.84rem" }}>
+                          {serviceProgressMessage}
+                        </div>
+                      </div>
+                      <div style={{ fontSize: "0.9rem", fontWeight: 700, color: "#111111" }}>{Math.round(serviceProgressPercent)}%</div>
+                    </div>
+                  </PremiumCard>
+
+                  {/* Auto-displayed message panels removed per request (executor/pr/user messages and review banners). */}
+                  {activeLead.prMessage && !isSystemMessage(activeLead.prMessage) && (
+                    <PremiumCard
+                      className="inner-card"
+                      style={{
+                        padding: 16,
+                        borderRadius: 18,
+                        background: "#ffffff",
+                        border: "1px solid rgba(59,130,246,0.18)",
+                        boxShadow: "none",
+                      }}
+                      >
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                          <MessageSquare size={16} color="#3b82f6" />
+                          <div style={{ color: "#3b82f6", fontWeight: 800, fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                            Message from PR
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => handleDeletePrMessage(activeLead._id, e)}
+                          title="Remove PR message"
+                          aria-label="Remove PR message"
+                          style={{
+                            width: 26,
+                            height: 26,
+                            borderRadius: 999,
+                            border: "1px solid rgba(59,130,246,0.2)",
+                            background: "rgba(59,130,246,0.08)",
+                            color: "#3b82f6",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            cursor: "pointer",
+                            flexShrink: 0,
+                          }}
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                      <div style={{ color: "#111111", fontSize: "0.95rem", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
+                        {activeLead.prMessage}
+                      </div>
+                    </PremiumCard>
+                  )}
+
+                <div style={{ display: "grid", gap: isCompactMobile ? 14 : 18 }}>
+                    <PremiumCard className="inner-card" style={{ padding: 0, overflow: "hidden", background: "#ffffff", border: "1px solid rgba(17,24,39,0.14)", boxShadow: "none" }}>
+                      <button
+                        type="button"
+                        onClick={() => setDocumentsOpen((prev) => !prev)}
+                        aria-expanded={documentsOpen}
+                        style={{
+                          width: "100%",
+                          padding: isCompactMobile ? "12px 12px" : "14px 16px",
+                          border: "none",
+                          background: "transparent",
+                          color: "inherit",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 12,
+                          textAlign: "left",
+                          borderBottom: "none",
+                        }}
+                      >
+                        <div>
+                          <h3 style={{ fontSize: isCompactMobile ? "0.92rem" : "0.98rem", fontWeight: 700, marginBottom: 3, color: "#111111" }}>User Documents</h3>
+                          <p style={{ color: "#6b7280", fontSize: isCompactMobile ? "0.74rem" : "0.8rem", fontWeight: 400 }}>Review uploaded and pending files for this service.</p>
+                        </div>
+                        <span style={{ color: "#6b7280", fontSize: isCompactMobile ? "0.74rem" : "0.8rem", fontWeight: 500 }}>
+                          {uploadedDocumentCount} / {documents.length || 0} uploaded {documentsOpen ? "▴" : "▾"}
+                        </span>
+                      </button>
 
                     {documentsOpen && (
-                      <div style={{ overflowX: "auto" }}>
+                      <div className="dashboard-documents-scroll">
                         <table className="dashboard-table">
                           <thead>
                             <tr>
-                              <th style={{ width: "68%" }}>Document</th>
+                              <th style={{ width: isCompactMobile ? "58%" : "68%" }}>Document</th>
                               <th>Status</th>
-                              <th style={{ width: 110, textAlign: "right" }}>Action</th>
+                              <th style={{ width: isCompactMobile ? 86 : 110, textAlign: "right" }}>Action</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -726,43 +998,63 @@ const AdminDashboardModern = ({
                                 const docStatusLower = docStatus.toLowerCase();
                                 const isDraftDocument = String(doc?.type || "").trim().toLowerCase() === "draft";
                                 const leadStatusLower = String(activeLead?.status || "").trim().toLowerCase();
-                                const isReuploaded = !!doc?.displayReuploaded || !!doc?.reuploaded || docStatusLower === "reuploaded";
+                                const serviceRejectedByExecutor = isExecutorRejectedState(activeLead);
+                                const explicitReuploaded = !serviceRejectedByExecutor && (!!doc?.displayReuploaded || !!doc?.reuploaded);
+                                const documentRejected = docStatusLower.includes("rejected") || !!doc?.executorRejected;
+                                const requiresReupload = serviceRejectedByExecutor || (documentRejected && !explicitReuploaded);
+                                const documentNotice = serviceRejectedByExecutor || documentRejected
+                                  ? "Reupload required"
+                                  : explicitReuploaded
+                                    ? "Reuploaded"
+                                    : "";
                                 const draftRejected = leadStatusLower === "draftrejected";
                                 const draftAccepted = leadStatusLower === "draftaccepted" || leadStatusLower === "useraccepted" || leadStatusLower === "completed";
                                 const draftShared = leadStatusLower === "draftsent" || leadStatusLower === "draftrejected" || leadStatusLower === "draftaccepted" || leadStatusLower === "useraccepted";
                                 const displayedStatus = isDraftDocument
                                   ? draftAccepted
                                     ? "Accepted"
-                                    : isReuploaded
-                                      ? "Draft Reuploaded"
-                                      : draftRejected
+                                    : draftRejected
                                         ? "Draft Rejected"
                                         : draftShared
                                           ? "Draft Shared"
-                                          : "Pending User Approval"
+                                          : "Draft Uploaded"
                                   : docStatus;
                                 const displayedStatusLower = displayedStatus.toLowerCase();
                                 const isDone = isDraftDocument
-                                  ? draftAccepted || isReuploaded || hasFile
-                                  : ["uploaded", "accepted", "verified", "approved", "completed", "reuploaded"].includes(displayedStatusLower) || !!doc?.url;
-                                const isRejected = displayedStatusLower === "rejected" || displayedStatusLower === "rejected by executor" || doc.executorRejected;
-                                const statusColor = isDone ? "#22c55e" : isRejected ? "#ef4444" : "#fbbf24";
-                                const statusBg = isDone ? "rgba(34,197,94,0.12)" : isRejected ? "rgba(239,68,68,0.12)" : "rgba(245,158,11,0.12)";
+                                  ? draftAccepted || explicitReuploaded || hasFile
+                                  : ["uploaded", "accepted", "verified", "approved", "completed", "reuploaded"].includes(displayedStatusLower) || explicitReuploaded || !!doc?.url;
+                                const isRejected = displayedStatusLower.includes("rejected") || documentRejected;
+                                const isDraftSentState = isDraftDocument && draftShared && !draftRejected && !draftAccepted;
+                                
+                                const statusColor = isRejected ? "#ef4444" : (isDone || isDraftSentState) ? "#16a34a" : "#f59e0b";
+                                const statusBg = isRejected ? "rgba(239, 68, 68, 0.08)" : (isDone || isDraftSentState) ? "rgba(22, 163, 74, 0.08)" : "rgba(245, 158, 11, 0.08)";
+                                
                                 return (
                                   <tr key={`${doc.name}-${idx}`}>
                                     <td>
-                                      <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-                                        <FileText size={18} color={isDone ? "#22c55e" : isRejected ? "#ef4444" : "#a78bfa"} style={{ flexShrink: 0 }} />
+                                      <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0, flexWrap: isCompactMobile ? "wrap" : "nowrap" }}>
+                                        <div style={{ padding: 8, background: isDone ? "rgba(22,163,74,0.06)" : "rgba(17,24,39,0.04)", borderRadius: 10 }}>
+                                          <FileText size={18} color={isDone ? "#16a34a" : isRejected ? "#ef4444" : "#6b7280"} />
+                                        </div>
                                         <div style={{ minWidth: 0 }}>
-                                          <div style={{ fontSize: "0.92rem", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.name}</div>
-                                          {isRejected && <div style={{ marginTop: 4, color: "#ef4444", fontSize: "0.76rem", fontWeight: 700 }}>Reupload Required</div>}
-                                          {isReuploaded && <div style={{ marginTop: 4, color: "#38bdf8", fontSize: "0.76rem", fontWeight: 700 }}>Reuploaded</div>}
+                                          <div style={{ fontSize: isCompactMobile ? "0.84rem" : "0.9rem", fontWeight: 700, color: "#111111", whiteSpace: isCompactMobile ? "normal" : "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.name}</div>
+                                          {documentNotice ? (
+                                            <div
+                                              style={{
+                                                marginTop: 2,
+                                                color: documentNotice === "Reuploaded" ? "#16a34a" : "#ef4444",
+                                                fontSize: "0.74rem",
+                                                fontWeight: 700,
+                                              }}
+                                            >
+                                              {documentNotice}
+                                            </div>
+                                          ) : null}
                                         </div>
                                       </div>
                                     </td>
                                     <td>
-                                      <span style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 12px", borderRadius: 999, color: statusColor, background: statusBg, border: `1px solid ${statusColor}33`, fontSize: "0.8rem", fontWeight: 700, whiteSpace: "nowrap", lineHeight: 1, flexWrap: "nowrap" }}>
-                                        <span className="dot" />
+                                      <span style={{ display: "flex", alignItems: "center", color: statusColor, fontSize: isCompactMobile ? "0.74rem" : "0.84rem", fontWeight: 700 }}>
                                         {displayedStatus}
                                       </span>
                                     </td>
@@ -770,26 +1062,28 @@ const AdminDashboardModern = ({
                                       {(isDone || isUserRole || hasFile) && (
                                         <button 
                                           type="button" 
-                                            onClick={() => (hasFile || isDone ? viewDocument(doc.publicId, doc.url || doc.secure_url || doc.uploadedUrl || doc.viewUrl, activeLead._id) : handlePickUpload("Draft"))}
+                                          onClick={() => (hasFile || isDone ? viewDocument(doc.publicId, doc.url || doc.secure_url || doc.uploadedUrl || doc.viewUrl, activeLead._id) : handlePickUpload("Draft"))}
                                           style={{ 
-                                            padding: (hasFile || isDone) ? "0 14px" : "0 12px",
-                                            height: 34,
+                                            padding: isCompactMobile ? "0 10px" : "0 12px",
+                                            height: isCompactMobile ? 30 : 32,
                                             borderRadius: 10, 
-                                            border: "1px solid rgba(255,255,255,0.08)", 
-                                            background: "rgba(255,255,255,0.03)", 
-                                            color: (hasFile || isDone) ? "#e2e8f0" : "#34d399", 
+                                            border: "1px solid rgba(17,24,39,0.08)", 
+                                            background: "#ffffff", 
+                                            color: "#111111", 
                                             display: "inline-flex", 
                                             alignItems: "center", 
                                             justifyContent: "center", 
-                                            gap: 8,
+                                            gap: 6,
                                             cursor: "pointer",
-                                            fontSize: "0.75rem",
-                                            fontWeight: 800
+                                            fontSize: isCompactMobile ? "0.68rem" : "0.72rem",
+                                            fontWeight: 800,
+                                            transition: "all 0.2s ease"
                                           }} 
-                                          title={(hasFile || isDone) ? "View" : "Upload"}
+                                          onMouseEnter={(e) => e.currentTarget.style.background = "#f9fafb"}
+                                          onMouseLeave={(e) => e.currentTarget.style.background = "#ffffff"}
                                         >
                                           {(hasFile || isDone) ? "VIEW" : "UPLOAD"}
-                                          {(hasFile || isDone) ? <Eye size={15} /> : <Upload size={15} />}
+                                          {(hasFile || isDone) ? <Eye size={14} /> : <Upload size={14} />}
                                         </button>
                                       )}
                                     </td>
@@ -798,7 +1092,7 @@ const AdminDashboardModern = ({
                               })
                             ) : (
                               <tr>
-                                <td colSpan={3} style={{ color: "rgba(255,255,255,0.65)", textAlign: "center", padding: "24px 20px" }}>No documents uploaded yet.</td>
+                                <td colSpan={3} style={{ color: "#6b7280", textAlign: "center", padding: "32px 20px", fontSize: "0.88rem" }}>No documents uploaded yet.</td>
                               </tr>
                             )}
                           </tbody>
@@ -807,80 +1101,185 @@ const AdminDashboardModern = ({
                     )}
                   </PremiumCard>
 
-                  <PremiumCard style={{ padding: 16 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                      <div>
-                        <div style={{ fontSize: "0.88rem", fontWeight: 800, marginBottom: 4 }}>Service Status</div>
-                        <div style={{ color: "rgba(255,255,255,0.65)", fontSize: "0.8rem" }}>Current fulfillment and approval state for this request.</div>
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                        <span className="dashboard-pill" style={{ 
-                          padding: "10px 18px", 
-                          fontSize: "0.9rem",
-                          color: getStatusTheme(activeLead).color, 
-                          background: getStatusTheme(activeLead).bg, 
-                          border: `1px solid ${getStatusTheme(activeLead).color}33`,
-                          boxShadow: `0 4px 12px ${getStatusTheme(activeLead).color}12`
-                        }}>
-                          {activeLead.status === "Completed" ? <CheckCircle size={16} /> : <Clock size={16} />}
-                          {getDisplayStatus(activeLead)}
-                        </span>
-                      </div>
-                    </div>
-                    {isUserRole && (
-                      <input ref={uploadInputRef} type="file" accept=".pdf" style={{ display: "none" }} onChange={handleUploadInput} />
-                    )}
-                  </PremiumCard>
+                    <div style={{ display: "grid", gap: 18, marginTop: 10 }}>
+                      {/* Service Management Control */}
+                      <PremiumCard style={{ padding: "18px 22px", background: "#ffffff", border: "1px solid rgba(17,24,39,0.12)", borderRadius: 20 }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                            <div>
+                              <h3 style={{ fontSize: "1.1rem", fontWeight: 800, marginBottom: 2, color: "#111111" }}>Service Status</h3>
+                              <p style={{ color: "#6b7280", fontSize: "0.82rem" }}>Client service status.</p>
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            <div style={{ height: 24, width: 1, background: "rgba(17,24,39,0.08)", margin: "0 4px" }} />
+                            <span style={{ color: displayStatusLabel(activeLeadForDisplay) === "Pending PR Review" ? pendingReviewTextColor : getStatusTheme(activeLead).color, fontWeight: 700, fontSize: "0.95rem", display: "flex", alignItems: "center", gap: 8 }}>
+                              {effectiveServiceStatus === "Completed" && <CheckCircle size={16} />}
+                              {displayStatusLabel(activeLeadForDisplay) === "Pending PR Review"
+                                ? "Pending PR Review"
+                                : getDisplayStatus(activeLeadForDisplay)}
+                            </span>
+                          </div>
+                        </div>
+                      </PremiumCard>
 
-                  <PremiumCard style={{ padding: 16 }}>
-                    <form onSubmit={handleUpdateLead} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                      <div className="responsive-form-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                          <label style={{ fontSize: "0.7rem", fontWeight: 700, color: "rgba(255,255,255,0.65)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Recipient</label>
-                          <select 
-                            value={messageTarget} 
-                            onChange={(e) => { 
-                              const nextTarget = e.target.value; 
-                              setMessageTarget(nextTarget); 
-                              setMessageText(getMessageTextByTarget(activeLead, nextTarget)); 
-                            }} 
-                            style={{ 
-                              background: "#121422", 
-                              border: "1px solid rgba(255,255,255,0.15)", 
-                              color: "#ffffff", 
-                              padding: "0.72rem 0.8rem", 
-                              borderRadius: 12, 
-                              outline: "none",
-                              cursor: "pointer",
-                              width: "100%"
-                            }}
-                          >
-                            <option value="client" style={{ background: "#121422", color: "#fff" }}>Client</option>
-                            <option value="pr" style={{ background: "#121422", color: "#fff" }}>PR</option>
-                            <option value="executor" style={{ background: "#121422", color: "#fff" }}>Executor</option>
-                          </select>
+                      {/* Advisor Communication Hub */}
+                      <PremiumCard style={{ padding: "18px 22px", background: "#ffffff", border: "1px solid rgba(17,24,39,0.12)", borderRadius: 20, overflow: "visible" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+                          <div>
+                            <h3 style={{ fontSize: "1.1rem", fontWeight: 800, marginBottom: 2, color: "#111111" }}>Communicate With the Client, Team</h3>
+                            <p style={{ color: "#6b7280", fontSize: "0.82rem" }}>Direct coordination with clients and execution teams.</p>
+                          </div>
                         </div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                          <label style={{ fontSize: "0.7rem", fontWeight: 700, color: "rgba(255,255,255,0.65)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Status</label>
-                          <div style={{ padding: "0.72rem 0.8rem", borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)", color: "#ffffff", fontWeight: 600 }}>{getServiceOutcomeLabel(activeLead)}</div>
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                        <label style={{ fontSize: "0.7rem", fontWeight: 700, color: "rgba(255,255,255,0.65)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Advisor Note</label>
-                        <textarea value={messageText} onChange={(e) => setMessageText(e.target.value)} placeholder={messageTarget === "client" ? "Write your response to the client..." : messageTarget === "pr" ? "Write your message to PR..." : "Write your message to the executor..."} style={{ minHeight: 120, resize: "vertical", padding: "0.9rem", borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)", color: "#ffffff", outline: "none", fontFamily: "inherit" }} />
-                      </div>
-                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 8 }}>
-                        <button type="submit" style={{ padding: "0.8rem 1.2rem", borderRadius: 12, border: "none", background: "#22c55e", color: "#fff", fontWeight: 800, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 8 }}><Send size={15} /> Send Message</button>
-                      </div>
-                    </form>
-                  </PremiumCard>
+
+                        <form onSubmit={handleUpdateLead} style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16 }}>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                              <label style={{ fontSize: "0.75rem", fontWeight: 800, color: "#111111", textTransform: "uppercase", letterSpacing: "0.05em" }}>Message Recipient</label>
+                              <div 
+                                onClick={() => setIsMessageTargetOpen(!isMessageTargetOpen)}
+                                style={{ 
+                                  width: "100%",
+                                  background: "#f9fafb", 
+                                  border: "1px solid rgba(17,24,39,0.08)", 
+                                  color: "#111111", 
+                                  padding: "0.72rem 1.2rem", 
+                                  borderRadius: 16, 
+                                  fontSize: "0.9rem", 
+                                  fontWeight: 600, 
+                                  cursor: "pointer", 
+                                  display: "flex", 
+                                  alignItems: "center", 
+                                  justifyContent: "space-between", 
+                                  position: "relative", 
+                                  userSelect: "none" 
+                                }}
+                              >
+                                <span>{messageTarget === "client" ? "Client" : messageTarget === "pr" ? "PR" : "Executor"}</span>
+                                <ChevronDown size={18} style={{ color: "#6b7280", transform: isMessageTargetOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
+                                
+                                {isMessageTargetOpen && (
+                                  <div style={{ 
+                                    position: "absolute", 
+                                    top: "calc(100% + 6px)", 
+                                    left: 0, 
+                                    right: 0, 
+                                    background: "#ffffff", 
+                                    border: "1px solid rgba(17,24,39,0.08)", 
+                                    borderRadius: 16, 
+                                    boxShadow: "0 12px 30px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08)", 
+                                    zIndex: 100, 
+                                    overflow: "hidden" 
+                                  }}>
+                                    {[
+                                      { value: "client", label: "Client" },
+                                      { value: "pr", label: "PR" },
+                                      { value: "executor", label: "Executor" }
+                                    ].map((opt) => (
+                                      <div 
+                                        key={opt.value}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setMessageTarget(opt.value);
+                                          setMessageText(getMessageTextByTarget(activeLead, opt.value));
+                                          setIsMessageTargetOpen(false);
+                                        }}
+                                        style={{ 
+                                          padding: "0.72rem 1.2rem", 
+                                          cursor: "pointer", 
+                                          fontSize: "0.9rem", 
+                                          fontWeight: 600, 
+                                          color: messageTarget === opt.value ? "#16a34a" : "#111111", 
+                                          background: messageTarget === opt.value ? "rgba(22, 163, 74, 0.05)" : "transparent", 
+                                          transition: "all 0.15s ease", 
+                                          borderBottom: opt.value !== "executor" ? "1px solid rgba(17,24,39,0.04)" : "none" 
+                                        }}
+                                        onMouseEnter={(e) => { if (messageTarget !== opt.value) e.currentTarget.style.background = "#f9fafb"; }}
+                                        onMouseLeave={(e) => { if (messageTarget !== opt.value) e.currentTarget.style.background = "transparent"; }}
+                                      >
+                                        {opt.label}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                            <label style={{ fontSize: "0.75rem", fontWeight: 800, color: "#111111", textTransform: "uppercase", letterSpacing: "0.05em" }}>Message Content</label>
+                            <textarea 
+                              value={messageText} 
+                              onChange={(e) => setMessageText(e.target.value)} 
+                              placeholder={
+                                messageTarget === "client" 
+                                  ? "Share an update or request information from the client..." 
+                                  : `Share an update or request information from the ${messageTarget === "pr" ? "PR" : "Executor"}...`
+                              } 
+                              style={{ 
+                                minHeight: 140, 
+                                resize: "vertical", 
+                                padding: "1.2rem", 
+                                borderRadius: 16, 
+                                border: "1px solid rgba(17,24,39,0.08)", 
+                                background: "#f9fafb", 
+                                color: "#111111", 
+                                outline: "none", 
+                                fontSize: "0.95rem",
+                                lineHeight: 1.6,
+                                fontFamily: "inherit" 
+                              }} 
+                            />
+                          </div>
+
+                          <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+                            <button 
+                              type="submit" 
+                              style={{ 
+                                padding: "0.9rem 2.2rem", 
+                                borderRadius: 14, 
+                                border: "none", 
+                                background: "#16a34a", 
+                                color: "#ffffff", 
+                                fontWeight: 800, 
+                                fontSize: "0.95rem",
+                                cursor: "pointer", 
+                                display: "inline-flex", 
+                                alignItems: "center", 
+                                gap: 10,
+                                boxShadow: "0 4px 15px rgba(22, 163, 74, 0.25)",
+                                transition: "all 0.2s ease"
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.transform = "translateY(-2px)";
+                                e.currentTarget.style.boxShadow = "0 6px 20px rgba(22, 163, 74, 0.35)";
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.transform = "none";
+                                e.currentTarget.style.boxShadow = "0 4px 15px rgba(22, 163, 74, 0.25)";
+                              }}
+                            >
+                              <Send size={18} /> Send Message
+                            </button>
+                          </div>
+                        </form>
+                      </PremiumCard>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div style={{ display: "grid", placeItems: "center", minHeight: 320, color: "rgba(255,255,255,0.65)" }}>No requests in pipeline.</div>
-            )}
-          </PremiumCard>
+              ) : (
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 60, textAlign: "center" }}>
+                  <div style={{ width: 80, height: 80, borderRadius: "50%", background: "rgba(17,24,39,0.04)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 24 }}>
+                    <Search size={32} color="#9ca3af" />
+                  </div>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 800, color: "#111111", marginBottom: 8 }}>No Service Selected</h3>
+                  <p style={{ color: "#6b7280", fontSize: "0.95rem", maxWidth: 320, lineHeight: 1.6 }}>Select a service request from the sidebar to manage documents and communicate with the team.</p>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
+      </div>
 
         <ConfirmationModal
           isOpen={deleteConfirm.isOpen}

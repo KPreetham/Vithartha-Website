@@ -1,5 +1,6 @@
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
+import Session from "../models/Session.js";
 
 const normalizeRole = (role) => String(role || "").trim().toLowerCase();
 
@@ -35,6 +36,23 @@ export const protect = async (req, res, next) => {
       req.user = await User.findById(decoded.id).select("-password");
       if (!req.user) {
         return res.status(401).json({ message: "User not found" });
+      }
+
+      // Ensure session exists for this token; auto-create if missing (graceful recovery)
+      let session = await Session.findOne({ token }).lean();
+      if (!session) {
+        try {
+          const decodedExp = decoded.exp ? new Date(decoded.exp * 1000) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+          const newSession = await Session.create({
+            token,
+            user: decoded.id,
+            userAgent: req?.headers?.['user-agent'] || '',
+            ip: req?.ip || req?.headers?.['x-forwarded-for'] || '',
+            expiresAt: decodedExp,
+          });
+        } catch (err) {
+          console.error('Failed to auto-create session:', err?.message || err);
+        }
       }
 
       return next();

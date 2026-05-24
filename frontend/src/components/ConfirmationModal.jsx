@@ -20,9 +20,9 @@ const ConfirmationModal = ({ isOpen, title, message, onConfirm, onCancel, isLoad
               left: 0,
               right: 0,
               bottom: 0,
-              backgroundColor: "rgba(0, 0, 0, 0.5)",
+              backgroundColor: "rgba(17, 24, 39, 0.45)",
               zIndex: 1000,
-              backdropFilter: "blur(4px)",
+              backdropFilter: "blur(8px)",
             }}
           />
 
@@ -44,18 +44,20 @@ const ConfirmationModal = ({ isOpen, title, message, onConfirm, onCancel, isLoad
           >
             <div
               style={{
-                background: "var(--dashboard-card-bg, #1a1a2e)",
-                borderRadius: "16px",
-                border: "1px solid rgba(255, 255, 255, 0.1)",
-                boxShadow: "0 25px 50px rgba(0, 0, 0, 0.5)",
-                padding: "24px",
+                background: "#ffffff",
+                borderRadius: "24px",
+                border: "1px solid rgba(17, 24, 39, 0.08)",
+                boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.15)",
+                padding: "32px",
                 position: "relative",
               }}
             >
               {/* Header */}
-              <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "16px" }}>
-                <AlertCircle size={24} color="#f97316" />
-                <h2 style={{ margin: 0, fontSize: "18px", fontWeight: "600", color: "#fff" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "16px", marginBottom: "20px" }}>
+                <div style={{ padding: "12px", background: "rgba(239, 68, 68, 0.08)", borderRadius: "14px" }}>
+                  <AlertCircle size={24} color="#ef4444" />
+                </div>
+                <h2 style={{ margin: 0, fontSize: "20px", fontWeight: "800", color: "#111111", letterSpacing: "-0.02em" }}>
                   {title}
                 </h2>
               </div>
@@ -63,10 +65,11 @@ const ConfirmationModal = ({ isOpen, title, message, onConfirm, onCancel, isLoad
               {/* Message */}
               <p
                 style={{
-                  margin: "0 0 24px 0",
-                  fontSize: "14px",
-                  color: "rgba(255, 255, 255, 0.8)",
-                  lineHeight: "1.6",
+                  margin: "0 0 32px 0",
+                  fontSize: "15px",
+                  color: "#4b5563",
+                  lineHeight: "1.7",
+                  fontWeight: "400",
                 }}
               >
                 {message}
@@ -84,26 +87,26 @@ const ConfirmationModal = ({ isOpen, title, message, onConfirm, onCancel, isLoad
                   onClick={onCancel}
                   disabled={isLoading}
                   style={{
-                    padding: "8px 16px",
-                    borderRadius: "8px",
-                    border: "1px solid rgba(255, 255, 255, 0.2)",
-                    background: "transparent",
-                    color: "#fff",
+                    padding: "10px 22px",
+                    borderRadius: "12px",
+                    border: "1px solid rgba(17, 24, 39, 0.08)",
+                    background: "#f9fafb",
+                    color: "#111111",
                     cursor: isLoading ? "not-allowed" : "pointer",
                     fontSize: "14px",
-                    fontWeight: "500",
+                    fontWeight: "700",
                     transition: "all 0.2s ease",
                     opacity: isLoading ? 0.5 : 1,
                   }}
                   onMouseEnter={(e) => {
                     if (!isLoading) {
-                      e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)";
-                      e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.3)";
+                      e.currentTarget.style.background = "#f3f4f6";
+                      e.currentTarget.style.transform = "translateY(-1px)";
                     }
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "transparent";
-                    e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.2)";
+                    e.currentTarget.style.background = "#f9fafb";
+                    e.currentTarget.style.transform = "none";
                   }}
                 >
                   Cancel
@@ -112,27 +115,32 @@ const ConfirmationModal = ({ isOpen, title, message, onConfirm, onCancel, isLoad
                   onClick={onConfirm}
                   disabled={isLoading}
                   style={{
-                    padding: "8px 16px",
-                    borderRadius: "8px",
+                    padding: "10px 22px",
+                    borderRadius: "12px",
                     border: "none",
                     background: "#ef4444",
-                    color: "#fff",
+                    color: "#ffffff",
                     cursor: isLoading ? "not-allowed" : "pointer",
                     fontSize: "14px",
-                    fontWeight: "500",
+                    fontWeight: "800",
                     transition: "all 0.2s ease",
+                    boxShadow: "0 4px 12px rgba(239, 68, 68, 0.25)",
                     opacity: isLoading ? 0.7 : 1,
                   }}
                   onMouseEnter={(e) => {
                     if (!isLoading) {
                       e.currentTarget.style.background = "#dc2626";
+                      e.currentTarget.style.transform = "translateY(-1px)";
+                      e.currentTarget.style.boxShadow = "0 6px 15px rgba(239, 68, 68, 0.35)";
                     }
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.background = "#ef4444";
+                    e.currentTarget.style.transform = "none";
+                    e.currentTarget.style.boxShadow = "0 4px 12px rgba(239, 68, 68, 0.25)";
                   }}
                 >
-                  {isLoading ? "Deleting..." : "Delete"}
+                  {isLoading ? "Deleting..." : "Confirm Removal"}
                 </button>
               </div>
             </div>

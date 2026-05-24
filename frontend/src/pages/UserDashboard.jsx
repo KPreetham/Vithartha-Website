@@ -75,6 +75,7 @@ import {
   formatInr,
   getLeadRevenueAmount,
   parseFeeAmount,
+  parseAllFeeAmounts,
   shouldCountLeadRevenue,
 } from "../utils/servicePricing";
 
@@ -90,7 +91,11 @@ const UserDashboard = () => {
   const [uploadingId, setUploadingId] = useState(null);
   const [draftRejectDrafts, setDraftRejectDrafts] = useState({});
   const [draftRejectingLeadId, setDraftRejectingLeadId] = useState(null);
-  const [dismissedDetailsMissingSignatureByLead, setDismissedDetailsMissingSignatureByLead] = useState({});
+  const [hiddenLeads, setHiddenLeads] = useState([]);
+  const [dismissedDetailsMissingSignatureByLead, setDismissedDetailsMissingSignatureByLead] = useState(() => {
+    const saved = localStorage.getItem("dismissedServiceMessages");
+    return saved ? JSON.parse(saved) : {};
+  });
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, lead: null, isLoading: false });
   const uploadInputRef = useRef(null);
   const navigate = useNavigate();
@@ -268,11 +273,11 @@ const UserDashboard = () => {
     const list = Array.isArray(leadList) ? leadList : [];
     return list.map((lead) => {
       const serviceKey = normalizeServiceKey(lead?.serviceName);
-      
+
       const matchedService = servicesList.find(
         (s) => normalizeServiceKey(s?.title) === serviceKey
       );
-      
+
       let requiredDocs = [];
       if (matchedService && Array.isArray(matchedService.documentsRequired)) {
         requiredDocs = matchedService.documentsRequired.map(docName => ({
@@ -295,7 +300,7 @@ const UserDashboard = () => {
       const serviceRejected = String(lead?.status || "").trim().toLowerCase() === "rejected";
       const draftRejected = String(lead?.status || "").trim().toLowerCase() === "draftrejected";
 
-      const finalDocs = mergedDocs.map(doc => {
+      let finalDocs = mergedDocs.map(doc => {
         let resolvedStatus = doc?.status || "Pending";
         if (serviceRejected) {
           resolvedStatus = "Rejected";
@@ -313,6 +318,12 @@ const UserDashboard = () => {
               : !!doc?.displayReuploaded || !!doc?.reuploaded || String(doc?.status || "").trim().toLowerCase() === "reuploaded",
         };
       });
+
+      // Filter out draft documents that haven't been sent yet
+      const isDraftSent = ["DraftSent", "DraftAccepted", "DraftRejected", "UserAccepted", "Completed"].includes(lead?.status);
+      if (!isDraftSent) {
+        finalDocs = finalDocs.filter(doc => String(doc?.type || "").trim().toLowerCase() !== "draft");
+      }
 
       return {
         ...lead,
@@ -392,7 +403,7 @@ const UserDashboard = () => {
 
   const handleUploadDocuments = async (leadId, files, targetName = null) => {
     if (!files || files.length === 0) return;
-    
+
     const fileArray = Array.from(files);
     if (fileArray.some((file) => file.type !== "application/pdf")) {
       toast.error("Please upload only PDF documents");
@@ -424,7 +435,7 @@ const UserDashboard = () => {
       }
 
       const lead = leads.find(l => l._id === leadId);
-      const serviceRejected = String(lead?.status || "").trim().toLowerCase() === "rejected";
+      const serviceRejected = ["rejected", "informationrequired"].includes(String(lead?.status || "").trim().toLowerCase());
       const isReuploadFlow = serviceRejected || !!targetName;
       const newDocuments = fileArray.map((file, index) => ({
         // Use the targetName if provided (for single document re-upload)
@@ -543,25 +554,13 @@ const UserDashboard = () => {
 
   const handleConfirmDelete = async () => {
     const lead = deleteConfirm.lead;
-    const serviceName = lead?.serviceName || "this service";
-    
-    setDeleteConfirm((prev) => ({ ...prev, isLoading: true }));
-    
-    try {
-      const apiUrl = import.meta.env.VITE_API_URL;
-      await axios.delete(`${apiUrl}/leads/${lead._id}`, {
-        headers: { Authorization: `Bearer ${storedUser.token}` },
-      });
+    if (!lead) return;
 
-      toast.success(`${serviceName} removed`);
-      setExpandedId((prev) => (prev === lead._id ? null : prev));
-      setLeads((prev) => prev.filter((item) => item._id !== lead._id));
-      setDeleteConfirm({ isOpen: false, lead: null, isLoading: false });
-    } catch (error) {
-      console.error("Delete service error:", error);
-      toast.error("Failed to remove service");
-      setDeleteConfirm((prev) => ({ ...prev, isLoading: false }));
-    }
+    setDeleteConfirm((prev) => ({ ...prev, isLoading: true }));
+    setHiddenLeads((prev) => (prev.includes(lead._id) ? prev : [...prev, lead._id]));
+    setExpandedId((prev) => (prev === lead._id ? null : prev));
+    toast.success(`${lead?.serviceName || "this service"} removed from this dashboard`);
+    setDeleteConfirm({ isOpen: false, lead: null, isLoading: false });
   };
 
   const handleDeleteRejectionMessage = async (leadId, e) => {
@@ -685,7 +684,7 @@ const UserDashboard = () => {
     const execMsg = String(lead?.executorMessage || "").trim();
     const prMsg = String(lead?.prFeedback || "").toLowerCase();
     const adminMsg = String(lead?.adminMessage || "").toLowerCase();
-    
+
     return (
       execMsg.length > 0 ||
       prMsg.includes("executor") ||
@@ -731,8 +730,23 @@ const UserDashboard = () => {
     Array.isArray(lead?.documents) &&
     lead.documents.some((doc) => doc?.type === "Draft");
 
+  const getEffectiveLeadStatus = (lead) => {
+    const rawStatus = String(lead?.status || "").trim();
+    const lowerStatus = rawStatus.toLowerCase();
+    const hasFinalDocument = Array.isArray(lead?.documents)
+      && lead.documents.some((doc) => String(doc?.type || "").trim().toLowerCase() === "final");
+
+    if (lowerStatus === "draftrejected") return "DraftRejected";
+    if (hasFinalDocument && !["rejected", "informationrequired"].includes(lowerStatus)) {
+      return "Completed";
+    }
+
+    return rawStatus;
+  };
+
   const isReviewDraftState = (lead) => {
     if (isDetailsMissingState(lead)) return false;
+    if (lead?.status === "DraftRejected") return false;
     if (lead?.status === "DraftSent") return true;
     return hasDraftDocument(lead) && hasDraftReviewInstruction(lead);
   };
@@ -742,6 +756,9 @@ const UserDashboard = () => {
       return "Rejected by Executor. Please reupload the documents of this service from the Services page.";
     }
 
+    const rejectionNote = String(lead?.prFeedback || "").trim();
+    if (rejectionNote) return rejectionNote;
+
     if (isRejectedServiceState(lead)) {
       return "Rejected by PR. Please reupload the documents of this service from the Services page.";
     }
@@ -750,9 +767,6 @@ const UserDashboard = () => {
       ? lead.documents.find((doc) => doc?.status === "Rejected")
       : null;
     if (rejectedDoc) return getDocumentRejectionText(rejectedDoc);
-
-    const rejectionNote = String(lead?.prFeedback || "").trim();
-    if (rejectionNote) return rejectionNote;
 
     return "Please review your documents and upload the missing details.";
   };
@@ -789,28 +803,44 @@ const UserDashboard = () => {
     const leadId = lead?._id;
     if (!leadId) return;
     const signature = getDetailsMissingSignature(lead);
-    setDismissedDetailsMissingSignatureByLead((prev) => ({
-      ...prev,
-      [leadId]: signature,
-    }));
+    setDismissedDetailsMissingSignatureByLead((prev) => {
+      const updated = {
+        ...prev,
+        [leadId]: signature,
+      };
+      localStorage.setItem("dismissedServiceMessages", JSON.stringify(updated));
+      return updated;
+    });
   };
 
+  const visibleLeads = leads.filter((lead) => !hiddenLeads.includes(lead._id));
+
   const stats = {
-    pending: leads.filter((l) =>
+    pending: visibleLeads.filter((l) =>
       ["Open", "PendingReview", "InformationRequired", "PR_Accepted", "DraftRejected", "Rejected"].includes(l.status),
     ).length,
-    inProgress: leads.filter((l) =>
-      ["AssignedToExecutor", "InProgress", "ExecutionFinished", "DraftSent", "DraftAccepted", "UserAccepted"].includes(l.status),
+    inProgress: visibleLeads.filter((l) =>
+      ["AssignedToExecutor", "InProgress", "ExecutionFinished", "DraftSent", "DraftAccepted", "UserAccepted"].includes(getEffectiveLeadStatus(l)),
     ).length,
-    completed: leads.filter((l) => l.status === "Completed").length,
-    totalCommitment: leads.reduce(
+    completed: visibleLeads.filter((l) => getEffectiveLeadStatus(l) === "Completed").length,
+    totalCommitment: visibleLeads.reduce(
       (sum, lead) => {
-        // Commitment should reflect only confirmed (non-cancelled) services.
-        // Use the committed lead amount, which falls back to the service recommendation.
-        if (!shouldCountLeadRevenue(lead)) {
-          return sum;
-        }
+        if (!shouldCountLeadRevenue(lead)) return sum;
         return sum + getCommitmentAmount(lead);
+      },
+      0,
+    ),
+    totalCommitmentHigh: visibleLeads.reduce(
+      (sum, lead) => {
+        if (!shouldCountLeadRevenue(lead)) return sum;
+        return sum + getCommitmentPair(lead).high;
+      },
+      0,
+    ),
+    totalCommitmentSmall: visibleLeads.reduce(
+      (sum, lead) => {
+        if (!shouldCountLeadRevenue(lead)) return sum;
+        return sum + getCommitmentPair(lead).small;
       },
       0,
     ),
@@ -838,44 +868,65 @@ const UserDashboard = () => {
     return Number.isFinite(fee) && fee > 0 ? fee : null;
   }
 
-  function getCommitmentAmount(lead) {
-    const explicitLeadFee =
-      parseFeeAmount(lead?.recommendedFeeAmount) ??
-      parseFeeAmount(lead?.recommendedFees);
-    if (Number.isFinite(explicitLeadFee) && explicitLeadFee > 0) {
-      return explicitLeadFee;
-    }
-
+  function getCommitmentPair(lead) {
+    const leadRaw = lead?.recommendedFees || lead?.recommendedFeeAmount || "";
     const catalogFee = getCatalogRecommendedFee(lead?.serviceName);
-    if (Number.isFinite(catalogFee) && catalogFee > 0) {
-      return catalogFee;
+
+    // Try to get multiple amounts from lead.recommendedFees
+    const leadAmounts = parseAllFeeAmounts(leadRaw);
+    if (leadAmounts.length >= 2) {
+      // Return them in [High, Small] order as requested
+      const sorted = [...leadAmounts].sort((a, b) => b - a);
+      return { high: sorted[0], small: sorted[1] };
     }
 
-    return getLeadRevenueAmount(lead);
+    // Fallback to catalog if lead doesn't have multiple
+    const catalogService = services.find(s => normalizeText(s?.title) === normalizeText(lead?.serviceName));
+    const catalogAmounts = parseAllFeeAmounts(catalogService?.recommendedFees || catalogService?.marketFees || "");
+    if (catalogAmounts.length >= 2) {
+      const sorted = [...catalogAmounts].sort((a, b) => b - a);
+      return { high: sorted[0], small: sorted[1] };
+    }
+
+    // If only one amount found, use it for both
+    const single = leadAmounts[0] || catalogFee || getLeadRevenueAmount(lead);
+    return { high: single, small: single };
+  }
+
+  function getCommitmentAmount(lead) {
+    return getCommitmentPair(lead).high;
   }
 
   const getDisplayStatus = (lead) => {
-    const status = lead?.status;
+    const status = getEffectiveLeadStatus(lead);
     const docs = getLeadDocumentsToDisplay(lead);
     const hasUploaded = Array.isArray(docs) && docs.some(d => {
       const s = String(d?.status || "").trim().toLowerCase();
       return ["uploaded", "accepted", "verified", "approved", "completed", "reuploaded"].includes(s) || !!d?.url || !!d?.publicId;
     });
 
+    if (status === "DraftRejected") return "Draft Rejected by User";
+
     const rejectionLabel = getRejectionDisplayLabel(lead);
     if (rejectionLabel) return rejectionLabel;
 
     if (isRejectedServiceState(lead)) return "Rejected";
-    if (isDetailsMissingState(lead)) return "Action Required: Details Missing";
+    if (isDetailsMissingState(lead)) return "Rejected by PR";
     if (isReviewDraftState(lead)) return "Review Draft";
+    if (status === "InformationRequired") {
+      // If there are no rejected documents after hydration (user reuploaded), treat as PendingReview
+      const hydrated = getLeadDocumentsToDisplay(lead);
+      const hasRejectedDoc = Array.isArray(hydrated) && hydrated.some(d => String(d?.status || "").trim().toLowerCase() === "rejected");
+      if (!hasRejectedDoc) return "PR Reviewing";
+      return "Service rejected by PR. Action required.";
+    }
     if (status === "PendingReview" || (status === "Open" && hasUploaded)) return "PR Reviewing";
-    if (status === "PR_Accepted") return "Documents Verified";
+    if (status === "PR_Accepted") return "Accepted by PR";
     if (status === "AssignedToExecutor") return "Awaiting Executor Coordination";
-    if (status === "InProgress") return "Service accepted by the executor";
+    if (status === "InProgress") return "Accepted by Executor";
     if (status === "ExecutionFinished") return "PR Performing Quality Review";
-    if (status === "DraftSent") return "Draft Awaiting Your Approval";
+    if (status === "DraftSent") return "Review Draft";
     if (status === "DraftAccepted" || status === "UserAccepted") return "Draft Accepted";
-    if (status === "DraftRejected") return "Rejected by User";
     if (status === "Rejected") return "Service Rejected";
     if (status === "Completed") return "Service Completed";
     if (status === "Open") return "Pending Verification";
@@ -883,7 +934,7 @@ const UserDashboard = () => {
   };
 
   const getStatusTheme = (lead) => {
-    const status = lead?.status;
+    const status = getEffectiveLeadStatus(lead);
     const rejectionLabel = getRejectionDisplayLabel(lead);
     if (isExecutorRejectedState(lead) || rejectionLabel) {
       return { color: "#ef4444", bg: "rgba(239,68,68,0.12)" };
@@ -894,24 +945,34 @@ const UserDashboard = () => {
     if (isDetailsMissingState(lead)) {
       return { color: "#ef4444", bg: "rgba(239,68,68,0.12)" };
     }
+    if (status === "DraftRejected") {
+      return { color: "#16a34a", bg: "rgba(22,163,74,0.1)" };
+    }
     if (isReviewDraftState(lead)) {
-      return { color: "#8b5cf6", bg: "rgba(139,92,246,0.12)" };
+      return { color: "#16a34a", bg: "rgba(22,163,74,0.1)" };
     }
     if (status === "Completed") {
       return { color: "#10b981", bg: "rgba(16,185,129,0.1)" };
     }
     if (["InProgress", "AssignedToExecutor"].includes(status)) {
-      return { color: "#4361ee", bg: "rgba(67,97,238,0.1)" };
+      return { color: "#10b981", bg: "rgba(16,185,129,0.1)" };
     }
     if (
       status === "InformationRequired" ||
       status === "DraftRejected" ||
       status === "Rejected"
     ) {
+      if (status === "InformationRequired") {
+        const hydrated = getLeadDocumentsToDisplay(lead);
+        const hasRejectedDoc = Array.isArray(hydrated) && hydrated.some(d => String(d?.status || "").trim().toLowerCase() === "rejected");
+        if (!hasRejectedDoc) {
+          return { color: "#f59e0b", bg: "rgba(245,158,11,0.1)" };
+        }
+      }
       return { color: "#ef4444", bg: "rgba(239,68,68,0.12)" };
     }
     if (status === "DraftSent") {
-      return { color: "#8b5cf6", bg: "rgba(139,92,246,0.12)" };
+      return { color: "#16a34a", bg: "rgba(22,163,74,0.1)" };
     }
     if (status === "PR_Accepted" || status === "DraftAccepted") {
       return { color: "#10b981", bg: "rgba(16,185,129,0.1)" };
@@ -939,12 +1000,12 @@ const UserDashboard = () => {
 
     const documentNames = Array.isArray(lead?.documents)
       ? lead.documents.flatMap((doc) => [
-          doc?.name,
-          doc?.originalName,
-          doc?.fileName,
-          doc?.filename,
-          doc?.status,
-        ])
+        doc?.name,
+        doc?.originalName,
+        doc?.fileName,
+        doc?.filename,
+        doc?.status,
+      ])
       : [];
 
     return [...fieldsToMatch, ...documentNames].some((value) =>
@@ -952,20 +1013,20 @@ const UserDashboard = () => {
     );
   };
 
-  const filteredLeads = leads.filter((lead) => {
+  const filteredLeads = visibleLeads.filter((lead) => {
     const term = normalizeSearch(serviceSearch);
     return leadMatchesSearch(lead, term);
   });
 
   const selectedLeadFromFiltered =
-    leads.find((lead) => lead._id === expandedId && filteredLeads.some((item) => item._id === lead._id)) ||
+    visibleLeads.find((lead) => lead._id === expandedId && filteredLeads.some((item) => item._id === lead._id)) ||
     filteredLeads[0] ||
     null;
   const selectedLead =
     serviceSearch.trim() && filteredLeads.length === 0
       ? null
-      : selectedLeadFromFiltered || leads.find((lead) => lead._id === expandedId) || leads[0] || null;
-  const firstVisibleLeadId = filteredLeads[0]?._id || leads[0]?._id || null;
+      : selectedLeadFromFiltered || visibleLeads.find((lead) => lead._id === expandedId) || visibleLeads[0] || null;
+  const firstVisibleLeadId = filteredLeads[0]?._id || visibleLeads[0]?._id || null;
   const selectedStatusText = selectedLead ? getDisplayStatus(selectedLead) : "No service selected";
   const selectedStatusBadge = selectedLead
     ? getStatusTheme(selectedLead)
@@ -973,20 +1034,33 @@ const UserDashboard = () => {
 
   const selectedLeadDocuments = selectedLead ? getLeadDocumentsToDisplay(selectedLead) : [];
   const uploadedDocumentCount = selectedLeadDocuments.filter((doc) => {
-    const status = String(doc?.status || "").trim().toLowerCase();
-    // A document is considered "uploaded" if it has a confirmed status, a URL, or a publicId from the storage provider.
-    return ["uploaded", "accepted", "verified", "approved", "completed", "pending"].includes(status) && (!!doc?.url || !!doc?.publicId);
+    // Keep the count stable after rejections by counting any document that still has a stored file.
+    // This preserves the visible upload count even when the backend marks the service/document as rejected.
+    return Boolean(
+      doc?.url ||
+      doc?.secure_url ||
+      doc?.uploadedUrl ||
+      doc?.viewUrl ||
+      doc?.publicId ||
+      doc?.filename ||
+      doc?.fileName
+    );
   }).length;
   const documentProgress = selectedLeadDocuments.length
     ? Math.round((uploadedDocumentCount / selectedLeadDocuments.length) * 100)
     : 0;
   const getServiceProgressPercent = (lead) => {
     if (!lead) return 0;
-    const status = String(lead.status || "").trim();
+
+    // Maintain parity with Admin and PR dashboard calculations
+    if (isExecutorRejectedState(lead)) return 20;
+    if (isDetailsMissingState(lead)) return 20;
+
+    const status = String(getEffectiveLeadStatus(lead) || "").trim();
     const progressByStatus = {
       Open: 10,
       PendingReview: 20,
-      InformationRequired: 18,
+      InformationRequired: 20,
       PR_Accepted: 32,
       AssignedToExecutor: 45,
       InProgress: 60,
@@ -1004,9 +1078,9 @@ const UserDashboard = () => {
   const serviceProgressPercent = getServiceProgressPercent(selectedLead);
   const serviceDate = selectedLead?.createdAt
     ? new Date(selectedLead.createdAt).toLocaleDateString("en-IN", {
-        day: "numeric",
-        month: "short",
-      })
+      day: "numeric",
+      month: "short",
+    })
     : "Today";
 
   useEffect(() => {
@@ -1031,7 +1105,7 @@ const UserDashboard = () => {
       const status = action === 'accept' ? 'DraftAccepted' : 'DraftRejected';
       const feedback =
         action === "reject" ? String(feedbackText || "").trim() : "";
-      
+
       if (action === 'reject' && !feedback) return;
 
       await axios.patch(
@@ -1039,22 +1113,22 @@ const UserDashboard = () => {
         { status, userMessage: feedback },
         { headers: { Authorization: `Bearer ${storedUser.token}` } }
       );
-      
+
       toast.success(action === 'accept' ? "Draft Approved!" : "Feedback Sent");
-      
+
       // Refresh
       const userId = storedUser?._id || storedUser?.id;
       const leadsRes = await axios.get(`${apiUrl}/leads?userId=${userId}`, {
         headers: { Authorization: `Bearer ${storedUser.token}` },
       });
-        setLeads(hydrateLeadsWithDocuments(leadsRes.data));
+      setLeads(hydrateLeadsWithDocuments(leadsRes.data));
 
       if (action === "reject") {
         setDraftRejectDrafts((prev) => ({ ...prev, [leadId]: "" }));
         setDraftRejectingLeadId(null);
       }
     } catch (error) {
-       toast.error("Failed to process selection");
+      toast.error("Failed to process selection");
     }
   };
 
@@ -1093,6 +1167,7 @@ const UserDashboard = () => {
       getStatusTheme={getStatusTheme}
       getDisplayStatus={getDisplayStatus}
       getCommitmentAmount={getCommitmentAmount}
+      getCommitmentPair={getCommitmentPair}
       formatInr={formatInr}
       selectedStatusText={selectedStatusText}
       selectedStatusBadge={selectedStatusBadge}

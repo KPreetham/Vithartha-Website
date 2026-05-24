@@ -192,55 +192,55 @@ const services = [
     icon: TrendingUp,
     title: "Income Tax",
     desc: "Expert tax planning and filing for individuals and corporations to ensure optimal compliance.",
-    color: "#f59e0b",
-    bg: "rgba(245, 158, 11, 0.07)",
-    border: "rgba(245, 158, 11, 0.15)",
-    glow: "rgba(245, 158, 11, 0.15)",
+    color: "#7a7a7a",
+    bg: "rgba(245, 245, 245, 0.9)",
+    border: "rgba(190, 190, 190, 0.18)",
+    glow: "rgba(190, 190, 190, 0.18)",
   },
   {
     icon: FileCheck,
     title: "GST Compliance",
     desc: "End to End GST management from registration and returns to complex notice representation.",
-    color: "#10b981",
-    bg: "rgba(16, 185, 129, 0.07)",
-    border: "rgba(16, 185, 129, 0.15)",
-    glow: "rgba(16, 185, 129, 0.15)",
+    color: "#7a7a7a",
+    bg: "rgba(245, 245, 245, 0.9)",
+    border: "rgba(190, 190, 190, 0.18)",
+    glow: "rgba(190, 190, 190, 0.18)",
   },
   {
     icon: BarChart3,
     title: "Virtual CFO Services",
     desc: "Digital financial leadership to support your company's fundamental decision-making process.",
-    color: "#8b5cf6",
-    bg: "rgba(139, 92, 246, 0.07)",
-    border: "rgba(139, 92, 246, 0.15)",
-    glow: "rgba(139, 92, 246, 0.15)",
+    color: "#7a7a7a",
+    bg: "rgba(245, 245, 245, 0.9)",
+    border: "rgba(190, 190, 190, 0.18)",
+    glow: "rgba(190, 190, 190, 0.18)",
   },
   {
     icon: Zap,
     title: "Start-up Mentorship",
     desc: "Strategic guidance to navigate the complexities of launch and drive early-stage growth.",
-    color: "#d946ef",
-    bg: "rgba(217, 70, 239, 0.07)",
-    border: "rgba(217, 70, 239, 0.15)",
-    glow: "rgba(217, 70, 239, 0.15)",
+    color: "#7a7a7a",
+    bg: "rgba(245, 245, 245, 0.9)",
+    border: "rgba(190, 190, 190, 0.18)",
+    glow: "rgba(190, 190, 190, 0.18)",
   },
   {
     icon: ShieldCheck,
     title: "Compliance & Legal",
     desc: "Corporate services covering MCA filings, annual returns, and expert legal advisory.",
-    color: "#3b82f6",
-    bg: "rgba(59, 130, 246, 0.07)",
-    border: "rgba(59, 130, 246, 0.15)",
-    glow: "rgba(59, 130, 246, 0.15)",
+    color: "#7a7a7a",
+    bg: "rgba(245, 245, 245, 0.9)",
+    border: "rgba(190, 190, 190, 0.18)",
+    glow: "rgba(190, 190, 190, 0.18)",
   },
   {
     icon: Users,
     title: "Business Registration",
     desc: "Seamless company incorporation and startup consulting to build your business foundation.",
-    color: "#ef4444",
-    bg: "rgba(239, 68, 68, 0.07)",
-    border: "rgba(239, 68, 68, 0.15)",
-    glow: "rgba(239, 68, 68, 0.15)",
+    color: "#7a7a7a",
+    bg: "rgba(245, 245, 245, 0.9)",
+    border: "rgba(190, 190, 190, 0.18)",
+    glow: "rgba(190, 190, 190, 0.18)",
   },
 ];
 
@@ -279,19 +279,20 @@ const Home = () => {
   const isLoggedIn = !!localStorage.getItem("user");
   const [typingSuggestionIndex, setTypingSuggestionIndex] = useState(0);
   const [typingSuggestion, setTypingSuggestion] = useState("");
-  const [isLightMode, setIsLightMode] = useState(
-    () => typeof document !== "undefined" && document.body.classList.contains("light-mode"),
-  );
+  const [whySlideIndex, setWhySlideIndex] = useState(0);
+  const [isWhyCarouselHovered, setIsWhyCarouselHovered] = useState(false);
+  const whyCtaButtonRef = useRef(null);
+  const isLightMode = true;
 
   const homeText = isLightMode ? "#111111" : "#ffffff";
   const homeTextSoft = isLightMode ? "rgba(0,0,0,0.72)" : "rgba(255,255,255,0.72)";
   const homeTextMuted = isLightMode ? "rgba(0,0,0,0.58)" : "rgba(255,255,255,0.58)";
   const homeAccentText = isLightMode ? "#678dff" : "#8caaff";
 
-  // AI section uses dark cards regardless of theme, so it needs light text
-  const aiText = "#ffffff";
-  const aiTextSoft = "rgba(255,255,255,0.72)";
-  const aiTextMuted = "rgba(255,255,255,0.58)";
+  // AI preview section uses light cards with dark text
+  const aiText = "#000000";
+  const aiTextSoft = "rgba(0,0,0,0.62)";
+  const aiTextMuted = "rgba(0,0,0,0.58)";
   const aiAccentText = "#8caaff";
 
   const openAIAssistant = useCallback(() => {
@@ -303,6 +304,63 @@ const Home = () => {
     window.dispatchEvent(new CustomEvent("fin2line:open-ai-assistant"));
   }, []);
 
+  const whyCarouselSlides = [
+    {
+      id: "growth",
+      icon: TrendingUp,
+      accent: "#10b981",
+      kicker: "Why Choose Us",
+      title: "Your Growth is Our Commitment",
+      description:
+        "We combine deep financial expertise with cutting-edge technology to deliver consulting that's fast, accurate, and built specifically for modern startups.",
+    },
+    {
+      id: "advisors",
+      icon: CheckCircle,
+      accent: "#8a8a8a",
+      kicker: "Dedicated Advisors",
+      title: "A Personal Expert Team",
+      description:
+        "A personal CA and financial advisor assigned to your account.",
+    },
+    {
+      id: "dashboard",
+      icon: BarChart3,
+      accent: "#3b82f6",
+      kicker: "Real-time Dashboard",
+      title: "Track Every Milestone Live",
+      description:
+        "Track compliance deadlines, documents, and service status live.",
+    },
+    {
+      id: "support",
+      icon: MessageSquare,
+      accent: "#d946ef",
+      kicker: "Always-on Support",
+      title: "Support When You Need It",
+      description:
+        "WhatsApp, email, and call support when you need it most.",
+    },
+    {
+      id: "clients",
+      icon: Users,
+      accent: "#10b981",
+      kicker: "500+ Happy Clients",
+      title: "Trusted By Growing Businesses",
+      description:
+        "Hundreds of founders rely on our team for compliance and growth support.",
+    },
+    {
+      id: "compliance",
+      icon: ShieldCheck,
+      accent: "#8b5cf6",
+      kicker: "100% Compliance",
+      title: "Accuracy You Can Depend On",
+      description:
+        "We help you stay fully compliant with timely filings and rigorous review.",
+    },
+  ];
+
   useEffect(() => {
     const previousScrollRestoration = window.history.scrollRestoration;
     window.history.scrollRestoration = "manual";
@@ -310,21 +368,6 @@ const Home = () => {
 
     return () => {
       window.history.scrollRestoration = previousScrollRestoration;
-    };
-  }, []);
-
-  useEffect(() => {
-    const syncTheme = () => {
-      setIsLightMode(document.body.classList.contains("light-mode"));
-    };
-
-    syncTheme();
-    window.addEventListener("themechange", syncTheme);
-    window.addEventListener("storage", syncTheme);
-
-    return () => {
-      window.removeEventListener("themechange", syncTheme);
-      window.removeEventListener("storage", syncTheme);
     };
   }, []);
 
@@ -360,6 +403,24 @@ const Home = () => {
     };
   }, [typingSuggestionIndex]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setWhySlideIndex((s) => (s + 1) % whyCarouselSlides.length);
+    }, 3600);
+    return () => window.clearInterval(timer);
+  }, [whyCarouselSlides.length]);
+
+  useEffect(() => {
+    const button = whyCtaButtonRef.current;
+    if (!button) return;
+
+    button.style.setProperty("background", "linear-gradient(135deg, #fb6a21 0%, #f55f18 100%)", "important");
+    button.style.setProperty("background-color", "#f97316", "important");
+    button.style.setProperty("color", "#ffffff", "important");
+    button.style.setProperty("border", "none", "important");
+    button.style.setProperty("box-shadow", "0 16px 30px -18px rgba(245, 95, 24, 0.45)", "important");
+  }, []);
+
   /*
     useEffect(() => {
       const interval = setInterval(() => {
@@ -373,25 +434,26 @@ const Home = () => {
     <div
       className="home-page-shell"
       style={{
-        background: "var(--bg)",
-        color: "var(--text)",
+        background: "#ffffff",
+        color: "#111111",
         minHeight: "100vh",
       }}
     >
       <div className="home-page-backdrop" aria-hidden="true" />
 
       {/* ===== HERO ===== */}
-      <section
-        style={{
-          position: "relative",
-          minHeight: "100vh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "transparent",
-          overflow: "hidden",
-        }}
-      >
+        <section
+          className="home-hero-section"
+          style={{
+            position: "relative",
+            minHeight: "100vh",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "#ffffff",
+            overflow: "hidden",
+          }}
+        >
         {/* Clean gradient background — refined via CSS */}
         <div className="hero-bg">
           <div className="hero-gradient-sweep" />
@@ -408,7 +470,7 @@ const Home = () => {
             bottom: "-18%",
             width: "72%",
             height: "78%",
-            background: "radial-gradient(circle at center, rgba(180, 165, 255, 0.12) 0%, transparent 68%)",
+            background: "radial-gradient(circle at center, rgba(245,245,245,0.9) 0%, transparent 68%)",
             filter: "blur(135px)",
             zIndex: -1,
             pointerEvents: "none",
@@ -420,30 +482,44 @@ const Home = () => {
           style={{
             position: "relative",
             zIndex: 2,
-            textAlign: "center",
-            padding: "11rem 2rem 5rem",
+            textAlign: "left",
+            padding: "6rem clamp(1rem, 4vw, 3rem) 5rem clamp(1rem, 4vw, 3rem)",
+            maxWidth: "1400px",
+            margin: "0",
+            display: "flex",
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "3rem",
           }}
         >
-          <motion.h1
-            initial={{ opacity: 0, y: 28 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, delay: 0.1 }}
+          {/* Left Column - Text Content */}
+          <div
             style={{
-              fontFamily: "var(--font-display)",
-              fontSize: "clamp(2.4rem, 5.5vw, 4.2rem)",
-              fontWeight: 600,
-              color: homeText,
-              lineHeight: 1.15,
-              letterSpacing: "0.05em",
-              marginBottom: "1.6rem",
+              flex: "1",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-start",
+              minWidth: "0",
             }}
           >
-            Your direct path to
-            <br />
-            <span className="compliance-gradient-text">
-              compliance
-            </span>
-          </motion.h1>
+            <motion.h1
+              initial={{ opacity: 0, y: 28 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.7, delay: 0.1 }}
+              style={{
+                fontFamily: "var(--font-display)",
+                fontSize: "clamp(2.4rem, 5.5vw, 4.2rem)",
+                fontWeight: 600,
+                color: "#000000",
+                lineHeight: 1.15,
+                letterSpacing: "0.05em",
+                marginBottom: "1.6rem",
+                maxWidth: "fit-content",
+              }}
+            >
+              Your direct path to <span style={{ color: "#000000" }}>compliance</span>
+            </motion.h1>
 
           <motion.p
             initial={{ opacity: 0, y: 20 }}
@@ -451,9 +527,9 @@ const Home = () => {
             transition={{ duration: 0.7, delay: 0.2 }}
             style={{
               fontSize: "clamp(1rem, 2vw, 1.2rem)",
-              color: homeTextSoft,
-              maxWidth: "600px",
-              margin: "0 auto 2.5rem",
+              color: "#000000",
+              maxWidth: "640px",
+              margin: "0 0 2.5rem",
               lineHeight: 1.75,
             }}
           >
@@ -468,7 +544,7 @@ const Home = () => {
             style={{
               display: "flex",
               gap: "1.2rem",
-              justifyContent: "center",
+              justifyContent: "flex-start",
               flexWrap: "wrap",
             }}
           >
@@ -497,6 +573,41 @@ const Home = () => {
               Explore Services <Layers size={19} />
             </button>
           </motion.div>
+          </div>
+
+          {/* Right Column - Image */}
+          <div
+            style={{
+              flex: "1",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "flex-end",
+              paddingRight: "1.5rem",
+              minWidth: "0",
+            }}
+          >
+            <motion.div
+              initial={{ opacity: 0, x: 30 }}
+              animate={{ opacity: 1, x: 48 }}
+              transition={{ duration: 0.7, delay: 0.4 }}
+              style={{
+                width: "100%",
+                maxWidth: "640px",
+                aspectRatio: "1",
+              }}
+            >
+              <img
+                src="/homepageimage.png?v=2"
+                alt="Vithartha Financial Services"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "contain",
+                  borderRadius: "24px",
+                }}
+              />
+            </motion.div>
+          </div>
         </div>
       </section>
 
@@ -518,16 +629,16 @@ const Home = () => {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
             >
-              <div className="section-label-white" style={{ color: homeTextMuted }}>Our Services</div>
+              <div className="section-label-white" style={{ color: "#000000" }}>Our Services</div>
               <h2
                 className="section-title"
-                style={{ fontWeight: 600, letterSpacing: "0.05em", color: homeText }}
+                style={{ fontWeight: 600, letterSpacing: "0.05em", color: "#000000" }}
               >
                 Comprehensive Business Solutions
               </h2>
               <p className="section-sub" style={{ margin: "0 auto", color: homeTextSoft }}>
                 Everything your startup needs to stay compliant, grow
-                confidently, and thrive in the modern business landscape.
+                confidently and thrive in the modern business landscape.
               </p>
             </motion.div>
           </div>
@@ -537,14 +648,23 @@ const Home = () => {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
           >
-            <PremiumCard
-              className="home-services-card"
-              glowColor="rgba(103, 141, 255, 0.2)"
-              style={{ padding: "3.5rem", cursor: "default" }}
+            <div
+              className="home-services-wrapper"
+              style={{
+                padding: "2.5rem",
+                borderRadius: "16px",
+                background: "transparent",
+              }}
             >
               <div
-                className="grid-2 home-services-grid"
-                style={{ gap: "3rem 2rem" }}
+                className="home-services-row"
+                style={{
+                  display: "flex",
+                  gap: "1.25rem",
+                  flexWrap: "wrap",
+                  justifyContent: "space-between",
+                  padding: "1rem 0",
+                }}
               >
                 {services.map((service) => {
                   const Icon = service.icon;
@@ -555,66 +675,77 @@ const Home = () => {
                       style={{
                         cursor: "pointer",
                         display: "flex",
-                        gap: "1.5rem",
-                        padding: "1rem 0",
-                        borderBottom: isLightMode ? "1px solid rgba(0,0,0,0.06)" : "1px solid rgba(255,255,255,0.05)",
-                        transition: "transform 0.2s",
+                        flexDirection: "column",
+                        gap: "1rem",
+                        padding: "1.25rem",
+                        flex: "1 1 300px",
+                        minWidth: "220px",
+                        maxWidth: "340px",
+                        background: "linear-gradient(180deg, #f8f8f9 0%, #f2f3f4 100%)",
+                        border: "1px solid rgba(0,0,0,0.04)",
+                        borderRadius: "14px",
+                        boxShadow: "0 1px 0 rgba(0,0,0,0.02)",
+                        color: "#000000",
+                        transition: "transform 0.18s ease, box-shadow 0.18s ease",
                       }}
                       onMouseOver={(e) => {
-                        e.currentTarget.style.transform = "translateX(5px)";
+                        e.currentTarget.style.transform = "translateY(-6px)";
+                        e.currentTarget.style.boxShadow = "0 8px 24px rgba(0,0,0,0.08)";
                       }}
                       onMouseOut={(e) => {
-                        e.currentTarget.style.transform = "translateX(0)";
+                        e.currentTarget.style.transform = "translateY(0)";
+                        e.currentTarget.style.boxShadow = "0 1px 0 rgba(0,0,0,0.02)";
                       }}
                     >
                       <div
                         style={{
-                          padding: "0.85rem",
-                          borderRadius: "50%",
-                          border: `1px solid var(--border)`,
-                          flexShrink: 0,
-                          alignSelf: "flex-start",
                           display: "flex",
                           alignItems: "center",
-                          justifyContent: "center",
+                          gap: "0.9rem",
                         }}
                       >
-                        <Icon size={22} color={service.color} />
-                      </div>
-                      <div
-                        style={{
-                          flex: 1,
-                          display: "flex",
-                          flexDirection: "column",
-                        }}
-                      >
+                        <div
+                          style={{
+                            padding: "0.6rem",
+                            borderRadius: "50%",
+                            border: `1px solid rgba(0,0,0,0.06)`,
+                            flexShrink: 0,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            background: "rgba(255,255,255,0.6)",
+                          }}
+                        >
+                          <Icon size={20} color={service.color} />
+                        </div>
                         <h3
                           style={{
-                            fontSize: "1.15rem",
-                            marginBottom: "0.5rem",
-                            color: homeText,
+                            fontSize: "1.05rem",
+                            margin: 0,
+                            color: "#000000",
                             fontWeight: 700,
                           }}
                         >
                           {service.title}
                         </h3>
-                        <p
-                          style={{
-                            fontSize: "0.9rem",
-                            color: homeTextSoft,
-                            lineHeight: 1.6,
-                            margin: 0,
-                            flex: 1,
-                          }}
-                        >
-                          {service.desc}
-                        </p>
                       </div>
+
+                      <p
+                        style={{
+                          fontSize: "0.95rem",
+                          color: homeTextMuted,
+                          lineHeight: 1.6,
+                          margin: "0.85rem 0 0",
+                          flex: 1,
+                        }}
+                      >
+                        {service.desc}
+                      </p>
                     </div>
                   );
                 })}
               </div>
-            </PremiumCard>
+            </div>
           </motion.div>
         </div>
       </section>
@@ -627,259 +758,116 @@ const Home = () => {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
           >
-            <PremiumCard
-              className="home-why-card"
-              glowColor="rgba(16, 185, 129, 0.2)"
-              style={{ padding: "4rem 3rem" }}
+            <div
+              className="home-why-carousel-shell"
+              onMouseEnter={() => setIsWhyCarouselHovered(true)}
+              onMouseLeave={() => setIsWhyCarouselHovered(false)}
+              style={{
+                borderRadius: "24px",
+                padding: "3rem clamp(1.25rem, 3vw, 2.5rem)",
+                background: isWhyCarouselHovered
+                  ? "linear-gradient(180deg, #f4f5f6 0%, #eceef0 100%)"
+                  : "linear-gradient(180deg, #f8f8f9 0%, #f1f2f3 100%)",
+                border: isWhyCarouselHovered
+                  ? "1px solid rgba(156,163,175,0.55)"
+                  : "1px solid rgba(0,0,0,0.05)",
+                boxShadow: isWhyCarouselHovered
+                  ? "0 16px 34px rgba(0,0,0,0.08)"
+                  : "0 12px 30px rgba(0,0,0,0.05)",
+                minHeight: "360px",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "space-between",
+                gap: "1.5rem",
+                transition: "background 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease",
+              }}
             >
-              <div
-                className="why-grid"
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
-                  gap: "5rem",
-                  alignItems: "center",
-                }}
-              >
-                {/* Left: Text */}
-                <div>
-                  <div className="section-label-white" style={{ color: homeTextMuted }}>Why Choose Us</div>
-                  <h2
-                    className="section-title"
-                    style={{
-                      fontSize: "2.4rem",
-                      fontWeight: 600,
-                      letterSpacing: "0.05em",
-                      color: homeText,
-                    }}
-                  >
-                    Your Growth is Our
-                    <br />
-                    <span style={{ color: "#10b981" }}>Commitment</span>
-                  </h2>
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={whyCarouselSlides[whySlideIndex].id}
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -16 }}
+                  transition={{ duration: 0.45 }}
+                  style={{ display: "flex", flexDirection: "column", gap: "1rem", flex: 1 }}
+                >
+                  <div className="section-label-white" style={{ color: "#4b5563" }}>
+                    {whyCarouselSlides[whySlideIndex].kicker}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.9rem" }}>
+                    {(() => {
+                      const Icon = whyCarouselSlides[whySlideIndex].icon;
+                      return <Icon size={30} color={whyCarouselSlides[whySlideIndex].accent} />;
+                    })()}
+                    <h2
+                      className="section-title"
+                      style={{
+                        fontSize: "clamp(1.8rem, 4vw, 2.6rem)",
+                        fontWeight: 700,
+                        letterSpacing: "0.01em",
+                        color: "#000000",
+                        margin: 0,
+                        lineHeight: 1.2,
+                      }}
+                    >
+                      {whyCarouselSlides[whySlideIndex].title}
+                    </h2>
+                  </div>
                   <p
                     style={{
-                      color: homeTextSoft,
-                      marginBottom: "2.5rem",
-                      fontSize: "0.97rem",
+                      color: homeTextMuted,
+                      margin: 0,
+                      fontSize: "1rem",
                       lineHeight: 1.8,
+                      maxWidth: "860px",
                     }}
                   >
-                    We combine deep financial expertise with cutting-edge
-                    technology to deliver consulting that's fast, accurate, and
-                    built specifically for modern startups.
+                    {whyCarouselSlides[whySlideIndex].description}
                   </p>
+                </motion.div>
+              </AnimatePresence>
 
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "1.5rem",
-                    }}
-                  >
-                    {[
-                      {
-                        title: "Dedicated Advisors",
-                        desc: "A personal CA and financial advisor assigned to your account.",
-                        color: "#10b981",
-                      },
-                      {
-                        title: "Real-time Dashboard",
-                        desc: "Track compliance deadlines, documents, and service status live.",
-                        color: "#3b82f6",
-                      },
-                      {
-                        title: "Always-on Support",
-                        desc: "WhatsApp, email, and call support when you need it most.",
-                        color: "#f59e0b",
-                      },
-                    ].map((item) => (
-                      <div
-                        key={item.title}
-                        style={{
-                          display: "flex",
-                          gap: "1rem",
-                          alignItems: "flex-start",
-                        }}
-                      >
-                        <div
-                          style={{
-                            width: 24,
-                            height: 24,
-                            borderRadius: "50%",
-                            border: `1px solid ${item.color}50`,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            flexShrink: 0,
-                            marginTop: "2px",
-                          }}
-                        >
-                          <CheckCircle size={12} color={item.color} />
-                        </div>
-                        <div>
-                          <p
-                            style={{
-                              fontWeight: 700,
-                              color: homeText,
-                              margin: 0,
-                              fontSize: "1rem",
-                            }}
-                          >
-                            {item.title}
-                          </p>
-                          <p
-                            style={{
-                              color: homeTextMuted,
-                              fontSize: "0.85rem",
-                              margin: "0.4rem 0 0",
-                            }}
-                          >
-                            {item.desc}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <button
-                    className="btn btn-primary btn-lg"
-                    id="why-cta-btn"
-                    style={{
-                      marginTop: "3rem",
-                      borderRadius: "var(--radius-full)",
-                      background: "var(--grad-primary)",
-                      color: "#fff",
-                      border: "none",
-                    }}
-                    onClick={() => navigate("/dashboard")}
-                  >
-                    Explore Dashboard <ArrowRight size={17} />
-                  </button>
-                </div>
-
-                {/* Right: Visual cards (plain glass rows) */}
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "1.5rem",
-                  }}
-                >
-                  <div
-                    style={{
-                      background: "rgba(255,255,255,0.03)",
-                      border: "1px solid rgba(255,255,255,0.08)",
-                      borderRadius: "20px",
-                      padding: "2rem",
-                      position: "relative",
-                      overflow: "hidden",
-                    }}
-                  >
-                    <TrendingUp
-                      size={30}
-                      style={{ marginBottom: "0.8rem", color: "#10b981" }}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  flexWrap: "wrap",
+                  gap: "0.9rem",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "center", gap: "8px" }}>
+                  {whyCarouselSlides.map((slide, idx) => (
+                    <button
+                      key={slide.id}
+                      onClick={() => setWhySlideIndex(idx)}
+                      aria-label={`Go to slide ${idx + 1}`}
+                      style={{
+                        width: idx === whySlideIndex ? 20 : 8,
+                        height: 8,
+                        borderRadius: 10,
+                        background: idx === whySlideIndex ? "rgba(0,0,0,0.82)" : "rgba(0,0,0,0.2)",
+                        border: "none",
+                        transition: "width 0.2s ease, background 0.2s ease",
+                        cursor: "pointer",
+                      }}
                     />
-                    <h3
-                      style={{
-                        fontSize: "1.3rem",
-                        marginBottom: "0.5rem",
-                        color: homeText,
-                      }}
-                    >
-                      Expert-Led Growth
-                    </h3>
-                    <p
-                      style={{
-                        fontSize: "0.88rem",
-                        lineHeight: 1.65,
-                        margin: 0,
-                        color: homeTextSoft,
-                      }}
-                    >
-                      Our team of Chartered Accountants, legal experts and
-                      business strategists work together to accelerate your
-                      growth.
-                    </p>
-                  </div>
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
-                      gap: "1.5rem",
-                    }}
-                  >
-                    {[
-                      {
-                        icon: Users,
-                        label: "500+",
-                        sub: "Happy Clients",
-                        color: "#10b981",
-                      },
-                      {
-                        icon: ShieldCheck,
-                        label: "100%",
-                        sub: "Compliance",
-                        color: "#8b5cf6",
-                      },
-                      {
-                        icon: Zap,
-                        label: "48h",
-                        sub: "Response",
-                        color: "#d946ef",
-                      },
-                      {
-                        icon: Star,
-                        label: "4.9★",
-                        sub: "Avg Rating",
-                        color: "#3b82f6",
-                      },
-                    ].map((item) => {
-                      const Icon = item.icon;
-                      return (
-                        <div
-                          key={item.label}
-                          style={{
-                            background: "rgba(255,255,255,0.03)",
-                            border: "1px solid rgba(255,255,255,0.08)",
-                            borderRadius: "16px",
-                            padding: "1.5rem 1rem",
-                            textAlign: "center",
-                          }}
-                        >
-                          <Icon
-                            size={20}
-                            color={item.color}
-                            style={{ marginBottom: "0.6rem" }}
-                          />
-                          <div
-                            style={{
-                              fontFamily: "var(--font-display)",
-                              fontSize: "1.5rem",
-                              fontWeight: 900,
-                              color: homeText,
-                              letterSpacing: "-0.04em",
-                            }}
-                          >
-                            {item.label}
-                          </div>
-                          <div
-                            style={{
-                              fontSize: "0.75rem",
-                              color: homeTextMuted,
-                              marginTop: "0.2rem",
-                            }}
-                          >
-                            {item.sub}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  ))}
                 </div>
+
+                <button
+                  className="why-cta-button"
+                  id="why-cta-btn"
+                  ref={whyCtaButtonRef}
+                  style={{
+                    borderRadius: "var(--radius-full)",
+                  }}
+                  onClick={() => navigate("/dashboard")}
+                >
+                  Explore Dashboard <ArrowRight size={17} />
+                </button>
               </div>
-            </PremiumCard>
+            </div>
           </motion.div>
         </div>
       </section>
@@ -899,7 +887,7 @@ const Home = () => {
             position: "absolute",
             inset: 0,
             background:
-              "linear-gradient(180deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0) 100%), radial-gradient(circle at 20% 0%, rgba(127,87,251,0.12), transparent 30%), radial-gradient(circle at 80% 100%, rgba(16,185,129,0.08), transparent 28%)",
+              "linear-gradient(180deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0) 100%), radial-gradient(circle at 20% 0%, rgba(228,228,228,0.12), transparent 30%), radial-gradient(circle at 80% 100%, rgba(214,214,214,0.08), transparent 28%)",
             pointerEvents: "none",
           }}
         />
@@ -979,19 +967,26 @@ const Home = () => {
               </p>
 
               <div
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = "rgba(156,163,175,0.7)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = "rgba(0, 0, 0, 0.08)";
+                }}
                 style={{
                   marginTop: "1.1rem",
                   borderRadius: "24px",
                   padding: "2rem 1.6rem",
-                  border: "1px solid rgba(255, 255, 255, 0.08)",
-                  background: "rgba(13, 17, 32, 0.65)",
-                  boxShadow: "0 20px 50px -34px rgba(0,0,0,0.9)",
+                  border: "1px solid rgba(0, 0, 0, 0.08)",
+                  background: "#ffffff",
+                  boxShadow: "0 20px 50px -34px rgba(0,0,0,0.25)",
                   position: "relative",
                   overflow: "hidden",
                   flex: 1,
                   display: "flex",
                   flexDirection: "column",
                   minHeight: "440px",
+                  transition: "border-color 0.2s ease",
                 }}
               >
                 <div
@@ -1001,7 +996,7 @@ const Home = () => {
                     left: 0,
                     right: 0,
                     height: "100px",
-                    background: "radial-gradient(ellipse at 50% 0%, rgba(127,87,251,0.15), transparent 70%)",
+                    background: "radial-gradient(ellipse at 50% 0%, rgba(0,0,0,0.04), transparent 70%)",
                     pointerEvents: "none",
                   }}
                 />
@@ -1010,7 +1005,7 @@ const Home = () => {
                     position: "absolute",
                     inset: 0,
                     background:
-                      "radial-gradient(circle at 50% 45%, rgba(127,87,251,0.18), transparent 32%), radial-gradient(circle at 50% 42%, rgba(16,185,129,0.08), transparent 40%)",
+                      "radial-gradient(circle at 50% 45%, rgba(0,0,0,0.03), transparent 32%), radial-gradient(circle at 50% 42%, rgba(0,0,0,0.02), transparent 40%)",
                     pointerEvents: "none",
                   }}
                 />
@@ -1032,8 +1027,8 @@ const Home = () => {
                       maxWidth: "82%",
                       padding: "0.85rem 1.2rem",
                       borderRadius: "14px",
-                      background: "rgba(255, 255, 255, 0.03)",
-                      border: "1px solid rgba(255, 255, 255, 0.15)",
+                      background: "#f5f6f7",
+                      border: "1px solid rgba(0, 0, 0, 0.08)",
                       color: aiText,
                       fontWeight: 500,
                       fontSize: "0.98rem",
@@ -1060,7 +1055,7 @@ const Home = () => {
                       textShadow: isLightMode ? "none" : "0 0 12px rgba(225,107,255,0.55)",
                     }}
                   >
-                    ✦
+                    <MessageSquare size={22} color="#111111" strokeWidth={2.2} />
                   </div>
                   <p
                     style={{
@@ -1091,19 +1086,17 @@ const Home = () => {
                       width: 48,
                       height: 48,
                       borderRadius: "999px",
-                      background:
-                        "radial-gradient(circle at 35% 35%, rgba(245,181,255,0.9) 0%, rgba(127,87,251,0.72) 45%, rgba(96,63,211,0.6) 100%)",
+                      background: "linear-gradient(180deg, #fb6a21 0%, #f55f18 100%)",
                       border: "1px solid rgba(255,255,255,0.08)",
-                      boxShadow:
-                        "0 0 0 1px rgba(127,87,251,0.22) inset, 0 0 24px rgba(127,87,251,0.24)",
+                      boxShadow: "0 10px 24px rgba(245, 95, 24, 0.22)",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      color: aiText,
+                      color: "#ffffff",
                       flexShrink: 0,
                     }}
                   >
-                    ✦
+                    <MessageSquare size={22} color="#ffffff" strokeWidth={2.2} />
                   </div>
                   <div style={{ display: "flex", gap: "0.28rem" }}>
                     <motion.span
@@ -1113,8 +1106,8 @@ const Home = () => {
                         width: 7,
                         height: 7,
                         borderRadius: "999px",
-                        background: "#7F57FB",
-                        boxShadow: "0 0 14px rgba(127,87,251,0.45)",
+                        background: "#d6d6d6",
+                        boxShadow: "0 0 14px rgba(180,180,180,0.35)",
                       }}
                     />
                     <motion.span
@@ -1124,8 +1117,8 @@ const Home = () => {
                         width: 7,
                         height: 7,
                         borderRadius: "999px",
-                        background: "#7F57FB",
-                        boxShadow: "0 0 14px rgba(127,87,251,0.45)",
+                        background: "#d6d6d6",
+                        boxShadow: "0 0 14px rgba(180,180,180,0.35)",
                       }}
                     />
                     <motion.span
@@ -1135,8 +1128,8 @@ const Home = () => {
                         width: 7,
                         height: 7,
                         borderRadius: "999px",
-                        background: "#7F57FB",
-                        boxShadow: "0 0 14px rgba(127,87,251,0.45)",
+                        background: "#d6d6d6",
+                        boxShadow: "0 0 14px rgba(180,180,180,0.35)",
                       }}
                     />
                   </div>
@@ -1207,19 +1200,26 @@ const Home = () => {
               </p>
 
               <div
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = "rgba(156,163,175,0.7)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = "rgba(0, 0, 0, 0.08)";
+                }}
                 style={{
                   marginTop: "1.1rem",
                   borderRadius: "24px",
                   padding: "2rem 1.6rem",
-                  border: "1px solid rgba(255, 255, 255, 0.08)",
-                  background: "rgba(13, 17, 32, 0.65)",
-                  boxShadow: "0 20px 50px -34px rgba(0,0,0,0.9)",
+                  border: "1px solid rgba(0, 0, 0, 0.08)",
+                  background: "#ffffff",
+                  boxShadow: "0 20px 50px -34px rgba(0,0,0,0.25)",
                   position: "relative",
                   overflow: "hidden",
                   flex: 1,
                   display: "flex",
                   flexDirection: "column",
                   minHeight: "440px",
+                  transition: "border-color 0.2s ease",
                 }}
               >
                 {/* Dotted Background Effect */}
@@ -1227,10 +1227,10 @@ const Home = () => {
                   style={{
                     position: "absolute",
                     inset: 0,
-                    backgroundImage: "radial-gradient(rgba(255,255,255,0.05) 1px, transparent 1px)",
+                    backgroundImage: "radial-gradient(rgba(0,0,0,0.05) 1px, transparent 1px)",
                     backgroundSize: "16px 16px",
                     pointerEvents: "none",
-                    opacity: 0.8,
+                    opacity: 0.45,
                   }}
                 />
 
@@ -1241,7 +1241,7 @@ const Home = () => {
                     left: 0,
                     right: 0,
                     height: "100px",
-                    background: "radial-gradient(ellipse at 50% 0%, rgba(127,87,251,0.15), transparent 70%)",
+                    background: "radial-gradient(ellipse at 50% 0%, rgba(0,0,0,0.04), transparent 70%)",
                     pointerEvents: "none",
                   }}
                 />
@@ -1260,15 +1260,15 @@ const Home = () => {
                         width: 64,
                         height: 64,
                         borderRadius: "18px",
-                        border: "1px solid rgba(255,255,255,0.08)",
-                        background: "rgba(255,255,255,0.03)",
+                        border: "1px solid rgba(0,0,0,0.08)",
+                        background: "#f5f6f7",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
                         flexShrink: 0,
                       }}
                     >
-                      <User size={28} color="rgba(255,255,255,0.35)" strokeWidth={1.5} />
+                      <User size={28} color="rgba(0,0,0,0.35)" strokeWidth={1.5} />
                     </div>
                     <div style={{ flex: 1 }}>
                       <div
@@ -1276,7 +1276,7 @@ const Home = () => {
                           height: 16,
                           width: "65%",
                           borderRadius: "8px",
-                          background: "rgba(255,255,255,0.06)",
+                          background: "rgba(0,0,0,0.08)",
                           marginBottom: "0.5rem",
                         }}
                       />
@@ -1285,7 +1285,7 @@ const Home = () => {
                           height: 12,
                           width: "45%",
                           borderRadius: "8px",
-                          background: "rgba(255,255,255,0.04)",
+                          background: "rgba(0,0,0,0.06)",
                         }}
                       />
                     </div>
@@ -1294,7 +1294,7 @@ const Home = () => {
                   <div
                     style={{
                       height: 1,
-                      background: "rgba(255,255,255,0.06)",
+                      background: "rgba(0,0,0,0.08)",
                       marginBottom: "1.2rem",
                     }}
                   />
@@ -1303,14 +1303,14 @@ const Home = () => {
                     style={{
                       borderRadius: "18px",
                       padding: "1.35rem",
-                      background: "linear-gradient(135deg, rgba(127,87,251,0.06) 0%, rgba(127,87,251,0.02) 100%)",
-                      border: "1px solid rgba(127,87,251,0.12)",
+                      background: "linear-gradient(135deg, rgba(245,245,245,0.95) 0%, rgba(235,235,235,0.98) 100%)",
+                      border: "1px solid rgba(200,200,200,0.12)",
                       marginBottom: "auto",
                     }}
                   >
                     <div
                       style={{
-                        color: "#A78BFA",
+                        color: "#9b9b9b",
                         fontSize: "0.68rem",
                         fontWeight: 800,
                         letterSpacing: "0.15em",
@@ -1320,9 +1320,9 @@ const Home = () => {
                     >
                       Live Suggestion
                     </div>
-                    <div style={{ color: aiTextSoft, fontSize: "0.92rem", lineHeight: 1.6 }}>
+                    <div style={{ color: "#000000", fontSize: "0.92rem", lineHeight: 1.6 }}>
                       {typingSuggestion}
-                      <span style={{ display: "inline-block", width: 2, height: 14, background: "#A78BFA", marginLeft: 4 }} />
+                      <span style={{ display: "inline-block", width: 2, height: 14, background: "#cfcfcf", marginLeft: 4 }} />
                     </div>
                   </div>
 
@@ -1332,9 +1332,9 @@ const Home = () => {
                       marginTop: "1.5rem",
                       borderRadius: "20px",
                       padding: "0.85rem 1rem",
-                      background: "linear-gradient(180deg, rgba(9,11,20,0.92) 0%, rgba(16,18,30,0.95) 100%)",
-                      border: "1px solid rgba(255, 255, 255, 0.08)",
-                      boxShadow: "0 15px 35px -20px rgba(0,0,0,0.8)",
+                      background: "#f5f6f7",
+                      border: "1px solid rgba(0, 0, 0, 0.08)",
+                      boxShadow: "0 10px 22px -16px rgba(0,0,0,0.25)",
                       position: "relative",
                       overflow: "hidden",
                     }}
@@ -1343,7 +1343,7 @@ const Home = () => {
                       style={{
                         position: "absolute",
                         inset: 0,
-                        background: "radial-gradient(circle at 45% 25%, rgba(127,87,251,0.08), transparent 30%)",
+                        background: "radial-gradient(circle at 45% 25%, rgba(0,0,0,0.05), transparent 30%)",
                         pointerEvents: "none",
                       }}
                     />
@@ -1358,13 +1358,13 @@ const Home = () => {
                     >
                       <div
                         style={{
-                          width: 38,
-                          height: 38,
-                          borderRadius: "14px",
-                          background: "linear-gradient(135deg, rgba(127,87,251,0.4) 0%, rgba(16,185,129,0.1) 100%)",
-                          border: "1px solid rgba(255,255,255,0.08)",
-                          display: "flex",
-                          alignItems: "center",
+                        width: 38,
+                        height: 38,
+                        borderRadius: "14px",
+                        background: "linear-gradient(135deg, rgba(240,240,240,1) 0%, rgba(230,230,230,0.95) 100%)",
+                        border: "1px solid rgba(0,0,0,0.08)",
+                        display: "flex",
+                        alignItems: "center",
                           justifyContent: "center",
                           flexShrink: 0,
                         }}
@@ -1397,7 +1397,7 @@ const Home = () => {
                                 width: 6,
                                 height: 6,
                                 borderRadius: "999px",
-                                background: "#A78BFA",
+                                background: "#d0d0d0",
                               }}
                             />
                           ))}
@@ -1418,13 +1418,15 @@ const Home = () => {
             }}
           >
             <button
+              id="home-ai-try-btn"
               className="btn btn-hero-modern btn-lg"
               style={{
                 minWidth: "240px",
                 padding: "1rem 2.2rem",
-                background: "linear-gradient(135deg, #7F57FB 0%, #10b981 100%)",
+                background: "linear-gradient(135deg, #fb6a21 0%, #f55f18 100%)",
+                color: "#ffffff",
                 border: "none",
-                boxShadow: "0 16px 30px -18px rgba(127,87,251,0.9)",
+                boxShadow: "0 16px 30px -18px rgba(245,95,24,0.45)",
               }}
               onClick={openAIAssistant}
             >
@@ -1740,13 +1742,13 @@ const Home = () => {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
           >
-            <div className="section-tag-whitesmoke">Get Started Today</div>
+            <div className="section-tag-whitesmoke" style={{ color: "#000000", opacity: 1 }}>Get Started Today</div>
             <h2
               style={{
                 fontFamily: "var(--font-display)",
                 fontSize: "clamp(2rem, 4vw, 3.2rem)",
                 fontWeight: 600,
-                color: homeText,
+                color: "#000000",
                 letterSpacing: "0.05em",
                 marginBottom: "1.2rem",
               }}

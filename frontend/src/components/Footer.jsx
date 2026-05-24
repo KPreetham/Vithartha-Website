@@ -35,7 +35,6 @@ const Footer = () => {
         color: "var(--text)",
         position: "relative",
         overflow: "hidden",
-        marginTop: "6rem",
       }}
     >
       {/* Top gradient border — logo colors */}
@@ -403,7 +402,7 @@ const Footer = () => {
           >
             <Shield size={14} />
             <span>
-              © 2024 Fin2Line Consulting Pvt. Ltd. All rights reserved.
+              © 2026 Fin2Line Consulting Pvt. Ltd. All rights reserved.
             </span>
           </div>
           <div

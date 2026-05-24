@@ -10,10 +10,7 @@ const userSchema = new mongoose.Schema({
   profile: {
     companyName: String,
     phone: String,
-    businessStage: {
-      type: String,
-      enum: ["Startup", "Growth", "Established", "Growing", ""],
-    },
+    businessStage: String,
     industry: String,
   },
   onboardingResponses: { type: mongoose.Schema.Types.Mixed },

@@ -77,6 +77,7 @@ const AdminDashboard = () => {
   const [messageTarget, setMessageTarget] = useState("client");
   const [messageText, setMessageText] = useState("");
   const [uploadingId, setUploadingId] = useState(null);
+  const [hiddenLeads, setHiddenLeads] = useState([]);
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, lead: null, isLoading: false });
   const [dismissedReviewSummarySignatureByLead, setDismissedReviewSummarySignatureByLead] = useState({});
   const [dismissedDetailsMissingSignatureByLead, setDismissedDetailsMissingSignatureByLead] = useState({});
@@ -88,7 +89,7 @@ const AdminDashboard = () => {
   };
 
   const getMessageTextByTarget = (lead, target) => {
-    if (target === "pr") return lead?.adminToPrMessage || "";
+    if (target === "pr") return lead?.prMessage || lead?.prFeedback || lead?.adminToPrMessage || "";
     if (target === "executor") return lead?.adminToExecutorMessage || "";
     return lead?.adminMessage || "";
   };
@@ -319,7 +320,7 @@ const AdminDashboard = () => {
       const response = await axios.get(`${apiUrl}/leads`, {
         headers: { Authorization: `Bearer ${user.token}` },
       });
-      setLeads(response.data);
+      setLeads(hydrateLeadsWithDocuments(response.data));
       setLoading(false);
     } catch (error) {
       toast.error("Failed to fetch services");
@@ -334,9 +335,8 @@ const AdminDashboard = () => {
       const response = await axios.get(`${apiUrl}/leads/${leadId}`, {
         headers: { Authorization: `Bearer ${user.token}` },
       });
-      setLeads((prev) =>
-        prev.map((l) => (l._id === leadId ? response.data : l)),
-      );
+      const hydrated = hydrateLeadsWithDocuments([response.data])[0];
+      setLeads((prev) => prev.map((l) => (l._id === leadId ? hydrated : l)));
     } catch (error) {
       console.error("Failed to fetch lead details");
     }
@@ -441,19 +441,9 @@ const AdminDashboard = () => {
   const handleConfirmDelete = async () => {
     if (!deleteConfirm.lead) return;
     setDeleteConfirm((prev) => ({ ...prev, isLoading: true }));
-    try {
-      const apiUrl = import.meta.env.VITE_API_URL;
-      const user = JSON.parse(localStorage.getItem("user"));
-      await axios.delete(`${apiUrl}/leads/${deleteConfirm.lead._id}`, {
-        headers: { Authorization: `Bearer ${user.token}` },
-      });
-      toast.success("Service request deleted");
-      fetchLeads();
-    } catch (error) {
-      toast.error("Failed to delete service");
-    } finally {
-      setDeleteConfirm({ isOpen: false, lead: null, isLoading: false });
-    }
+    setHiddenLeads((prev) => (prev.includes(deleteConfirm.lead._id) ? prev : [...prev, deleteConfirm.lead._id]));
+    toast.success("Service hidden from this dashboard");
+    setDeleteConfirm({ isOpen: false, lead: null, isLoading: false });
   };
 
   const handleDeleteUserMessage = async (leadId, e) => {
@@ -498,17 +488,40 @@ const AdminDashboard = () => {
     }
   };
 
+  const getEffectiveLeadStatus = (lead) => {
+    const rawStatus = String(lead?.status || "").trim();
+    const rawStatusLower = rawStatus.toLowerCase();
+    const documents = Array.isArray(lead?.documents) ? lead.documents : [];
+    const hasFinalDocument = documents.some((doc) => {
+      const docType = String(doc?.type || "").trim().toLowerCase();
+      const docName = String(doc?.name || "").trim().toLowerCase();
+      return docType === "final" || docName.startsWith("final");
+    });
+
+    if (hasFinalDocument && !["rejected", "informationrequired"].includes(rawStatusLower)) {
+      return "Completed";
+    }
+
+    return rawStatus;
+  };
+
+  const visibleLeads = leads.filter((lead) => !hiddenLeads.includes(lead._id));
+
   const stats = {
-    total: leads.length,
-    pending: leads.filter((l) =>
-      ["Open", "PendingReview", "InformationRequired", "PR_Accepted", "DraftRejected", "Rejected"].includes(l.status),
+    total: visibleLeads.length,
+    pending: visibleLeads.filter((l) =>
+      ["Open", "PendingReview", "InformationRequired", "PR_Accepted", "DraftRejected", "Rejected"].includes(getEffectiveLeadStatus(l)),
     ).length,
-    inProgress: leads.filter((l) =>
-      ["AssignedToExecutor", "InProgress", "ExecutionFinished", "DraftSent", "DraftAccepted", "UserAccepted"].includes(l.status),
+    inProgress: visibleLeads.filter((l) =>
+      ["AssignedToExecutor", "InProgress", "ExecutionFinished", "DraftSent", "DraftAccepted", "UserAccepted"].includes(getEffectiveLeadStatus(l)),
     ).length,
-    completed: leads.filter((l) => l.status === "Completed").length,
+    completed: visibleLeads.filter((l) => getEffectiveLeadStatus(l) === "Completed").length,
+    revenueValue: visibleLeads.reduce(
+      (sum, l) => sum + (shouldCountLeadRevenue(l) ? (getLeadRevenueAmount(l) || 0) : 0),
+      0,
+    ),
     revenue: formatInr(
-      leads.reduce(
+      visibleLeads.reduce(
         (sum, l) => sum + (shouldCountLeadRevenue(l) ? (getLeadRevenueAmount(l) || 0) : 0),
         0,
       ),
@@ -516,20 +529,20 @@ const AdminDashboard = () => {
   };
 
   const getServiceOutcomeLabel = (lead) => {
-    const status = lead?.status;
+    const status = getEffectiveLeadStatus(lead);
     const rejectionLabel = getRejectionDisplayLabel(lead);
     if (rejectionLabel) return rejectionLabel;
-    if (isPrReuploadReviewState(lead)) return "PR Reviewing";
+    if (isPrReuploadReviewState(lead)) return "Pending PR Review";
     if (status === "PendingReview") return "New Request";
-    if (status === "InformationRequired") return "Action Required";
+    if (status === "InformationRequired") return hasRejectedDocuments(lead) ? "Rejected by PR" : "PR Reviewing";
     if (status === "PR_Accepted") return "Accepted by PR";
     if (status === "AssignedToExecutor") return "Awaiting Executor";
-    if (status === "InProgress") return "Execution Phase";
+    if (status === "InProgress") return "Accepted by Executor";
     if (status === "ExecutionFinished") return "PR Reviewing Result";
-    if (status === "DraftSent") return "Draft Shared";
-    if (status === "DraftAccepted" || status === "UserAccepted") return "Draft Approved";
-    if (status === "DraftRejected") return "Draft Rejected";
-    if (status === "Completed") return "Completed";
+    if (status === "DraftSent") return "Waiting for User Draft Approval";
+    if (status === "DraftAccepted" || status === "UserAccepted") return "Draft Accepted by User";
+    if (status === "DraftRejected") return "Draft Rejected by User";
+    if (status === "Completed") return "Service completed";
     if (status === "Open") return "Open";
     return status;
   };
@@ -576,13 +589,13 @@ const AdminDashboard = () => {
       if (isDraftDocument) {
         resolvedStatus = draftAccepted
           ? "Accepted"
-          : isReuploaded
-            ? "Draft Reuploaded"
             : draftRejected
               ? "Draft Rejected"
               : draftShared
-                ? "Draft Shared"
-                : "Pending User Approval";
+                ? "Waiting for User Draft Approval"
+                  : isReuploaded
+                    ? "Draft Uploaded"
+                    : "Draft Uploaded";
       } else if (serviceRejected && !isReuploaded) {
         resolvedStatus = executorRejected ? "Rejected by Executor" : "Rejected";
       }
@@ -596,10 +609,243 @@ const AdminDashboard = () => {
     });
   };
 
+  // --- Hydration helpers (merge server docs with any pending local uploads) ---
+  const extractCloudinaryPublicIdFromUrl = (url) => {
+    const rawUrl = String(url || "").trim();
+    if (!rawUrl) return "";
+
+    try {
+      const parsed = new URL(rawUrl);
+      const marker = "/upload/";
+      const markerIndex = parsed.pathname.indexOf(marker);
+      if (markerIndex === -1) return "";
+
+      let publicId = parsed.pathname.slice(markerIndex + marker.length);
+      publicId = publicId.replace(/^v\d+\//, "");
+      publicId = publicId.replace(/\.[a-z0-9]+$/i, "");
+      return publicId.trim();
+    } catch {
+      return "";
+    }
+  };
+
+  const normalizeServiceKey = (value) =>
+    String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const getPendingUploadsForService = (serviceName) => {
+    const target = normalizeServiceKey(serviceName);
+    if (!target) return [];
+
+    const saved = localStorage.getItem("pending_uploads");
+    if (!saved) return [];
+
+    try {
+      const parsed = JSON.parse(saved);
+      const currentUserId = JSON.parse(localStorage.getItem("user"))?._id;
+      if (parsed?.userId && currentUserId && String(parsed.userId) !== String(currentUserId)) {
+        return [];
+      }
+
+      const docsByService = parsed?.docs || {};
+      const serviceDocs =
+        docsByService[serviceName] ||
+        Object.entries(docsByService).find(([key]) => normalizeServiceKey(key) === target)?.[1] ||
+        {};
+
+      return Object.entries(serviceDocs).flatMap(([docName, value]) => {
+        const arr = Array.isArray(value) ? value : value ? [value] : [];
+        return arr
+          .filter(Boolean)
+          .map((item) => ({
+            name: item?.name || docName,
+            originalName: item?.name || docName,
+            url: item?.url || item?.secure_url || "",
+            publicId: item?.publicId || item?.filename || extractCloudinaryPublicIdFromUrl(item?.url || item?.secure_url || ""),
+            type: "Client",
+            status: "Pending",
+            uploadedAt: item?.uploadedAt || new Date(),
+            reuploaded: !!item?.reuploaded,
+          }))
+          .filter((doc) => !!doc.url || !!doc.publicId);
+      });
+    } catch {
+      return [];
+    }
+  };
+
+  const normalizeDocumentName = (doc) => {
+    const fallbackName =
+      doc?.name ||
+      doc?.originalName ||
+      doc?.fileName ||
+      doc?.filename ||
+      doc?.publicId ||
+      doc?.url ||
+      "Document";
+
+    const cleaned = String(fallbackName).trim();
+    if (!cleaned) return "Document";
+    return cleaned.includes("/") ? (cleaned.split("/").pop() || "Document") : cleaned;
+  };
+
+  const dedupeDocumentsByName = (documents, options = {}) => {
+    const docs = Array.isArray(documents) ? documents.filter(Boolean) : [];
+    if (docs.length === 0) return [];
+    const reuploadedDocumentNames = new Set(
+      Array.isArray(options?.reuploadedDocumentNames)
+        ? options.reuploadedDocumentNames.map((name) => String(name || "").trim().toLowerCase()).filter(Boolean)
+        : [],
+    );
+
+    const sorted = [...docs].sort((a, b) => {
+      const aTime = new Date(a?.uploadedAt || a?.createdAt || 0).getTime();
+      const bTime = new Date(b?.uploadedAt || b?.createdAt || 0).getTime();
+      return bTime - aTime;
+    });
+
+    const grouped = new Map();
+    for (const doc of sorted) {
+      const key = normalizeServiceKey(normalizeDocumentName(doc));
+      if (!key) continue;
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key).push(doc);
+    }
+
+    return Array.from(grouped.values()).map((group) => {
+      const reuploadedDoc = group.find(
+        (doc) =>
+          !!doc?.displayReuploaded ||
+          !!doc?.reuploaded ||
+          String(doc?.status || "").trim().toLowerCase() === "reuploaded",
+      );
+      const rejectedDoc = group.find((doc) => String(doc?.status || "").trim().toLowerCase() === "rejected");
+      const selected =
+        reuploadedDoc ||
+        rejectedDoc ||
+        group.find((doc) => String(doc?.status || "").trim().toLowerCase() !== "rejected") ||
+        group[0];
+      const fileSource =
+        group.find(
+          (doc) =>
+            !!doc?.url ||
+            !!doc?.secure_url ||
+            !!doc?.uploadedUrl ||
+            !!doc?.viewUrl ||
+            !!doc?.publicId ||
+            !!doc?.filename ||
+            !!doc?.fileName,
+        ) ||
+        selected;
+      const docName = String(normalizeDocumentName(selected)).trim().toLowerCase();
+
+      const resolvedUrl =
+        selected?.url ||
+        selected?.secure_url ||
+        selected?.uploadedUrl ||
+        selected?.viewUrl ||
+        fileSource?.url ||
+        fileSource?.secure_url ||
+        fileSource?.uploadedUrl ||
+        fileSource?.viewUrl ||
+        "";
+      const resolvedPublicId =
+        selected?.publicId ||
+        selected?.filename ||
+        selected?.fileName ||
+        fileSource?.publicId ||
+        fileSource?.filename ||
+        fileSource?.fileName ||
+        extractCloudinaryPublicIdFromUrl(resolvedUrl);
+
+      return {
+        ...selected,
+        name: normalizeDocumentName(selected),
+        url: resolvedUrl,
+        publicId: resolvedPublicId,
+        displayReuploaded:
+          reuploadedDocumentNames.has(docName) ||
+          !!selected?.displayReuploaded ||
+          !!selected?.reuploaded ||
+          String(selected?.status || "").trim().toLowerCase() === "reuploaded",
+      };
+    });
+  };
+
+  const hydrateLeadsWithDocuments = (leadList, servicesList = []) => {
+    const list = Array.isArray(leadList) ? leadList : [];
+    return list.map((lead) => {
+      const serviceKey = normalizeServiceKey(lead?.serviceName);
+
+      const matchedService = Array.isArray(servicesList)
+        ? servicesList.find((s) => normalizeServiceKey(s?.title) === serviceKey)
+        : null;
+
+      let requiredDocs = [];
+      if (matchedService && Array.isArray(matchedService.documentsRequired)) {
+        requiredDocs = matchedService.documentsRequired.map((docName) => ({
+          name: docName,
+          status: "Pending",
+          type: "Client",
+        }));
+      }
+
+      const pendingDocs = getPendingUploadsForService(lead?.serviceName);
+      const currentDocs = Array.isArray(lead?.documents) ? lead.documents : [];
+      const mergedDocs = dedupeDocumentsByName([...currentDocs, ...pendingDocs, ...requiredDocs], {
+        reuploadedDocumentNames: lead?.reuploadedDocumentNames,
+      });
+
+      const executorRejected = isExecutorRejectedState(lead);
+      const serviceRejected = String(lead?.status || "").trim().toLowerCase() === "rejected";
+      const draftRejected = String(lead?.status || "").trim().toLowerCase() === "draftrejected";
+
+      let finalDocs = mergedDocs.map((doc) => {
+        let resolvedStatus = doc?.status || "Pending";
+        if (serviceRejected) {
+          resolvedStatus = "Rejected";
+        } else if (draftRejected && String(doc?.type || "").trim().toLowerCase() === "draft") {
+          resolvedStatus = "Rejected";
+        }
+
+        return {
+          ...doc,
+          status: resolvedStatus,
+          executorRejected: executorRejected && serviceRejected,
+          displayReuploaded:
+            serviceRejected || draftRejected
+              ? false
+              : !!doc?.displayReuploaded || !!doc?.reuploaded || String(doc?.status || "").trim().toLowerCase() === "reuploaded",
+        };
+      });
+
+      // Filter out draft documents that haven't been sent yet
+      const isDraftSent = ["DraftSent", "DraftAccepted", "DraftRejected", "UserAccepted", "Completed"].includes(lead?.status);
+      if (!isDraftSent) {
+        finalDocs = finalDocs.filter(doc => String(doc?.type || "").trim().toLowerCase() !== "draft");
+      }
+
+      return {
+        ...lead,
+        documents: finalDocs,
+      };
+    });
+  };
+
   const isPrReuploadReviewState = (lead) => {
-    if (!lead || lead?.status !== "Rejected") return false;
-    const docs = lead?.documents || [];
-    const hasReuploaded = docs.some(d => !!d?.reuploaded || String(d?.status || "").toLowerCase() === "reuploaded");
+    if (!lead) return false;
+    const statusLower = String(lead?.status || "").trim().toLowerCase();
+    if (!["rejected", "informationrequired", "pendingreview"].includes(statusLower)) return false;
+
+    const docs = getVisibleDocuments(lead) || [];
+    const hasReuploaded = docs.some(
+      (d) => !!d?.displayReuploaded || !!d?.reuploaded || String(d?.status || "").toLowerCase() === "reuploaded",
+    );
+
     return hasReuploaded && !isExecutorRejectedLead(lead) && !hasRejectedDocuments(lead);
   };
 
@@ -710,6 +956,8 @@ const AdminDashboard = () => {
       "waiting for user",
       "pending pr approval",
       "action required",
+      "rejected by pr",
+      "document rejected",
       "rejected by executor",
       "assignment rejected",
       "draft shared",
@@ -739,7 +987,8 @@ const AdminDashboard = () => {
     const rejectionLabel = getRejectionDisplayLabel(lead);
     if (rejectionLabel) return rejectionLabel;
     if (lead?.status === "Completed") return "Completed";
-    if (lead?.status === "PR_Accepted") return "Accepted by the PR";
+    if (lead?.status === "PR_Accepted") return "Accepted by PR";
+    if (lead?.status === "InformationRequired") return hasRejectedDocuments(lead) ? "Rejected by PR" : "PR Reviewing";
     if (lead?.status === "DraftRejected") return "Draft Rejected by User";
     if (summary.rejected.length > 0) {
       return summary.rejected.length === 1
@@ -765,10 +1014,10 @@ const AdminDashboard = () => {
     const draftShared = leadStatusLower === "draftsent" || leadStatusLower === "draftrejected" || leadStatusLower === "draftaccepted" || leadStatusLower === "useraccepted";
     if (isDraftDocument) {
       if (draftAccepted) return "Accepted";
-      if (isReuploaded) return "Draft Reuploaded";
       if (draftRejected) return "Draft Rejected";
       if (draftShared) return "Draft Shared";
-      return "Pending User Approval";
+      if (isReuploaded) return "Draft Uploaded";
+      return "Draft Uploaded";
     }
     return doc?.status || "Pending Review";
   };
@@ -861,7 +1110,7 @@ const AdminDashboard = () => {
   };
 
   const getDisplayStatus = (lead) => {
-    const status = lead?.status;
+    const status = getEffectiveLeadStatus(lead);
     if (isPrReuploadReviewState(lead)) {
       return "PR Reviewing";
     }
@@ -875,21 +1124,21 @@ const AdminDashboard = () => {
     }
 
     if (status === "PendingReview") return "PR Reviewing";
-    if (status === "InformationRequired") return "Action Required";
-    if (status === "PR_Accepted") return "Service accepted by PR";
-    if (status === "AssignedToExecutor") return "Pending Executor Approval";
-    if (status === "InProgress") return "Service accepted by the executor";
+    if (status === "InformationRequired") return "Rejected by PR";
+    if (status === "PR_Accepted") return "Accepted by PR";
+    if (status === "AssignedToExecutor") return "Awaiting Executor Approval";
+    if (status === "InProgress") return "Accepted by Executor";
     if (status === "ExecutionFinished") return "PR Reviewing Result";
     if (status === "DraftSent") return "Waiting for User Draft Approval";
-    if (status === "DraftAccepted" || status === "UserAccepted") return "Draft accepted by the user";
+    if (status === "DraftAccepted" || status === "UserAccepted") return "Draft Accepted by User";
     if (status === "DraftRejected") return "Draft Rejected by User";
-    if (status === "Completed") return "Completed";
+    if (status === "Completed") return "Service completed";
     if (status === "Open") return "PR Reviewing";
     return status;
   };
 
   const getStatusTheme = (lead) => {
-    const status = lead?.status;
+    const status = getEffectiveLeadStatus(lead);
     if (isPrReuploadReviewState(lead)) {
       return { color: "#f59e0b", bg: "rgba(245,158,11,0.1)" };
     }
@@ -902,7 +1151,7 @@ const AdminDashboard = () => {
       return { color: "#ef4444", bg: "rgba(239,68,68,0.1)" };
     }
     if (status === "DraftSent") {
-      return { color: "#8b5cf6", bg: "rgba(139,92,246,0.12)" };
+      return { color: "#16a34a", bg: "rgba(22,163,74,0.1)" };
     }
     if (status === "InformationRequired") {
       return { color: "#ef4444", bg: "rgba(239,68,68,0.1)" };
@@ -911,13 +1160,13 @@ const AdminDashboard = () => {
       return { color: "#10b981", bg: "rgba(16,185,129,0.1)" };
     }
     if (["InProgress", "AssignedToExecutor"].includes(status)) {
-      return { color: "#4361ee", bg: "rgba(67,97,238,0.1)" };
+      return { color: "#16a34a", bg: "rgba(16,163,74,0.1)" };
     }
     if (status === "InformationRequired" || status === "DraftRejected") {
       return { color: "#ef4444", bg: "rgba(239,68,68,0.1)" };
     }
     if (status === "DraftSent" || status === "ExecutionFinished") {
-      return { color: "#8b5cf6", bg: "rgba(139,92,246,0.12)" };
+      return { color: "#16a34a", bg: "rgba(22,163,74,0.1)" };
     }
     if (status === "PR_Accepted" || status === "DraftAccepted") {
       return { color: "#10b981", bg: "rgba(16,185,129,0.1)" };
@@ -926,7 +1175,7 @@ const AdminDashboard = () => {
   };
 
   const searchTerm = searchQuery.trim().toLowerCase();
-  const filteredLeads = leads.filter((lead) => {
+  const filteredLeads = visibleLeads.filter((lead) => {
     if (!searchTerm) return true;
     
     // Split search into individual terms for multi-keyword matching
@@ -976,7 +1225,7 @@ const AdminDashboard = () => {
       return;
     }
     if (!filteredLeads.some((lead) => lead._id === selectedLeadId)) {
-      setSelectedLeadId(filteredLeads[0]._id);
+      setSelectedLeadId(filteredLeads[0]?._id || null);
     }
   }, [filteredLeads, selectedLeadId]);
 

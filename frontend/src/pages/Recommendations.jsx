@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import axios from "axios";
@@ -257,8 +257,12 @@ const FALLBACK_SERVICES = [
 */
 const PremiumCard = ({ children, style = {}, className = "", onClick }) => {
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+  const [isCompactMobile, setIsCompactMobile] = useState(window.innerWidth <= 480);
   useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768);
+      setIsCompactMobile(window.innerWidth <= 480);
+    };
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
@@ -304,7 +308,7 @@ const AdminServicesView = () => {
     try {
       const apiUrl = import.meta.env.VITE_API_URL;
       const response = await axios.get(`${apiUrl}/leads`);
-      
+
       setLeads(response.data);
     } catch (error) {
       console.error("[AdminServicesView] Error fetching leads:", error);
@@ -444,7 +448,7 @@ const AdminServicesView = () => {
         minHeight: "100vh",
         background: "var(--bg)",
         color: "var(--text)",
-        paddingTop: "clamp(140px, 16vw, 180px)",
+        paddingTop: "clamp(105px, 13vw, 145px)",
         paddingBottom: "80px",
         position: "relative",
       }}
@@ -473,7 +477,7 @@ const AdminServicesView = () => {
               fontWeight: 500,
               letterSpacing: "-0.03em",
               margin: 0,
-              color: "var(--text)",
+              color: "#000000",
             }}
           >
             User Services.
@@ -482,7 +486,7 @@ const AdminServicesView = () => {
           <p
             className="rec-subtext"
             style={{
-              color: "var(--text-secondary)",
+              color: "var(--text-muted)",
               fontSize: "1.1rem",
               marginTop: "0.6rem",
               maxWidth: "600px",
@@ -512,16 +516,26 @@ const AdminServicesView = () => {
                 display: "flex",
                 alignItems: "center",
                 gap: "12px",
-                background: "transparent",
+                background: "#ffffff",
                 border: "1px solid var(--border)",
                 padding: "0.8rem 1.2rem",
                 borderRadius: "18px",
                 boxShadow: "var(--shadow-sm)",
+                transition: "all 0.3s ease",
+              }}
+              onFocus={(e) => {
+                e.currentTarget.style.borderColor = "#f97316";
+                e.currentTarget.style.boxShadow = "0 0 0 4px rgba(249, 115, 22, 0.1)";
+              }}
+              onBlur={(e) => {
+                e.currentTarget.style.borderColor = "var(--border)";
+                e.currentTarget.style.boxShadow = "var(--shadow-sm)";
               }}
             >
-              <Search size={18} color="var(--text-muted)" />
+              <Search size={18} color="#000000" />
               <input
                 type="text"
+                className="service-search-input"
                 placeholder="Search by name, email or service..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -529,10 +543,11 @@ const AdminServicesView = () => {
                 style={{
                   background: "none",
                   border: "none",
-                  color: "var(--text)",
+                  color: "#000000",
                   outline: "none",
                   width: "100%",
                   fontSize: "0.9rem",
+                  fontWeight: 200,
                 }}
               />
               {searchQuery && (
@@ -541,7 +556,7 @@ const AdminServicesView = () => {
                   style={{
                     background: "none",
                     border: "none",
-                    color: "var(--text-muted)",
+                    color: "#000000",
                     cursor: "pointer",
                     padding: 0,
                   }}
@@ -554,8 +569,8 @@ const AdminServicesView = () => {
               className="admin-search-btn"
               onClick={handleSearch}
               style={{
-                background: "linear-gradient(135deg, #8b5cf6, #6d4dff)",
-                border: "1px solid rgba(255,255,255,0.85)",
+                background: "linear-gradient(135deg, #f97316, #ea580c)",
+                border: "1px solid rgba(255,255,255,0.14)",
                 color: "white",
                 padding: "0.8rem 2rem",
                 borderRadius: "18px",
@@ -564,8 +579,16 @@ const AdminServicesView = () => {
                 alignItems: "center",
                 gap: "10px",
                 fontWeight: 700,
-                boxShadow: "0 10px 24px rgba(126, 87, 251, 0.22)",
-                transition: "all 0.3s",
+                boxShadow: "0 10px 24px rgba(249, 115, 22, 0.2)",
+                transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = "translateY(-1px)";
+                e.currentTarget.style.boxShadow = "0 12px 28px rgba(249, 115, 22, 0.3)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "translateY(0)";
+                e.currentTarget.style.boxShadow = "0 10px 24px rgba(249, 115, 22, 0.2)";
               }}
             >
               <Search size={18} /> Search
@@ -1083,7 +1106,7 @@ const AdminServicesView = () => {
                                             <button
                                               onClick={(e) => {
                                                 e.stopPropagation();
-                                        viewDocument(doc.publicId, doc.url || doc.secure_url || doc.uploadedUrl || doc.viewUrl, lead._id);
+                                                viewDocument(doc.publicId, doc.url || doc.secure_url || doc.uploadedUrl || doc.viewUrl, lead._id);
                                               }}
                                               style={{
                                                 padding: "4px 12px",
@@ -1623,49 +1646,51 @@ const ServiceCard = ({
   const Icon = iconMap[cat] || Zap;
 
   return (
-    <div key={idx} style={{ position: "relative", display: "flex", flexDirection: "column" }}>
+    <div
+      key={idx}
+      style={{
+        position: "relative",
+        display: "flex",
+        flexDirection: "column",
+        overflow: "visible",
+        zIndex: topBadge ? 3 : 1,
+      }}
+    >
       <div
         onClick={() => onClick(service)}
         style={{
-          background: isLightMode
-            ? "linear-gradient(180deg, rgba(227,230,236,0.98) 0%, rgba(211,216,223,0.98) 100%)"
-            : "linear-gradient(180deg, rgba(38, 42, 50, 0.98) 0%, rgba(24, 28, 35, 0.98) 100%)",
-          borderRadius: isMobile ? "20px" : "24px",
-          border: isLightMode
-            ? "1px solid rgba(198,205,214,0.98)"
-            : "1px solid rgba(110,118,132,0.22)",
+          background: "#e2e8f0",
+          borderRadius: "12px",
+          border: "1px solid #cbd5e1",
           display: "flex",
           flexDirection: "column",
           cursor: "pointer",
           height: "100%",
-          transition: "all 0.2s ease",
+          transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
           position: "relative",
           overflow: "hidden",
           minHeight: isMobile ? "unset" : "360px",
-          boxShadow: isLightMode
-            ? "0 18px 42px rgba(31, 41, 55, 0.07)"
-            : "0 18px 42px rgba(31, 41, 55, 0.08)",
+          boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05)",
         }}
         onMouseEnter={(e) => {
-          e.currentTarget.style.borderColor = isLightMode
-            ? "rgba(214,219,227,1)"
-            : "rgba(110, 118, 132, 0.34)";
+          e.currentTarget.style.borderColor = "#cbd5e1";
           e.currentTarget.style.transform = "translateY(-4px)";
+          e.currentTarget.style.boxShadow = "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)";
         }}
         onMouseLeave={(e) => {
-          e.currentTarget.style.borderColor = isLightMode
-            ? "rgba(214,219,227,0.98)"
-            : "rgba(110,118,132,0.22)";
+          e.currentTarget.style.borderColor = "#e2e8f0";
           e.currentTarget.style.transform = "none";
+          e.currentTarget.style.boxShadow = "0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05)";
         }}
       >
         {topBadge && (
           <div
             style={{
               position: "absolute",
-              top: 12,
-              right: 12,
-              zIndex: 3,
+              top: isMobile ? "1rem" : "1.1rem",
+              right: isMobile ? "1rem" : "1.1rem",
+              zIndex: 5,
+              pointerEvents: "none",
             }}
           >
             {topBadge}
@@ -1673,15 +1698,9 @@ const ServiceCard = ({
         )}
         <div
           style={{
-            height: 4,
-            background: "linear-gradient(90deg, rgba(148,163,184,0.22), rgba(203,213,225,0.62))",
-          }}
-        />
-        <div
-          style={{
             padding: isMobile
-              ? "2.8rem 1.25rem 1.25rem"
-              : "3.4rem 2rem 1.8rem",
+              ? "2.25rem 1.25rem 1.25rem"
+              : "2.35rem 2rem 1.8rem",
             flex: 1,
             display: "flex",
             flexDirection: "column",
@@ -1691,72 +1710,45 @@ const ServiceCard = ({
           <div
             style={{
               display: "flex",
-              justifyContent: "flex-start",
-              alignItems: "center",
-              gap: "12px",
+              flexDirection: "column",
+              gap: "0.4rem",
             }}
           >
-            <div
-              style={{
-                width: isMobile ? 40 : 44,
-                height: isMobile ? 40 : 44,
-                borderRadius: "12px",
-                background: isLightMode
-                  ? "rgba(223,227,233,0.98)"
-                  : "rgba(55, 60, 70, 0.92)",
-                border: isLightMode
-                  ? "1px solid rgba(198,205,214,0.98)"
-                  : "1px solid rgba(110,118,132,0.24)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Icon size={isMobile ? 18 : 20} color={isLightMode ? "#111827" : "#d1d5db"} />
-            </div>
             <span
               style={{
-                background: isLightMode
-                  ? "rgba(223,227,233,0.98)"
-                  : "rgba(55, 60, 70, 0.92)",
-                border: isLightMode
-                  ? "1px solid rgba(198,205,214,0.98)"
-                  : "1px solid rgba(110,118,132,0.24)",
-                color: isLightMode ? "#111827" : "#ffffff",
-                padding: "0.35rem 0.8rem",
-                borderRadius: "99px",
-                fontSize: isMobile ? "0.68rem" : "0.78rem",
-                fontWeight: 600,
-                letterSpacing: "0.06em",
+                color: "#64748b",
+                fontSize: isMobile ? "0.65rem" : "0.75rem",
+                fontWeight: 700,
+                letterSpacing: "0.08em",
                 textTransform: "uppercase",
               }}
             >
               {service.category}
             </span>
-          </div>
-          <div>
             <h3
               style={{
-                fontSize: isMobile ? "1.1rem" : "1.25rem",
-                fontWeight: 600,
-                color: isLightMode ? "#111827" : "#ffffff",
-                marginBottom: "0.5rem",
-                letterSpacing: "-0.01em",
+                fontSize: isMobile ? "1.15rem" : "1.35rem",
+                fontWeight: 700,
+                color: "#0f172a",
+                margin: 0,
+                lineHeight: 1.3,
+                letterSpacing: "-0.02em",
               }}
             >
               {service.title}
             </h3>
-            <p
-              style={{
-                color: isLightMode ? "#111827" : "#ffffff",
-                fontSize: isMobile ? "0.82rem" : "0.88rem",
-                lineHeight: 1.6,
-                margin: 0,
-              }}
-            >
-              {service.description}
-            </p>
           </div>
+          <p
+            style={{
+              color: "#475569",
+              fontSize: isMobile ? "0.82rem" : "0.88rem",
+              lineHeight: 1.6,
+              margin: 0,
+              marginTop: "0.5rem",
+            }}
+          >
+            {service.description}
+          </p>
 
           <div
             style={{
@@ -1770,7 +1762,7 @@ const ServiceCard = ({
             <span
               style={{
                 fontSize: isMobile ? "0.75rem" : "0.8rem",
-                color: isLightMode ? "#111827" : "#ffffff",
+                color: "#64748b",
                 fontWeight: 600,
                 display: "flex",
                 alignItems: "center",
@@ -1864,6 +1856,7 @@ const Recommendations = () => {
   const [isEditingService, setIsEditingService] = useState(false);
   const [editedService, setEditedService] = useState(null);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+  const [isCompactMobile, setIsCompactMobile] = useState(window.innerWidth <= 480);
   const [isLightMode, setIsLightMode] = useState(() => {
     if (typeof document !== "undefined" && document.body) {
       return document.body.classList.contains("light-mode");
@@ -1879,11 +1872,66 @@ const Recommendations = () => {
       selectedServicePricing?.amount ??
       1000)
     : 1000;
+  const serviceSearchPlaceholder = isCompactMobile
+    ? "Search services..."
+    : "Search for any financial or legal service...";
 
   useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768);
+      setIsCompactMobile(window.innerWidth <= 480);
+    };
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  useEffect(() => {
+    const styleId = "rec-custom-global-styles";
+    if (!document.getElementById(styleId)) {
+      const style = document.createElement("style");
+      style.id = styleId;
+      style.innerHTML = `
+        .rec-modal-scrollbar::-webkit-scrollbar {
+          width: 5px;
+        }
+        .rec-modal-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .rec-modal-scrollbar::-webkit-scrollbar-thumb {
+          background: #334155;
+          border-radius: 10px;
+        }
+        .rec-modal-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #0f172a;
+        }
+        .service-search-input::placeholder {
+          color: #888888 !important;
+          opacity: 1 !important;
+        }
+      `;
+      document.head.appendChild(style);
+    } else {
+      const style = document.getElementById(styleId);
+      style.innerHTML = `
+        .rec-modal-scrollbar::-webkit-scrollbar {
+          width: 5px;
+        }
+        .rec-modal-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .rec-modal-scrollbar::-webkit-scrollbar-thumb {
+          background: #334155;
+          border-radius: 10px;
+        }
+        .rec-modal-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #0f172a;
+        }
+        .service-search-input::placeholder {
+          color: #888888 !important;
+          opacity: 1 !important;
+        }
+      `;
+    }
   }, []);
 
   useEffect(() => {
@@ -2040,7 +2088,7 @@ const Recommendations = () => {
             headers: { Authorization: `Bearer ${storedUser.token}` },
           });
           setUserLeads(response.data);
-          
+
         } catch (error) {
           console.error("Error fetching user leads:", error);
         }
@@ -2089,7 +2137,8 @@ const Recommendations = () => {
 
   const isExecutorRejectedLead = useCallback(
     (lead) => {
-      if (!lead || lead?.status !== "Rejected") return false;
+      const status = String(lead?.status || "").trim().toLowerCase();
+      if (!lead || (status !== "rejected" && status !== "informationrequired")) return false;
       const execMsg = String(lead?.executorMessage || "").trim();
       const prMsg = String(lead?.prFeedback || "").toLowerCase();
       const adminMsg = String(lead?.adminMessage || "").toLowerCase();
@@ -2108,7 +2157,8 @@ const Recommendations = () => {
 
   const isPrRejectedLead = useCallback(
     (lead) => {
-      if (!lead || lead?.status !== "Rejected") return false;
+      const status = String(lead?.status || "").trim().toLowerCase();
+      if (!lead || (status !== "rejected" && status !== "informationrequired")) return false;
       return !isExecutorRejectedLead(lead);
     },
     [isExecutorRejectedLead],
@@ -2175,7 +2225,10 @@ const Recommendations = () => {
           : [];
       const serverDocsArr = Array.isArray(serverDocs) ? serverDocs : [];
 
-      if (serviceRejectionState) {
+      const leadStatus = String(lead?.status || "").trim().toLowerCase();
+      const isFullRejection = leadStatus === "rejected" || isExecutorRejectedLead(lead);
+
+      if (serviceRejectionState && isFullRejection) {
         if (localDocsArr.length > 0) {
           const first = localDocsArr[0];
           return {
@@ -2269,7 +2322,10 @@ const Recommendations = () => {
       const lead =
         getRejectedLeadForService(serviceTitle) ||
         getLatestLeadForService(serviceTitle);
-      if (!lead || String(lead?.status || "").trim().toLowerCase() !== "rejected") {
+      if (!lead) return null;
+
+      const status = String(lead?.status || "").trim().toLowerCase();
+      if (status !== "rejected" && status !== "informationrequired") {
         return null;
       }
 
@@ -2318,65 +2374,79 @@ const Recommendations = () => {
 
   const renderServiceCardBadge = useCallback(
     (serviceTitle) => {
-      const serviceRejectionState = getServiceRejectionState(serviceTitle);
-      if (serviceRejectionState) {
-        const dismissed =
-          dismissedServiceRejectionSignatures[normalizeText(serviceTitle)] ===
-          getServiceRejectionSignature(serviceTitle);
-        if (dismissed) return null;
+      const trimmedTitle = String(serviceTitle || "").trim();
+      const lead = getLatestLeadForService(trimmedTitle);
+      if (!lead) return null;
+
+      const status = String(lead?.status || "").trim().toLowerCase();
+      const hasFinalDocument = Array.isArray(lead?.documents)
+        ? lead.documents.some((doc) => {
+            const docType = String(doc?.type || "").trim().toLowerCase();
+            const docName = String(doc?.name || "").trim().toLowerCase();
+            return docType === "final" || docName.startsWith("final");
+          })
+        : false;
+      const effectiveStatus = hasFinalDocument && !["rejected", "informationrequired"].includes(status)
+        ? "completed"
+        : status;
+      const isRejected = effectiveStatus === "rejected" || effectiveStatus === "informationrequired";
+      const isCompleted = effectiveStatus === "completed";
+
+      if (!isRejected && !isCompleted) return null;
+
+      if (isRejected) {
+        const serviceRejectionState = getServiceRejectionState(trimmedTitle);
+        const statusText = serviceRejectionState?.status || "Rejected";
 
         return (
-          <div
+          <span
             style={{
-              display: "inline-flex",
-              alignItems: "center",
-              padding: "0.38rem 0.72rem",
-              borderRadius: "999px",
-              background: "rgba(239, 68, 68, 0.14)",
-              border: "1px solid rgba(239, 68, 68, 0.32)",
               color: "#ef4444",
-              fontWeight: 800,
-              letterSpacing: "0.05em",
+              fontWeight: 900,
+              letterSpacing: "0.1em",
               textTransform: "uppercase",
-              fontSize: "0.7rem",
-              whiteSpace: "nowrap",
-              boxShadow: "0 10px 24px rgba(0,0,0,0.14)",
+              fontSize: "0.85rem",
+              whiteSpace: "normal",
+              wordBreak: "break-word",
+              lineHeight: 1.2,
+              textAlign: "right",
+              display: "inline-block",
+              padding: "4px 0",
             }}
           >
-            {serviceRejectionState.status}
-          </div>
+            {statusText}
+          </span>
         );
       }
 
-      const latestLead = getLatestLeadForService(serviceTitle);
-      if (String(latestLead?.status || "").trim() !== "Completed") return null;
+      if (isCompleted) {
+        return (
+          <span
+            style={{
+              color: "#10b981",
+              fontWeight: 900,
+              letterSpacing: "0.1em",
+              textTransform: "uppercase",
+              fontSize: "0.82rem",
+              whiteSpace: "normal",
+              wordBreak: "break-word",
+              lineHeight: 1.2,
+              textAlign: "right",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "flex-end",
+              padding: 0,
+            }}
+          >
+            Completed
+          </span>
+        );
+      }
 
-      return (
-        <div
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            padding: "0.38rem 0.72rem",
-            borderRadius: "999px",
-            background: "rgba(16, 185, 129, 0.14)",
-            border: "1px solid rgba(16, 185, 129, 0.32)",
-            color: "#10b981",
-            fontWeight: 800,
-            letterSpacing: "0.05em",
-            textTransform: "uppercase",
-            fontSize: "0.7rem",
-            whiteSpace: "nowrap",
-            boxShadow: "0 10px 24px rgba(0,0,0,0.14)",
-          }}
-        >
-          Completed
-        </div>
-      );
+      return null;
     },
     [
-      dismissedServiceRejectionSignatures,
       getLatestLeadForService,
-      getServiceRejectionSignature,
       getServiceRejectionState,
     ],
   );
@@ -2913,7 +2983,7 @@ const Recommendations = () => {
                 fontWeight: 500,
                 letterSpacing: "0.05em",
                 marginBottom: "1.2rem",
-                color: "var(--text)",
+                color: "#000000",
               }}
             >
               {searchQuery.trim() !== "" ? (
@@ -2935,7 +3005,7 @@ const Recommendations = () => {
             <p
               className="rec-subtext"
               style={{
-                color: "var(--text-secondary)",
+                color: "var(--text-muted)",
                 fontSize: "1rem",
                 maxWidth: "600px",
                 margin: "0 auto",
@@ -2946,7 +3016,7 @@ const Recommendations = () => {
               {searchQuery.trim() !== ""
                 ? `Showing services matching "${searchQuery}"`
                 : hasSubmittedServices
-                  ? "These are the services you already submitted. Open any service to track and update documents."
+                  ? "Explore available services, review requirements and manage your documents from one place."
                   : hasOnboardingProfile
                     ? "Based on your onboarding answers, we've curated only the services that match your selected path and follow-up responses."
                     : "Based on your business profile, we've curated the most impactful services to accelerate your growth and ensure compliance."}
@@ -2966,24 +3036,31 @@ const Recommendations = () => {
                   width: "100%",
                   alignItems: "center",
                   gap: "10px",
-                  background: isLightMode
-                    ? "linear-gradient(180deg, rgba(214,219,227,0.98) 0%, rgba(198,205,214,0.98) 100%)"
-                    : "transparent",
+                  background: "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
                   border: isLightMode
                     ? "1px solid rgba(181,189,199,0.98)"
                     : "1px solid rgba(110,118,132,0.22)",
                   padding: "0.65rem 0.65rem 0.65rem 1.15rem",
+                  transition: "all 0.3s ease",
                   borderRadius: "16px",
                   boxShadow: isLightMode
                     ? "0 16px 32px rgba(31, 41, 55, 0.06)"
                     : "0 16px 32px rgba(31, 41, 55, 0.08)",
                 }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = "#f97316";
+                  e.currentTarget.style.boxShadow = "0 0 0 4px rgba(249, 115, 22, 0.1)";
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = isLightMode ? "rgba(181,189,199,0.98)" : "rgba(110,118,132,0.22)";
+                  e.currentTarget.style.boxShadow = isLightMode ? "0 16px 32px rgba(31, 41, 55, 0.06)" : "0 16px 32px rgba(31, 41, 55, 0.08)";
+                }}
               >
-                <Search size={18} color={isLightMode ? "#111827" : "#6b7280"} />
+                <Search size={18} color="#000000" />
                 <input
                   type="text"
                   className="service-search-input"
-                  placeholder="Search specific services..."
+                  placeholder={serviceSearchPlaceholder}
                   value={searchQuery}
                   onChange={(e) => {
                     setSearchQuery(e.target.value);
@@ -2992,11 +3069,11 @@ const Recommendations = () => {
                   style={{
                     background: "transparent",
                     border: "none",
-                    color: isLightMode ? "#111827" : "#ffffff",
+                    color: "#000000",
                     outline: "none",
                     width: "100%",
                     fontSize: "0.95rem",
-                    fontWeight: 600,
+                    fontWeight: 400,
                   }}
                 />
                 {searchQuery && (
@@ -3007,7 +3084,7 @@ const Recommendations = () => {
                     style={{
                       background: "none",
                       border: "none",
-                      color: isLightMode ? "#111827" : "rgba(17,24,39,0.55)",
+                      color: "#000000",
                       cursor: "pointer",
                       padding: "0.5rem",
                       display: "flex",
@@ -3019,22 +3096,24 @@ const Recommendations = () => {
                 <button
                   onClick={handleSearch}
                   style={{
-                    background: isLightMode
-                      ? "linear-gradient(135deg, #d3d8e0, #bcc4ce)"
-                      : "linear-gradient(135deg, #4b5563, #374151)",
-                    border: isLightMode
-                      ? "1px solid rgba(148,163,184,0.48)"
-                      : "1px solid rgba(255,255,255,0.12)",
-                    color: isLightMode ? "#111827" : "#ffffff",
+                    background: "linear-gradient(135deg, #f97316, #ea580c)",
+                    border: "1px solid rgba(255,255,255,0.14)",
+                    color: "#ffffff",
                     padding: "0.6rem 1.2rem",
                     borderRadius: "12px",
                     cursor: "pointer",
                     fontWeight: 700,
                     fontSize: "0.85rem",
-                    transition: "all 0.2s",
-                    boxShadow: isLightMode
-                      ? "0 10px 24px rgba(31, 41, 55, 0.10)"
-                      : "0 10px 24px rgba(0, 0, 0, 0.25)",
+                    transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+                    boxShadow: "0 10px 24px rgba(249, 115, 22, 0.15)",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = "translateY(-1px)";
+                    e.currentTarget.style.boxShadow = "0 12px 28px rgba(249, 115, 22, 0.25)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = "translateY(0)";
+                    e.currentTarget.style.boxShadow = "0 10px 24px rgba(249, 115, 22, 0.15)";
                   }}
                 >
                   Search
@@ -3068,7 +3147,7 @@ const Recommendations = () => {
                   style={{
                     fontSize: isMobile ? "1.4rem" : "1.75rem",
                     fontWeight: 500,
-                    color: "var(--text)",
+                    color: "#0f172a",
                     margin: 0,
                     letterSpacing: "-0.01em",
                   }}
@@ -3123,7 +3202,7 @@ const Recommendations = () => {
                     style={{
                       fontSize: isMobile ? "1.5rem" : "2rem",
                       fontWeight: 500,
-                      color: "var(--text)",
+                      color: "#0f172a",
                       margin: 0,
                       letterSpacing: "-0.02em",
                     }}
@@ -3148,7 +3227,7 @@ const Recommendations = () => {
                         }}>
                           <h3 style={{
                             fontSize: isMobile ? "1rem" : "1.2rem",
-                            color: "var(--text)",
+                            color: "#0f172a",
                             margin: 0,
                             textTransform: "uppercase",
                             letterSpacing: "0.1em",
@@ -3247,10 +3326,20 @@ const Recommendations = () => {
             const recommendedFeesRaw = String(
               selectedService.recommendedFees || "",
             ).trim();
-            if (marketFeesRaw || recommendedFeesRaw) {
+
+            // If the recommended fees string contains multiple options (eg. separated by
+            // semicolons or pipes), prefer the first non-empty segment for display so
+            // the detail view doesn't show duplicate/compound values.
+            const recommendedFeesClean = (() => {
+              if (!recommendedFeesRaw) return "";
+              const parts = recommendedFeesRaw.split(/[;|\n]+/).map((s) => s.trim()).filter(Boolean);
+              return parts.length > 0 ? parts[0] : recommendedFeesRaw;
+            })();
+
+            if (marketFeesRaw || recommendedFeesClean) {
               return {
                 market: marketFeesRaw,
-                recommended: recommendedFeesRaw,
+                recommended: recommendedFeesClean,
               };
             }
 
@@ -3280,7 +3369,9 @@ const Recommendations = () => {
                 alignItems: "flex-start",
                 justifyContent: "center",
                 padding: isMobile
-                  ? `${mobileNavbarOffset} 0 0`
+                  ? isCompactMobile
+                    ? `${mobileNavbarOffset} 0 0.75rem`
+                    : `${mobileNavbarOffset} 0 0`
                   : "clamp(5.5rem, 9vh, 6.5rem) 1.5rem 1.5rem",
                 background: "rgba(0,0,0,0.75)",
                 backdropFilter: "blur(16px)",
@@ -3298,120 +3389,63 @@ const Recommendations = () => {
                 style={{
                   width: "100%",
                   maxWidth: "720px",
-                  maxHeight: isMobile
-                    ? `calc(100dvh - ${mobileNavbarOffset})`
-                    : "calc(100vh - clamp(7rem, 12vh, 8.5rem))",
-                  borderRadius: isMobile ? "24px 24px 0 0" : "28px",
-                  border: isLightMode ? "1px solid rgba(181,189,199,0.98)" : "1px solid rgba(255,255,255,0.08)",
+                    maxHeight: isCompactMobile
+                      ? `calc(100dvh - ${mobileNavbarOffset} - 2.25rem)`
+                      : isMobile
+                        ? `calc(100dvh - ${mobileNavbarOffset})`
+                        : "calc(100vh - clamp(7rem, 12vh, 8.5rem))",
+                  borderRadius: isMobile ? "16px 16px 0 0" : "12px",
+                  border: "1px solid #e2e8f0",
                   overflow: "hidden",
                   display: "flex",
                   flexDirection: "column",
                   boxShadow: "0 32px 80px rgba(31,41,55,0.18)",
-                  background: isLightMode
-                    ? "linear-gradient(180deg, rgba(214,219,227,0.99) 0%, rgba(198,205,214,0.99) 100%)"
-                    : "linear-gradient(180deg, rgba(38, 42, 50, 0.99) 0%, rgba(24, 28, 35, 0.99) 100%)",
+                  background: "#f1f5f9",
                 }}
               >
                 {/* -- HEADER -- */}
                 <div
                   style={{
-                    padding: isMobile ? "1.25rem 1.25rem 1rem" : "1.6rem 2rem 1.25rem",
-                    borderBottom: isLightMode ? "1px solid rgba(181,189,199,0.98)" : "1px solid rgba(255,255,255,0.06)",
+                    padding: isCompactMobile ? "0.55rem 0.95rem 0.65rem" : isMobile ? "0.8rem 1.25rem" : "1rem 2rem",
+                    borderBottom: "1px solid #e2e8f0",
                     display: "flex",
-                    alignItems: "flex-start",
+                    alignItems: isCompactMobile ? "stretch" : "flex-start",
                     justifyContent: "space-between",
-                    gap: "1rem",
+                    gap: isCompactMobile ? "0.65rem" : "1rem",
                     flexShrink: 0,
                     background: "transparent",
+                    flexDirection: isCompactMobile ? "column" : "row",
+                    position: "relative",
+                    paddingRight: isCompactMobile ? "3rem" : undefined,
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: isMobile ? "0.85rem" : "1rem", flex: 1, minWidth: 0 }}>
-                    {/* Category Icon */}
-                    <div
-                      style={{
-                        width: isMobile ? 42 : 50,
-                        height: isMobile ? 42 : 50,
-                        borderRadius: "14px",
-                        background: isLightMode
-                          ? "rgba(210,215,222,0.98)"
-                          : "rgba(55,60,70,0.92)",
-                        border: isLightMode
-                          ? "1px solid rgba(181,189,199,0.98)"
-                          : "1px solid rgba(110,118,132,0.24)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flexShrink: 0,
-                      }}
-                    >
-                      <CatIcon size={isMobile ? 18 : 22} color={isLightMode ? "#111827" : "#d1d5db"} />
-                    </div>
                     <div style={{ minWidth: 0 }}>
                       <div
                         style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          padding: "0",
-                          color: isLightMode ? "#111827" : "#ffffff",
-                          borderRadius: "0",
-                          fontSize: "0.75rem",
-                          fontWeight: 600,
+                          color: "#64748b",
+                          fontSize: "0.7rem",
+                          fontWeight: 700,
                           letterSpacing: "0.1em",
                           textTransform: "uppercase",
-                          marginBottom: "6px",
+                          marginBottom: "4px",
                         }}
                       >
                         {selectedService.category}
                       </div>
                       <h2
                         style={{
-                          fontSize: isMobile ? "1.05rem" : "1.35rem",
+                          fontSize: isMobile ? "1rem" : "1.15rem",
                           fontWeight: 700,
-                          color: isLightMode ? "#111827" : "#ffffff",
+                          color: "#0f172a",
                           margin: 0,
-                          letterSpacing: "-0.02em",
+                          letterSpacing: "-0.01em",
                           lineHeight: 1.2,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: isMobile ? "normal" : "nowrap",
                         }}
                       >
                         {selectedService.title}
                       </h2>
-                      {showServiceRejectionBanner && (
-                        <div style={{ marginTop: "0.55rem", display: "flex", flexDirection: "column", gap: "0.2rem" }}>
-                          <div
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              padding: "0.3rem 0.65rem",
-                              borderRadius: "999px",
-                              background: "rgba(239, 68, 68, 0.12)",
-                              border: "1px solid rgba(239, 68, 68, 0.26)",
-                              color: "#ef4444",
-                              fontSize: "0.72rem",
-                              fontWeight: 900,
-                              letterSpacing: "0.04em",
-                              textTransform: "uppercase",
-                              width: "fit-content",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            {serviceRejectionState.status}
-                          </div>
-                          <div
-                            style={{
-                              color: isLightMode ? "#7f1d1d" : "#fecaca",
-                              fontSize: "0.78rem",
-                              lineHeight: 1.45,
-                              fontWeight: 500,
-                            }}
-                          >
-                            {serviceRejectionState.message}
-                          </div>
-                        </div>
-                      )}
-                      {showReadyForReviewBanner && (
+                      {showReadyForReviewBanner && !isCompactMobile && (
                         <span
                           style={{
                             marginTop: "0.5rem",
@@ -3436,49 +3470,90 @@ const Recommendations = () => {
                       )}
                     </div>
                   </div>
-                  <button
-                    onClick={() => setSelectedService(null)}
+                  <div
                     style={{
-                      background: isLightMode
-                        ? "rgba(210,215,222,0.98)"
-                        : "rgba(55,60,70,0.92)",
-                      border: isLightMode
-                        ? "1px solid rgba(181,189,199,0.98)"
-                        : "1px solid rgba(110,118,132,0.24)",
-                      color: isLightMode ? "#111827" : "#ffffff",
-                      cursor: "pointer",
-                      width: "34px",
-                      height: "34px",
-                      borderRadius: "10px",
                       display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flexShrink: 0,
-                      transition: "all 0.15s",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = isLightMode
-                        ? "rgba(223,227,233,0.98)"
-                        : "rgba(66,72,82,0.95)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = isLightMode
-                        ? "rgba(210,215,222,0.98)"
-                        : "rgba(55,60,70,0.92)";
+                      alignItems: isCompactMobile ? "flex-end" : "center",
+                      justifyContent: isCompactMobile ? "space-between" : "flex-end",
+                      gap: isCompactMobile ? "0.5rem" : "1rem",
+                      width: isCompactMobile ? "100%" : "auto",
                     }}
                   >
-                    <X size={16} />
-                  </button>
+                    {(() => {
+                      if (serviceRejectionState) {
+                        const leadForRej = serviceRejectionState.lead;
+                        const hasRejectedDocs = Array.isArray(leadForRej?.documents)
+                          ? leadForRej.documents.some((d) => String(d?.status || "").trim().toLowerCase() === "rejected")
+                          : false;
+
+                        if (hasRejectedDocs) {
+                          return (
+                            <span style={{ color: "#ef4444", fontSize: isCompactMobile ? "0.7rem" : "0.78rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", textAlign: "right" }}>
+                              {serviceRejectionState.status}
+                            </span>
+                          );
+                        }
+                        // If no rejected docs remain, fallthrough and let other banners render (e.g. Ready for Review)
+                      }
+
+                      const latestLead = getLatestLeadForService(selectedService.title);
+                      if (String(latestLead?.status || "").trim().toLowerCase() === "completed") {
+                        return (
+                          <span style={{ color: "#10b981", fontSize: isCompactMobile ? "0.7rem" : "0.78rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", textAlign: "right" }}>
+                            Completed
+                          </span>
+                        );
+                      }
+
+                      return null;
+                    })()}
+                    <button
+                      onClick={() => setSelectedService(null)}
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        color: "#64748b",
+                        cursor: "pointer",
+                        width: isCompactMobile ? "28px" : "32px",
+                        height: isCompactMobile ? "28px" : "32px",
+                        borderRadius: "8px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                        transition: "all 0.2s",
+                        position: isCompactMobile ? "absolute" : "static",
+                        top: isCompactMobile ? "0.55rem" : "auto",
+                        right: isCompactMobile ? "0.65rem" : "auto",
+                        transform: isCompactMobile ? "none" : "translateX(-4px)",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = "rgba(0,0,0,0.05)";
+                        e.currentTarget.style.color = "#0f172a";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = "transparent";
+                        e.currentTarget.style.color = "#64748b";
+                      }}
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
                 </div>
 
                 {/* -- SCROLLABLE BODY -- */}
                 <div
+                  className="rec-modal-scrollbar"
                   style={{
-                    padding: isMobile ? "1.25rem" : "1.75rem 2rem",
-                    overflowY: "auto",
                     flex: 1,
+                    overflowY: "auto",
+                    padding: isCompactMobile
+                      ? "0.9rem 0.9rem 1.2rem"
+                      : isMobile
+                        ? "1.25rem 1.25rem 2rem"
+                        : "1.75rem 2.5rem 2rem",
+                    position: "relative",
                   }}
-                  className="custom-scrollbar"
                 >
 
                   {/* Description */}
@@ -3494,215 +3569,55 @@ const Recommendations = () => {
                           background: "var(--bg-card)",
                           border: "1px solid var(--border)",
                           borderRadius: "12px",
-                          color: "var(--text)",
+                          color: "#000000",
                           fontSize: "0.9rem",
+                          fontWeight: 200,
                           minHeight: "100px",
                           outline: "none"
                         }}
                       />
                     </div>
                   ) : (
-                    <p
+                    <div
                       style={{
-                        color: isLightMode ? "#4b5563" : "#ffffff",
-                        fontSize: isMobile ? "0.88rem" : "0.92rem",
-                        lineHeight: 1.7,
-                        margin: "0 0 1.5rem",
+                        display: "flex",
+                        flexDirection: isMobile ? "column" : "row",
+                        justifyContent: "space-between",
+                        alignItems: "flex-start",
+                        gap: isMobile ? "0.8rem" : "1.5rem",
+                        marginBottom: "1.25rem",
                       }}
                     >
-                      {selectedService.description}
-                    </p>
+                      <p
+                        style={{
+                          color: "#334155",
+                          fontSize: isMobile ? "0.88rem" : "0.95rem",
+                          lineHeight: 1.6,
+                          margin: 0,
+                          flex: 1,
+                        }}
+                      >
+                        {selectedService.description}
+                      </p>
+
+                      <div style={{ display: "flex", alignItems: "baseline", gap: "6px", flexShrink: 0, alignSelf: "flex-start" }}>
+                        <span style={{ fontSize: "0.62rem", fontWeight: 700, textTransform: "uppercase", color: "#64748b", letterSpacing: "0.05em" }}>Turnaround:</span>
+                        <span style={{ fontSize: "0.88rem", fontWeight: 700, color: "#10b981" }}>2 Working Days</span>
+                      </div>
+                    </div>
                   )}
 
-                  {showServiceRejectionBanner ? (
-                    <div
-                      style={{
-                        marginBottom: "1rem",
-                        padding: isMobile ? "0.95rem 1rem" : "1rem 1.15rem",
-                        borderRadius: "16px",
-                        background: "rgba(239,68,68,0.08)",
-                        border: "1px solid rgba(239,68,68,0.2)",
-                        color: "#fecaca",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "0.35rem",
-                        position: "relative",
-                      }}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => dismissServiceRejectionMessage(selectedService.title)}
-                        aria-label="Dismiss rejection message"
-                        style={{
-                          position: "absolute",
-                          top: "0.7rem",
-                          right: "0.7rem",
-                          width: "30px",
-                          height: "30px",
-                          borderRadius: "999px",
-                          border: "1px solid rgba(239,68,68,0.35)",
-                          background: "rgba(0,0,0,0.14)",
-                          color: "#fecaca",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          cursor: "pointer",
-                          padding: 0,
-                        }}
-                      >
-                        <X size={14} />
-                      </button>
-                      <div
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          padding: "0.32rem 0.7rem",
-                          borderRadius: "999px",
-                          background: "rgba(239, 68, 68, 0.12)",
-                          border: "1px solid rgba(239, 68, 68, 0.26)",
-                          color: "#ef4444",
-                          fontWeight: 800,
-                          textTransform: "uppercase",
-                          letterSpacing: "0.06em",
-                          fontSize: "0.72rem",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {serviceRejectionState.status}
-                      </div>
-                      <div
-                        style={{
-                          color: isLightMode ? "#7f1d1d" : "#fecaca",
-                          fontSize: "0.88rem",
-                          lineHeight: 1.6,
-                          fontWeight: 500,
-                        }}
-                      >
-                        <div style={{ marginBottom: "0.35rem" }}>
-                          {hasAllRequiredDocsReuploaded
-                            ? "All required documents have been reuploaded. Submit them for review."
-                            : hasAnyReuploadedDocs
-                              ? "Some documents have been reuploaded. Please complete the remaining files."
-                              : "Please reupload the corrected documents below to resubmit."}
-                        </div>
-                        <div style={{ color: isLightMode ? "#991b1b" : "#fca5a5" }}>
-                          Message: {serviceRejectionState.message}
-                        </div>
-                      </div>
-                    </div>
-                  ) : showReadyForReviewBanner ? (
-                    <div
-                      style={{
-                        marginBottom: "1rem",
-                        padding: "1rem 1.1rem",
-                        borderRadius: "16px",
-                        background: isLightMode
-                          ? "rgba(245,158,11,0.08)"
-                          : "rgba(245,158,11,0.08)",
-                        border: "1px solid rgba(245,158,11,0.22)",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "8px",
-                          color: "#fbbf24",
-                          fontWeight: 800,
-                          textTransform: "uppercase",
-                          letterSpacing: "0.06em",
-                          fontSize: "0.72rem",
-                        }}
-                      >
-                        <Clock size={16} />
-                        Ready for Review
-                      </div>
-                      <div
-                        style={{
-                          color: isLightMode ? "#92400e" : "#fde68a",
-                          fontSize: "0.88rem",
-                          lineHeight: 1.6,
-                          fontWeight: 500,
-                          marginTop: "0.35rem",
-                        }}
-                      >
-                        All required documents have been reuploaded. Submit them for review.
-                        <div style={{ color: isLightMode ? "#b45309" : "#fcd34d", marginTop: "0.35rem" }}>
-                          Message: {serviceRejectionState.message}
-                        </div>
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {/* -- Turnaround Bar -- */}
-                  <div
-                    style={{
-                      padding: isMobile ? "1rem" : "1.1rem 1.25rem",
-                      background: isLightMode
-                        ? "linear-gradient(180deg, rgba(242,244,248,0.98) 0%, rgba(226,230,236,0.98) 100%)"
-                        : "rgba(255,255,255,0.03)",
-                      border: `1px solid ${isLightMode ? "rgba(214,219,227,0.98)" : "rgba(255,255,255,0.07)"}`,
-                      borderRadius: "16px",
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "4px",
-                      marginBottom: "1rem",
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: "0.62rem",
-                        fontWeight: 700,
-                        textTransform: "uppercase",
-                        letterSpacing: "0.08em",
-                        color: isLightMode ? "#111827" : "#ffffff",
-                      }}
-                    >
-                      Turnaround
-                    </span>
-                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                      <Clock size={14} color="#10b981" />
-                      <span
-                        style={{
-                          fontSize: isMobile ? "1.1rem" : "1.2rem",
-                          fontWeight: 600,
-                          color: isLightMode ? "#111827" : "#fff",
-                          letterSpacing: "-0.01em",
-                        }}
-                      >
-                        2 Working Days
-                      </span>
-                    </div>
-                  </div>
 
                   {/* -- Market & Recommended Fees -- */}
                   {isAdmin && isEditingService ? (
                     <div
                       style={{
                         display: "grid",
-                        gridTemplateColumns: "1fr 1fr",
+                        gridTemplateColumns: "1fr",
                         gap: "0.75rem",
                         marginBottom: "1.75rem",
                       }}
                     >
-                      <div>
-                        <label style={{ fontSize: "0.65rem", fontWeight: 700, color: "#d97706", display: "block", marginBottom: "4px" }}>Market Fees</label>
-                        <input
-                          type="text"
-                          value={editedService?.marketFees || ""}
-                          onChange={(e) => setEditedService({ ...editedService, marketFees: e.target.value })}
-                          style={{
-                            width: "100%",
-                            padding: "0.6rem",
-                            background: "var(--bg-card)",
-                            border: "1px solid var(--border)",
-                            borderRadius: "10px",
-                            color: "var(--text)",
-                            fontSize: "0.8rem",
-                            outline: "none"
-                          }}
-                        />
-                      </div>
                       <div>
                         <label style={{ fontSize: "0.65rem", fontWeight: 700, color: "#059669", display: "block", marginBottom: "4px" }}>Recommended Fees</label>
                         <input
@@ -3715,9 +3630,10 @@ const Recommendations = () => {
                             background: "var(--bg-card)",
                             border: "1px solid var(--border)",
                             borderRadius: "10px",
-                            color: "var(--text)",
+                            color: "#000000",
                             fontSize: "0.8rem",
-                            outline: "none"
+                            outline: "none",
+                            fontWeight: 200
                           }}
                         />
                       </div>
@@ -3727,45 +3643,29 @@ const Recommendations = () => {
                       <div
                         style={{
                           display: "grid",
-                          gridTemplateColumns: "1fr 1fr",
-                          gap: "0.75rem",
+                          gridTemplateColumns: "1fr",
+                          gap: "1px",
+                          background: "#e2e8f0",
+                          border: "1px solid #e2e8f0",
+                          borderRadius: "12px",
+                          overflow: "hidden",
                           marginBottom: "1.75rem",
                         }}
                       >
-                        {fees.market && (
-                          <div
-                            style={{
-                              padding: "0.8rem 1rem",
-                              background: isLightMode
-                                ? "linear-gradient(180deg, rgba(242,244,248,0.98) 0%, rgba(226,230,236,0.98) 100%)"
-                                : "rgba(245, 158, 11, 0.05)",
-                              border: isLightMode
-                                ? "1px solid rgba(214,219,227,0.98)"
-                                : "1px solid rgba(245, 158, 11, 0.1)",
-                              borderRadius: "14px",
-                            }}
-                          >
-                            <span style={{ fontSize: "0.6rem", fontWeight: 600, color: isLightMode ? "#111827" : "#d97706", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: "4px" }}>Market Fees</span>
-                            <span style={{ fontSize: "0.95rem", fontWeight: 500, color: "var(--text)" }}>{fees.market}</span>
-                          </div>
-                        )}
-                        {fees.recommended && (
-                          <div
-                            style={{
-                              padding: "0.8rem 1rem",
-                              background: isLightMode
-                                ? "linear-gradient(180deg, rgba(242,244,248,0.98) 0%, rgba(226,230,236,0.98) 100%)"
-                                : "rgba(16, 185, 129, 0.05)",
-                              border: isLightMode
-                                ? "1px solid rgba(214,219,227,0.98)"
-                                : "1px solid rgba(16, 185, 129, 0.1)",
-                              borderRadius: "14px",
-                            }}
-                          >
-                            <span style={{ fontSize: "0.6rem", fontWeight: 600, color: isLightMode ? "#111827" : "#059669", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: "4px" }}>Recommended Fees</span>
-                            <span style={{ fontSize: "0.95rem", fontWeight: 500, color: "var(--text)" }}>{fees.recommended}</span>
-                          </div>
-                        )}
+                        <div
+                          style={{
+                            padding: "0.85rem",
+                            background: "#f8fafc",
+                            textAlign: "left",
+                            transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+                            position: "relative",
+                            zIndex: 1,
+                            cursor: "default"
+                          }}
+                        >
+                          <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "#000000", textTransform: "uppercase", display: "block", marginBottom: "4px", whiteSpace: "nowrap" }}>Recommended Fees</span>
+                          <span style={{ fontSize: "0.9rem", fontWeight: 700, color: "#10b981" }}>{fees.recommended || "—"}</span>
+                        </div>
                       </div>
                     )
                   )}
@@ -3859,40 +3759,39 @@ const Recommendations = () => {
                       style={{
                         display: "flex",
                         alignItems: "center",
-                        justifyContent: "space-between",
-                        marginBottom: "1rem",
+                        justifyContent: isCompactMobile ? "flex-start" : "space-between",
+                        marginBottom: isCompactMobile ? "0.8rem" : "1rem",
                         flexWrap: "wrap",
-                        gap: "0.5rem",
+                        gap: isCompactMobile ? "0.35rem" : "0.5rem",
                       }}
                     >
-                      <div>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: isCompactMobile ? "8px" : "12px", width: isCompactMobile ? "100%" : "auto", justifyContent: isCompactMobile ? "space-between" : "flex-start" }}>
                         <div
                           style={{
-                            fontSize: "0.68rem",
-                            fontWeight: 600,
+                            fontSize: isMobile ? "0.8rem" : "0.9rem",
+                            fontWeight: 700,
                             textTransform: "uppercase",
-                            letterSpacing: "0.1em",
-                            color: isLightMode ? "#94a3b8" : "#ffffff",
-                            marginBottom: "2px",
+                            letterSpacing: "0.05em",
+                            color: "#0f172a",
                           }}
                         >
-                          Required Documents
+                          Documents To Be Submitted
                         </div>
                         <div
                           style={{
-                            fontSize: isMobile ? "0.95rem" : "1.1rem",
+                            fontSize: "0.75rem",
                             fontWeight: 600,
-                            color: isLightMode ? "#1f1147" : "#fff",
+                            color: "#64748b",
                           }}
                         >
-                          {uploadedCount}/{required.length} Uploaded
+                          ({uploadedCount}/{required.length} Uploaded)
                         </div>
                       </div>
                       {/* Progress */}
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", width: isCompactMobile ? "100%" : "auto", justifyContent: isCompactMobile ? "flex-end" : "flex-start" }}>
                         <div
                           style={{
-                            width: isMobile ? "80px" : "100px",
+                            width: isCompactMobile ? "68px" : isMobile ? "80px" : "100px",
                             height: "5px",
                             background: isLightMode ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.08)",
                             borderRadius: "99px",
@@ -3930,24 +3829,23 @@ const Recommendations = () => {
                       style={{
                         display: "flex",
                         alignItems: "center",
-                        gap: "8px",
-                        padding: "0.6rem 0.9rem",
-                        background: isLightMode ? "#fffbeb" : "rgba(245,158,11,0.06)",
-                        border: `1px solid ${isLightMode ? "#fde68a" : "rgba(245,158,11,0.15)"}`,
-                        borderRadius: "10px",
-                        marginBottom: "1rem",
+                        gap: "6px",
+                        padding: "0 0.25rem",
+                        background: "none",
+                        border: "none",
+                        marginBottom: "0.85rem",
                       }}
                     >
-                      <FileText size={13} color="#f59e0b" style={{ flexShrink: 0 }} />
+                      <FileText size={12} color="#94a3b8" style={{ flexShrink: 0 }} />
                       <span
                         style={{
-                          fontSize: "0.72rem",
-                          fontWeight: 600,
-                          color: "#d97706",
+                          fontSize: "0.68rem",
+                          fontWeight: 500,
+                          color: "#64748b",
                           lineHeight: 1.4,
                         }}
                       >
-                        Only PDF documents are accepted for upload
+                        <strong>Note:</strong> Only PDF documents are accepted for upload
                       </span>
                     </div>
 
@@ -3957,15 +3855,13 @@ const Recommendations = () => {
                         return docs.map((doc, idx) => {
                           const state = getDocumentState(selectedService.title, doc.name);
                           const cardBg = state.reuploadRequired
-                            ? isLightMode ? "#fef2f2" : "rgba(239,68,68,0.05)"
+                            ? "#fef2f2"
                             : state.uploaded
-                              ? isLightMode ? "#f0fdf4" : "rgba(16,185,129,0.04)"
-                              : isLightMode ? "#f8fafc" : "rgba(255,255,255,0.02)";
+                              ? "#ffffff"
+                              : "#ffffff";
                           const cardBorder = state.reuploadRequired
-                            ? isLightMode ? "#fca5a5" : "rgba(239,68,68,0.18)"
-                            : state.uploaded
-                              ? isLightMode ? "#86efac" : "rgba(16,185,129,0.15)"
-                              : isLightMode ? "#e2e8f0" : "rgba(255,255,255,0.03)";
+                            ? "#fca5a5"
+                            : "#e2e8f0";
 
                           return (
                             <div
@@ -3982,34 +3878,6 @@ const Recommendations = () => {
                                 opacity: !doc.required && !state.uploaded ? 0.65 : 1,
                               }}
                             >
-                              {/* Status Icon */}
-                              <div
-                                style={{
-                                  width: 34,
-                                  height: 34,
-                                  borderRadius: "9px",
-                                  background: state.reuploadRequired
-                                    ? "rgba(239,68,68,0.08)"
-                                    : state.uploaded
-                                      ? "rgba(16,185,129,0.08)"
-                                      : isLightMode
-                                        ? "rgba(214,219,227,0.22)"
-                                        : "rgba(255,255,255,0.04)",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  flexShrink: 0,
-                                }}
-                              >
-                                {state.reuploadRequired ? (
-                                  <AlertCircle size={15} color="#ef4444" />
-                                ) : state.uploaded ? (
-                                  <Check size={15} color="#10b981" />
-                                ) : (
-                                  <FileText size={15} color={isLightMode ? "#111827" : "#ffffff"} />
-                                )}
-                              </div>
-
                               {/* Doc Info */}
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
@@ -4017,8 +3885,8 @@ const Recommendations = () => {
                                     style={{
                                       margin: 0,
                                       fontSize: isMobile ? "0.8rem" : "0.84rem",
-                                      fontWeight: 700,
-                                      color: isLightMode ? "#111827" : "#fff",
+                                      fontWeight: 800,
+                                      color: "#1e293b",
                                       overflow: "hidden",
                                       textOverflow: "ellipsis",
                                       whiteSpace: "nowrap",
@@ -4035,7 +3903,7 @@ const Recommendations = () => {
                                         : isLightMode ? "rgba(214,219,227,0.22)" : "rgba(255,255,255,0.06)",
                                       color: doc.required
                                         ? "#ef4444"
-                                        : isLightMode ? "#111827" : "#ffffff",
+                                        : isLightMode ? "#475569" : "#ffffff",
                                       borderRadius: "5px",
                                       fontWeight: 800,
                                       textTransform: "uppercase",
@@ -4054,7 +3922,7 @@ const Recommendations = () => {
                                       ? "#ef4444"
                                       : state.uploaded
                                         ? "#10b981"
-                                        : isLightMode ? "#111827" : "#ffffff",
+                                        : isLightMode ? "#475569" : "#ffffff",
                                     overflow: "hidden",
                                     textOverflow: "ellipsis",
                                     whiteSpace: "nowrap",
@@ -4078,10 +3946,10 @@ const Recommendations = () => {
                                     background: state.reuploadRequired
                                       ? "#ef4444"
                                       : state.uploaded
-                                        ? isLightMode ? "rgba(232,236,242,0.96)" : "rgba(255,255,255,0.03)"
+                                        ? "#f1f5f9"
                                         : "#10b981",
                                     color: state.uploaded && !state.reuploadRequired
-                                      ? isLightMode ? "#111827" : "rgba(255,255,255,0.7)"
+                                      ? "#334155"
                                       : "#fff",
                                     borderRadius: "9px",
                                     fontSize: "0.72rem",
@@ -4092,7 +3960,7 @@ const Recommendations = () => {
                                     transition: "all 0.2s",
                                     flexShrink: 0,
                                     border: state.uploaded && !state.reuploadRequired
-                                      ? `1px solid ${isLightMode ? "rgba(214,219,227,0.98)" : "rgba(255,255,255,0.04)"}`
+                                      ? "1px solid #e2e8f0"
                                       : "1px solid transparent",
                                     opacity: (uploadingDoc && uploadingDoc !== doc.name) ? 0.4 : 1,
                                     pointerEvents: uploadingDoc ? "none" : "auto",
@@ -4222,12 +4090,39 @@ const Recommendations = () => {
                 {(!storedUser?.role || storedUser?.role === "user") && (
                   <div
                     style={{
-                      padding: isMobile ? "1rem 1.25rem" : "1.25rem 2rem",
+                      padding: isMobile ? "0.75rem 1.25rem" : "0.85rem 2rem",
                       borderTop: `1px solid ${isLightMode ? "rgba(0,0,0,0.08)" : "rgba(255,255,255,0.06)"}`,
                       background: isLightMode ? "#f8fafc" : "rgba(255,255,255,0.015)",
                       flexShrink: 0,
+                      display: "flex",
+                      justifyContent: isMobile ? "space-between" : "flex-end",
+                      gap: "12px",
                     }}
                   >
+                    <button
+                      onClick={() => setSelectedService(null)}
+                      style={{
+                        flex: isMobile ? 1 : "none",
+                        minWidth: isMobile ? "0" : "140px",
+                        padding: isMobile ? "0.8rem" : "0.75rem 2rem",
+                        background: "#64748b",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: "12px",
+                        fontWeight: 700,
+                        fontSize: "0.88rem",
+                        cursor: "pointer",
+                        transition: "all 0.2s",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = "#475569";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = "#64748b";
+                      }}
+                    >
+                      Cancel
+                    </button>
                     <button
                       onClick={async () => {
                         if (!isComplete) {
@@ -4345,18 +4240,17 @@ const Recommendations = () => {
                         return Object.keys(localUploadsForService).length === 0;
                       })()}
                       style={{
-                        width: "100%",
-                        padding: isMobile ? "0.9rem" : "1rem",
+                        flex: isMobile ? 1 : "none",
+                        minWidth: isMobile ? "0" : "140px",
+                        padding: isMobile ? "0.85rem" : "0.75rem 2rem",
                         background: isComplete
                           ? "linear-gradient(135deg, #059669, #10b981)"
-                          : isLightMode
-                            ? "linear-gradient(180deg, rgba(242,244,248,0.98) 0%, rgba(226,230,236,0.98) 100%)"
-                            : "rgba(255,255,255,0.04)",
-                        color: isComplete ? "#fff" : isLightMode ? "#111827" : "rgba(255,255,255,0.2)",
-                        border: isComplete ? "none" : `1px solid ${isLightMode ? "rgba(214,219,227,0.98)" : "rgba(255,255,255,0.06)"}`,
+                          : "#f8fafc",
+                        color: isComplete ? "#fff" : "#64748b",
+                        border: `1px solid ${isComplete ? "transparent" : "#e2e8f0"}`,
                         borderRadius: "12px",
                         fontWeight: 700,
-                        fontSize: "0.92rem",
+                        fontSize: "0.88rem",
                         cursor: (() => {
                           const disabled = (() => {
                             if (!isComplete || isSubmitting) return true;
@@ -4385,7 +4279,7 @@ const Recommendations = () => {
                       {isSubmitting ? (
                         <><Loader2 size={16} className="animate-spin" /> Submitting...</>
                       ) : !isComplete ? (
-                        <>Upload Required Files to Unlock</>
+                        <>Upload Required Files to Submit</>
                       ) : (() => {
                         const existingLead = getLatestLeadForService(selectedService.title);
                         const localUploadsForService = uploadedDocs[selectedService.title] || {};

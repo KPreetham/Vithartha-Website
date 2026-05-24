@@ -476,7 +476,7 @@ const DraftReview = () => {
                   marginBottom: "1rem",
                 }}
               >
-                <Sparkles size={20} color="#10b981" />
+                {/* <Sparkles size={20} color="#10b981" /> */}
                 <h3 style={{ fontSize: "1.1rem", fontWeight: 800, margin: 0 }}>
                   Advisor Summary
                 </h3>

@@ -23,7 +23,7 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
-  const accentColor = "#7F57FB";
+  const accentColor = "#FB6A21";
 
   const handleRoleRedirection = async (data) => {
     const actualRole = normalizeRole(data.role);
@@ -51,6 +51,7 @@ const Login = () => {
     }
 
     if (actualRole !== "user") {
+      sessionStorage.setItem("fin2line_auth_redirect", "true");
       navigate(getDashboardPathByRole(actualRole));
     } else {
       const onboardingDone = hasCompletedOnboarding(data);
@@ -67,14 +68,17 @@ const Login = () => {
 
         if (leads && leads.length > 0) {
           markOnboardingCompleted(data);
+          sessionStorage.setItem("fin2line_auth_redirect", "true");
           navigate("/dashboard");
         } else if (!onboardingDone) {
           navigate("/onboarding");
         } else {
+          sessionStorage.setItem("fin2line_auth_redirect", "true");
           navigate("/services");
         }
       } catch (error) {
         console.error("Navigation check error:", error);
+        sessionStorage.setItem("fin2line_auth_redirect", "true");
         navigate("/services");
       }
     }
@@ -167,8 +171,8 @@ const Login = () => {
     display: "flex",
     alignItems: "center",
     gap: "0.75rem",
-    background: "transparent",
-    border: "1px solid var(--border)",
+    background: "#ffffff",
+    border: "1px solid rgba(17,17,17,0.12)",
     borderRadius: "8px",
     padding: "0.85rem 1.1rem",
     transition: "border-color 0.2s ease",
@@ -181,7 +185,7 @@ const Login = () => {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "var(--bg)",
+        background: "#f5f5f5",
         position: "relative",
         overflow: "hidden",
         padding: "4.5rem 1rem 1rem",
@@ -192,7 +196,7 @@ const Login = () => {
         style={{
           position: "absolute",
           inset: 0,
-          background: `radial-gradient(ellipse 50% 40% at 50% 0%, rgba(127,87,251,0.08) 0%, transparent 60%)`,
+          background: `radial-gradient(ellipse 50% 40% at 50% 0%, rgba(251,106,33,0.08) 0%, transparent 60%)`,
           pointerEvents: "none",
         }}
       />
@@ -206,9 +210,10 @@ const Login = () => {
         <div
           className="auth-card"
           style={{
-            background: "var(--modal-gradient)",
+            background: "#ffffff",
+            color: "#111111",
             borderRadius: "20px",
-            border: "1px solid var(--border)",
+            border: "1px solid rgba(17,17,17,0.12)",
             padding: "1.5rem 2.2rem",
             boxShadow: "var(--shadow-lg)",
           }}
@@ -243,7 +248,7 @@ const Login = () => {
               style={{
                 fontSize: "1.4rem",
                 fontWeight: 500,
-                color: "var(--text)",
+                color: "#111111",
                 marginBottom: "0.15rem",
                 letterSpacing: "-0.01em",
               }}
@@ -265,10 +270,10 @@ const Login = () => {
               style={inputStyle}
               onFocus={() => { }}
               onMouseEnter={(e) =>
-                (e.currentTarget.style.borderColor = "rgba(127,87,251,0.45)")
+                (e.currentTarget.style.borderColor = "rgba(251,106,33,0.45)")
               }
               onMouseLeave={(e) =>
-                (e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)")
+                (e.currentTarget.style.borderColor = "rgba(17,17,17,0.12)")
               }
             >
               <Mail size={15} color="var(--text-muted)" />
@@ -284,7 +289,7 @@ const Login = () => {
                   background: "none",
                   border: "none",
                   outline: "none",
-                  color: "var(--text)",
+                  color: "#111111",
                   fontSize: "0.88rem",
                   width: "100%",
                 }}
@@ -293,7 +298,7 @@ const Login = () => {
                 }
                 onBlur={(e) =>
                 (e.currentTarget.parentElement.style.borderColor =
-                  "var(--border)")
+                  "rgba(17,17,17,0.12)")
                 }
               />
             </div>
@@ -313,7 +318,7 @@ const Login = () => {
                   background: "none",
                   border: "none",
                   outline: "none",
-                  color: "var(--text)",
+                  color: "#111111",
                   fontSize: "0.88rem",
                   flex: 1,
                 }}
@@ -322,7 +327,7 @@ const Login = () => {
                 }
                 onBlur={(e) =>
                 (e.currentTarget.parentElement.style.borderColor =
-                  "var(--border)")
+                  "rgba(17,17,17,0.12)")
                 }
               />
               <button
@@ -332,7 +337,7 @@ const Login = () => {
                   background: "none",
                   border: "none",
                   cursor: "pointer",
-                  color: "var(--text-muted)",
+                  color: "#111111",
                   padding: 0,
                   display: "flex",
                 }}
@@ -374,8 +379,8 @@ const Login = () => {
                 padding: "0.75rem",
                 borderRadius: "8px",
                 background: loading
-                  ? "rgba(127,87,251,0.45)"
-                  : "linear-gradient(135deg, #7F57FB 0%, #6A36FB 100%)",
+                  ? "rgba(251,106,33,0.45)"
+                  : "linear-gradient(135deg, #FB6A21 0%, #F55F18 100%)",
                 color: "white",
                 fontWeight: 800,
                 border: "none",
@@ -387,18 +392,18 @@ const Login = () => {
                 alignItems: "center",
                 justifyContent: "center",
                 gap: "0.5rem",
-                boxShadow: "0 6px 20px rgba(127,87,251,0.3)",
+                boxShadow: "0 6px 20px rgba(251,106,33,0.3)",
                 transition: "all 0.3s ease",
                 marginTop: "0",
               }}
               onMouseEnter={(e) => {
                 if (!loading)
                   e.currentTarget.style.boxShadow =
-                    "0 12px 32px rgba(127,87,251,0.45)";
+                    "0 12px 32px rgba(251,106,33,0.45)";
               }}
               onMouseLeave={(e) =>
               (e.currentTarget.style.boxShadow =
-                "0 8px 24px rgba(127,87,251,0.3)")
+                "0 8px 24px rgba(251,106,33,0.3)")
               }
             >
               {loading ? (
@@ -422,7 +427,7 @@ const Login = () => {
             <div
               style={{
                 height: "1px",
-                background: "var(--border)",
+                background: "rgba(17,17,17,0.12)",
                 position: "absolute",
                 top: "50%",
                 left: 0,
@@ -432,7 +437,7 @@ const Login = () => {
             <span
               style={{
                 position: "relative",
-                background: "var(--card-bg)",
+                background: "#ffffff",
                 padding: "0 0.9rem",
                 color: "var(--text-muted)",
                 fontSize: "0.72rem",
@@ -451,9 +456,9 @@ const Login = () => {
               width: "100%",
               padding: "0.7rem 1.2rem",
               borderRadius: "8px",
-              background: "var(--bg-card)",
-              border: "1px solid var(--border)",
-              color: "var(--text)",
+              background: "#ffffff",
+              border: "1px solid rgba(17,17,17,0.12)",
+              color: "#111111",
               fontSize: "0.88rem",
               fontWeight: 600,
               cursor: googleLoading ? "not-allowed" : "pointer",
@@ -465,12 +470,12 @@ const Login = () => {
               fontFamily: "var(--font-body)",
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = "rgba(255,255,255,0.08)";
-              e.currentTarget.style.borderColor = "rgba(255,255,255,0.2)";
+              e.currentTarget.style.background = "#f5f5f5";
+              e.currentTarget.style.borderColor = "rgba(17,17,17,0.2)";
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = "var(--bg-card)";
-              e.currentTarget.style.borderColor = "var(--border)";
+              e.currentTarget.style.background = "#ffffff";
+              e.currentTarget.style.borderColor = "rgba(17,17,17,0.12)";
             }}
           >
             {/* Google Icon SVG */}

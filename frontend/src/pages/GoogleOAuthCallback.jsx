@@ -37,6 +37,7 @@ const GoogleOAuthCallback = () => {
     }
 
     if (role !== "user") {
+      sessionStorage.setItem("fin2line_auth_redirect", "true");
       navigate(getDashboardPathByRole(role), { replace: true });
       return;
     }
@@ -55,14 +56,17 @@ const GoogleOAuthCallback = () => {
 
       if (leads && leads.length > 0) {
         markOnboardingCompleted(data);
+        sessionStorage.setItem("fin2line_auth_redirect", "true");
         navigate("/dashboard", { replace: true });
       } else if (!onboardingDone) {
         navigate("/onboarding", { replace: true });
       } else {
+        sessionStorage.setItem("fin2line_auth_redirect", "true");
         navigate("/services", { replace: true });
       }
     } catch (error) {
       console.error("Navigation check error:", error);
+      sessionStorage.setItem("fin2line_auth_redirect", "true");
       navigate("/services", { replace: true });
     }
   };

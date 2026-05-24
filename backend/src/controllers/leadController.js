@@ -8,6 +8,36 @@ import axios from "axios";
 const escapeRegExp = (value) =>
   String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const normalizeRole = (role) => String(role || "").trim().toLowerCase();
+
+const isDraftSentStatus = (status) => {
+  return ["DraftSent", "DraftAccepted", "DraftRejected", "UserAccepted", "Completed"].includes(status);
+};
+
+const filterUnsentDraftsForResponse = (leadOrLeads, role) => {
+  const normalizedRole = normalizeRole(role);
+  if (normalizedRole !== "user" && normalizedRole !== "executor") {
+    return leadOrLeads;
+  }
+
+  const filterLeadDocs = (lead) => {
+    if (!lead) return lead;
+    const leadObj = typeof lead.toObject === "function" ? lead.toObject() : lead;
+    if (isDraftSentStatus(leadObj.status)) {
+      return leadObj;
+    }
+    if (leadObj.documents) {
+      leadObj.documents = leadObj.documents.filter(
+        (doc) => String(doc.type || "").trim().toLowerCase() !== "draft"
+      );
+    }
+    return leadObj;
+  };
+
+  if (Array.isArray(leadOrLeads)) {
+    return leadOrLeads.map(filterLeadDocs);
+  }
+  return filterLeadDocs(leadOrLeads);
+};
 const normalizeDocumentName = (value) =>
   String(value || "")
     .trim()
@@ -21,6 +51,14 @@ const normalizeDocumentUrl = (value) =>
 
 const CLOUDINARY_RESOURCE_TYPES = new Set(["image", "raw", "video", "auto"]);
 const CLOUDINARY_DELIVERY_TYPES = new Set(["authenticated", "upload"]);
+const DEFAULT_DOCUMENT_LINK_LIFETIME_SECONDS = 8;
+
+const getDocumentLinkLifetimeSeconds = () => {
+  const parsedValue = Number.parseInt(process.env.DOCUMENT_LINK_LIFETIME_SECONDS, 10);
+  return Number.isFinite(parsedValue) && parsedValue > 0
+    ? parsedValue
+    : DEFAULT_DOCUMENT_LINK_LIFETIME_SECONDS;
+};
 
 const uniqueValues = (values) => Array.from(new Set(values.filter(Boolean)));
 
@@ -86,6 +124,7 @@ const buildCloudinarySignedUrl = (
     resourceType = "auto",
     deliveryType = "authenticated",
     format = null,
+    expirationSeconds = 3600,
   } = {},
 ) => {
   const resolvedPublicId = String(publicId || "").trim();
@@ -99,7 +138,7 @@ const buildCloudinarySignedUrl = (
       type: deliveryType,
       secure: true,
       resource_type: resourceType,
-      expires_at: Math.floor(Date.now() / 1000) + 3600,
+      expires_at: Math.floor(Date.now() / 1000) + expirationSeconds,
     };
 
     if (format) {
@@ -179,12 +218,12 @@ const attachReuploadMetadata = async (leadOrLeads) => {
       ...lead,
       documents: Array.isArray(lead.documents)
         ? lead.documents.map((doc) => ({
-            ...doc,
-            displayReuploaded:
-              reuploadedNameSet.has(normalizeDocumentName(doc?.name)) ||
-              !!doc?.reuploaded ||
-              String(doc?.status || "").trim().toLowerCase() === "reuploaded",
-          }))
+          ...doc,
+          displayReuploaded:
+            reuploadedNameSet.has(normalizeDocumentName(doc?.name)) ||
+            !!doc?.reuploaded ||
+            String(doc?.status || "").trim().toLowerCase() === "reuploaded",
+        }))
         : [],
       reuploadedDocumentNames,
       reuploadedDocuments: Array.from(leadRecords.values()),
@@ -330,9 +369,9 @@ export const getLeads = async (req, res) => {
       query = {
         $or: [
           { executorId: req.user._id },
-          { 
-            status: { $in: ["PR_Accepted", "AssignedToExecutor"] }, 
-            $or: [{ executorId: { $exists: false } }, { executorId: null }] 
+          {
+            status: { $in: ["PR_Accepted", "AssignedToExecutor"] },
+            $or: [{ executorId: { $exists: false } }, { executorId: null }]
           }
         ]
       };
@@ -350,7 +389,8 @@ export const getLeads = async (req, res) => {
       .populate("executorId", "name email")
       .sort({ createdAt: -1 });
     const hydratedLeads = await attachReuploadMetadata(leads);
-    res.status(200).json(hydratedLeads);
+    const filteredLeads = filterUnsentDraftsForResponse(hydratedLeads, req.user.role);
+    res.status(200).json(filteredLeads);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -424,7 +464,8 @@ export const getLeadById = async (req, res) => {
     }
 
     const hydratedLead = await attachReuploadMetadata(lead);
-    res.status(200).json(hydratedLead);
+    const filteredLead = filterUnsentDraftsForResponse(hydratedLead, req.user.role);
+    res.status(200).json(filteredLead);
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -507,8 +548,8 @@ export const updateLead = async (req, res) => {
 
       const currentDocuments = Array.isArray(lead.documents)
         ? lead.documents.map((doc) =>
-            typeof doc.toObject === "function" ? doc.toObject() : { ...doc },
-          )
+          typeof doc.toObject === "function" ? doc.toObject() : { ...doc },
+        )
         : [];
 
       updateData.documents = currentDocuments.map((doc) => {
@@ -529,7 +570,7 @@ export const updateLead = async (req, res) => {
     const reuploadedDocumentNames = Array.isArray(req.body?.reuploadedDocumentNames)
       ? req.body.reuploadedDocumentNames
       : [];
-    
+
     const normalizedReuploads = new Set(
       reuploadedDocumentNames
         .map((name) => normalizeDocumentName(name))
@@ -584,11 +625,11 @@ export const updateLead = async (req, res) => {
           return !inferredReuploads.has(docName);
         });
 
-          const taggedIncomingDocuments = incomingDocsRaw.map((doc) => {
+        const taggedIncomingDocuments = incomingDocsRaw.map((doc) => {
           const docName = normalizeDocumentName(doc?.name);
           const isReupload = inferredReuploads.has(docName);
           const isFinal = String(doc?.type || "").trim().toLowerCase() === "final";
-          
+
           return {
             ...doc,
             name: doc?.name || "",
@@ -599,7 +640,7 @@ export const updateLead = async (req, res) => {
 
         const allDocuments = [...preservedDocuments, ...taggedIncomingDocuments];
         updateData.documents = allDocuments;
-        
+
         // Clean up the update payload to avoid conflicts between $set and $push
         delete updateData.$push;
         delete updateData.reuploadedDocumentNames;
@@ -607,10 +648,10 @@ export const updateLead = async (req, res) => {
         // Logic for status transition if it was rejected
         if (isRejectedService(lead)) {
           // Check if there are any REMAINING rejected documents that haven't been reuploaded
-          const stillRejectedDocs = preservedDocuments.filter(d => 
+          const stillRejectedDocs = preservedDocuments.filter(d =>
             String(d?.status || "").trim().toLowerCase() === "rejected"
           );
-          
+
           if (stillRejectedDocs.length > 0) {
             updateData.status = "Rejected";
           } else {
@@ -621,10 +662,15 @@ export const updateLead = async (req, res) => {
           }
         }
       }
-      
+
       // Final validation for specific status transitions
-      const finalDocs = updateData.documents || currentDocuments;
-      
+      // Include both existing/merged documents AND any incoming $push documents
+      // that haven't been merged (i.e. brand-new docs that aren't reuploads)
+      const mergedDocs = updateData.documents || currentDocuments;
+      const finalDocs = updateData.documents
+        ? mergedDocs
+        : [...mergedDocs, ...incomingDocsRaw];
+
       if (updateData.status === "DraftSent") {
         const hasDraft = finalDocs.some((doc) => doc?.type === "Draft");
         if (!hasDraft) {
@@ -650,7 +696,7 @@ export const updateLead = async (req, res) => {
     const updatedLead = await Lead.findByIdAndUpdate(id, updateData, { new: true });
 
     if (!updatedLead) {
-        return res.status(404).json({ success: false, message: "Lead not found after update" });
+      return res.status(404).json({ success: false, message: "Lead not found after update" });
     }
 
     // Persist to ReuploadedDocuments table for history/tracking
@@ -777,40 +823,40 @@ export const getSignedUrl = async (req, res) => {
 
     // Authorization check: Ensure the user has access to the lead that contains this document
     if (id) {
-        const lead = await Lead.findById(id);
-        if (!lead) {
-            return res.status(404).json({ success: false, message: "Lead not found" });
-        }
+      const lead = await Lead.findById(id);
+      if (!lead) {
+        return res.status(404).json({ success: false, message: "Lead not found" });
+      }
 
-        const leadUserId = lead.user?._id || lead.user;
-        const isOwner = leadUserId && leadUserId.toString() === req.user._id.toString();
-        const isAdmin = normalizeRole(req.user.role) === "admin";
-        const isPR = normalizeRole(req.user.role) === "pr";
-        const isExecutor = normalizeRole(req.user.role) === "executor";
-        const isAssignedPR = lead.prId && lead.prId.toString() === req.user._id.toString();
-        const isAssignedExecutor = lead.executorId && lead.executorId.toString() === req.user._id.toString();
+      const leadUserId = lead.user?._id || lead.user;
+      const isOwner = leadUserId && leadUserId.toString() === req.user._id.toString();
+      const isAdmin = normalizeRole(req.user.role) === "admin";
+      const isPR = normalizeRole(req.user.role) === "pr";
+      const isExecutor = normalizeRole(req.user.role) === "executor";
+      const isAssignedPR = lead.prId && lead.prId.toString() === req.user._id.toString();
+      const isAssignedExecutor = lead.executorId && lead.executorId.toString() === req.user._id.toString();
 
-        if (!isAdmin && !isOwner && !isPR && !isExecutor && !isAssignedPR && !isAssignedExecutor) {
-            return res.status(403).json({ success: false, message: "Not authorized to access this document" });
-        }
+      if (!isAdmin && !isOwner && !isPR && !isExecutor && !isAssignedPR && !isAssignedExecutor) {
+        return res.status(403).json({ success: false, message: "Not authorized to access this document" });
+      }
     } else {
-        // If no lead ID provided, only admin/pr can access by publicId alone
-        const isAdmin = normalizeRole(req.user.role) === "admin";
-        const isPR = normalizeRole(req.user.role) === "pr";
-        if (!isAdmin && !isPR) {
-            return res.status(403).json({ success: false, message: "Not authorized to access this document" });
-        }
+      // If no lead ID provided, only admin/pr can access by publicId alone
+      const isAdmin = normalizeRole(req.user.role) === "admin";
+      const isPR = normalizeRole(req.user.role) === "pr";
+      if (!isAdmin && !isPR) {
+        return res.status(403).json({ success: false, message: "Not authorized to access this document" });
+      }
     }
 
     const { cloudinary } = await import("../config/cloudinary.js");
-    
+
     const buildUrl = (resourceType = "auto") => {
       return cloudinary.url(publicId, {
         sign_url: true,
         type: 'authenticated',
         resource_type: resourceType,
         secure: true,
-        expires_at: Math.floor(Date.now() / 1000) + 3600 
+        expires_at: Math.floor(Date.now() / 1000) + 3600
       });
     };
 
@@ -864,21 +910,21 @@ export const generateViewToken = async (req, res) => {
 
       matchingDoc = Array.isArray(lead.documents)
         ? lead.documents.find((doc) => {
-            if (!doc) return false;
-            const docPublicId = String(doc.publicId || "").trim();
-            const docUrl = getDocUrl(doc);
-            const docName = String(doc.name || "").trim();
-            
-            // Exact matches
-            if (docPublicId === resolvedPublicId || docUrl === resolvedPublicId || docName === resolvedPublicId) return true;
-            
-            // Fuzzy matches for public IDs (ignoring folder/version prefix)
-            const getBasename = (str) => String(str).split("/").pop().split(".")[0];
-            const candidateBasename = getBasename(resolvedPublicId);
-            if (candidateBasename && (getBasename(docPublicId) === candidateBasename || getBasename(docUrl) === candidateBasename)) return true;
+          if (!doc) return false;
+          const docPublicId = String(doc.publicId || "").trim();
+          const docUrl = getDocUrl(doc);
+          const docName = String(doc.name || "").trim();
 
-            return false;
-          })
+          // Exact matches
+          if (docPublicId === resolvedPublicId || docUrl === resolvedPublicId || docName === resolvedPublicId) return true;
+
+          // Fuzzy matches for public IDs (ignoring folder/version prefix)
+          const getBasename = (str) => String(str).split("/").pop().split(".")[0];
+          const candidateBasename = getBasename(resolvedPublicId);
+          if (candidateBasename && (getBasename(docPublicId) === candidateBasename || getBasename(docUrl) === candidateBasename)) return true;
+
+          return false;
+        })
         : null;
     } else {
       const isAdmin = normalizeRole(req.user.role) === "admin";
@@ -923,7 +969,7 @@ export const generateViewToken = async (req, res) => {
         documentName: finalDocumentName,
       },
       process.env.JWT_SECRET || "fallback_secret",
-      { expiresIn: "60s" }
+      { expiresIn: `${getDocumentLinkLifetimeSeconds()}s` }
     );
 
     res.json({ success: true, token });
@@ -990,6 +1036,7 @@ export const streamDocument = async (req, res) => {
             buildCloudinarySignedUrl(cloudinary, resolvedPublicId, {
               resourceType,
               deliveryType,
+              expirationSeconds: getDocumentLinkLifetimeSeconds(),
             }),
           );
 
@@ -999,6 +1046,7 @@ export const streamDocument = async (req, res) => {
                 resourceType,
                 deliveryType,
                 format,
+                expirationSeconds: getDocumentLinkLifetimeSeconds(),
               }),
             );
           }
@@ -1077,10 +1125,12 @@ export const streamDocument = async (req, res) => {
               resourceType: asset.resource_type,
               deliveryType: asset.type,
               format: asset.format,
+              expirationSeconds: getDocumentLinkLifetimeSeconds(),
             }),
             buildCloudinarySignedUrl(cloudinary, asset.public_id, {
               resourceType: asset.resource_type,
               deliveryType: asset.type,
+              expirationSeconds: getDocumentLinkLifetimeSeconds(),
             }),
           ];
 
@@ -1090,6 +1140,7 @@ export const streamDocument = async (req, res) => {
                 resourceType: asset.resource_type,
                 deliveryType: asset.type,
                 format: asset.format,
+                expirationSeconds: getDocumentLinkLifetimeSeconds(),
               }),
             );
           }

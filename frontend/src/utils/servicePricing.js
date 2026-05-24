@@ -136,21 +136,33 @@ const SERVICE_PRICE_BOOK = [
 
 const normalize = (value) => String(value || "").trim().toLowerCase();
 
-export const parseFeeAmount = (value) => {
+export const parseAllFeeAmounts = (value) => {
   const text = String(value || "").trim();
-  if (!text) return null;
+  if (!text) return [];
 
   const normalized = text.toLowerCase().replace(/,/g, "");
-  const match = normalized.match(/(\d+(?:\.\d+)?)(\s*[km])?/i);
-  if (!match) return null;
+  // Find all matches of numbers possibly followed by k or m
+  const matches = [...normalized.matchAll(/(\d+(?:\.\d+)?)(\s*[km])?/gi)];
+  const amounts = [];
+  for (const match of matches) {
+    let amount = Number(match[1]);
+    const suffix = String(match[2] || "").trim().toLowerCase();
+    if (suffix === "k") amount *= 1000;
+    else if (suffix === "m") amount *= 1000000;
+    amounts.push(Math.round(amount));
+  }
+  return amounts;
+};
 
-  const amount = Number(match[1]);
-  if (!Number.isFinite(amount) || amount <= 0) return null;
+export const parseFeeAmount = (value) => {
+  const amounts = parseAllFeeAmounts(value);
+  return amounts.length > 0 ? amounts[0] : null;
+};
 
-  const suffix = String(match[2] || "").trim().toLowerCase();
-  if (suffix === "k") return Math.round(amount * 1000);
-  if (suffix === "m") return Math.round(amount * 1000000);
-  return Math.round(amount);
+export const getSmallFeeAmount = (value) => {
+  const amounts = parseAllFeeAmounts(value);
+  if (amounts.length === 0) return null;
+  return Math.min(...amounts);
 };
 
 export const getServicePricing = (serviceName) => {
@@ -173,11 +185,11 @@ export const getServicePricing = (serviceName) => {
 };
 
 export const getLeadRevenueAmount = (lead) => {
-  const explicitRecommendedFee = parseFeeAmount(
-    lead?.recommendedFeeAmount || lead?.recommendedFees || lead?.cost,
-  );
-  if (Number.isFinite(explicitRecommendedFee) && explicitRecommendedFee > 0) {
-    return explicitRecommendedFee;
+  const raw = lead?.recommendedFees || lead?.recommendedFeeAmount || lead?.cost || "";
+  const fee = getSmallFeeAmount(raw);
+  
+  if (Number.isFinite(fee) && fee > 0) {
+    return fee;
   }
 
   const mapped = getServicePricing(lead?.serviceName).amount;

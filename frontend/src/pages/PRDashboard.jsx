@@ -33,8 +33,9 @@ import ConfirmationModal from "../components/ConfirmationModal";
 import {
   formatInr,
   getServicePricing,
+  getLeadRevenueAmount,
+  shouldCountLeadRevenue,
 } from "../utils/servicePricing";
-import { shouldCountLeadRevenue } from "../utils/servicePricing";
 import PRDashboardModern from "./PRDashboardModern";
 
 const PRDashboard = () => {
@@ -49,6 +50,7 @@ const PRDashboard = () => {
   const [rejectingLeadId, setRejectingLeadId] = useState(null);
   const [docRejectDrafts, setDocRejectDrafts] = useState({});
   const [rejectingDocKey, setRejectingDocKey] = useState(null);
+  const [hiddenLeads, setHiddenLeads] = useState([]);
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, lead: null, isLoading: false });
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedLeadId, setSelectedLeadId] = useState(null);
@@ -117,8 +119,11 @@ const PRDashboard = () => {
         ({ leadsRes, usersRes, servicesRes } = await tryFetch("http://127.0.0.1:5000/api"));
       }
 
+      // prepare services list if available
+      const servicesList = (servicesRes?.status === "fulfilled" && Array.isArray(servicesRes.value.data)) ? servicesRes.value.data : [];
+
       if (leadsRes.status === "fulfilled") {
-        setLeads(Array.isArray(leadsRes.value.data) ? leadsRes.value.data : []);
+        setLeads(hydrateLeadsWithDocuments(Array.isArray(leadsRes.value.data) ? leadsRes.value.data : [], servicesList));
       } else {
         throw leadsRes.reason;
       }
@@ -170,6 +175,240 @@ const PRDashboard = () => {
         return titleKey === serviceKey || titleKey.includes(serviceKey) || serviceKey.includes(titleKey);
       }) || null
     );
+  };
+
+  // Hydration helpers (merge server docs with pending local uploads)
+  const extractCloudinaryPublicIdFromUrl = (url) => {
+    const rawUrl = String(url || "").trim();
+    if (!rawUrl) return "";
+
+    try {
+      const parsed = new URL(rawUrl);
+      const marker = "/upload/";
+      const markerIndex = parsed.pathname.indexOf(marker);
+      if (markerIndex === -1) return "";
+
+      let publicId = parsed.pathname.slice(markerIndex + marker.length);
+      publicId = publicId.replace(/^v\d+\//, "");
+      publicId = publicId.replace(/\.[a-z0-9]+$/i, "");
+      return publicId.trim();
+    } catch {
+      return "";
+    }
+  };
+
+  const normalizeServiceKey = (value) =>
+    String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const getPendingUploadsForService = (serviceName) => {
+    const target = normalizeServiceKey(serviceName);
+    if (!target) return [];
+
+    const saved = localStorage.getItem("pending_uploads");
+    if (!saved) return [];
+
+    try {
+      const parsed = JSON.parse(saved);
+      const currentUserId = JSON.parse(localStorage.getItem("user"))?._id;
+      if (parsed?.userId && currentUserId && String(parsed.userId) !== String(currentUserId)) {
+        return [];
+      }
+
+      const docsByService = parsed?.docs || {};
+      const serviceDocs =
+        docsByService[serviceName] ||
+        Object.entries(docsByService).find(([key]) => normalizeServiceKey(key) === target)?.[1] ||
+        {};
+
+      return Object.entries(serviceDocs).flatMap(([docName, value]) => {
+        const arr = Array.isArray(value) ? value : value ? [value] : [];
+        return arr
+          .filter(Boolean)
+          .map((item) => ({
+            name: item?.name || docName,
+            originalName: item?.name || docName,
+            url: item?.url || item?.secure_url || "",
+            publicId: item?.publicId || item?.filename || extractCloudinaryPublicIdFromUrl(item?.url || item?.secure_url || ""),
+            type: "Client",
+            status: "Pending",
+            uploadedAt: item?.uploadedAt || new Date(),
+            reuploaded: !!item?.reuploaded,
+          }))
+          .filter((doc) => !!doc.url || !!doc.publicId);
+      });
+    } catch {
+      return [];
+    }
+  };
+
+  const normalizeDocumentName = (doc) => {
+    const fallbackName =
+      doc?.name ||
+      doc?.originalName ||
+      doc?.fileName ||
+      doc?.filename ||
+      doc?.publicId ||
+      doc?.url ||
+      "Document";
+
+    const cleaned = String(fallbackName).trim();
+    if (!cleaned) return "Document";
+    return cleaned.includes("/") ? (cleaned.split("/").pop() || "Document") : cleaned;
+  };
+
+  const dedupeDocumentsByName = (documents, options = {}) => {
+    const docs = Array.isArray(documents) ? documents.filter(Boolean) : [];
+    if (docs.length === 0) return [];
+    const reuploadedDocumentNames = new Set(
+      Array.isArray(options?.reuploadedDocumentNames)
+        ? options.reuploadedDocumentNames.map((name) => String(name || "").trim().toLowerCase()).filter(Boolean)
+        : [],
+    );
+
+    const sorted = [...docs].sort((a, b) => {
+      const aTime = new Date(a?.uploadedAt || a?.createdAt || 0).getTime();
+      const bTime = new Date(b?.uploadedAt || b?.createdAt || 0).getTime();
+      return bTime - aTime;
+    });
+
+    const grouped = new Map();
+    for (const doc of sorted) {
+      const key = normalizeServiceKey(normalizeDocumentName(doc));
+      if (!key) continue;
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key).push(doc);
+    }
+
+    return Array.from(grouped.values()).map((group) => {
+      const reuploadedDoc = group.find(
+        (doc) =>
+          !!doc?.displayReuploaded ||
+          !!doc?.reuploaded ||
+          String(doc?.status || "").trim().toLowerCase() === "reuploaded",
+      );
+      const rejectedDoc = group.find((doc) => String(doc?.status || "").trim().toLowerCase() === "rejected");
+      const selected =
+        reuploadedDoc ||
+        rejectedDoc ||
+        group.find((doc) => String(doc?.status || "").trim().toLowerCase() !== "rejected") ||
+        group[0];
+      const fileSource =
+        group.find(
+          (doc) =>
+            !!doc?.url ||
+            !!doc?.secure_url ||
+            !!doc?.uploadedUrl ||
+            !!doc?.viewUrl ||
+            !!doc?.publicId ||
+            !!doc?.filename ||
+            !!doc?.fileName,
+        ) ||
+        selected;
+      const docName = String(normalizeDocumentName(selected)).trim().toLowerCase();
+
+      const resolvedUrl =
+        selected?.url ||
+        selected?.secure_url ||
+        selected?.uploadedUrl ||
+        selected?.viewUrl ||
+        fileSource?.url ||
+        fileSource?.secure_url ||
+        fileSource?.uploadedUrl ||
+        fileSource?.viewUrl ||
+        "";
+      const resolvedPublicId =
+        selected?.publicId ||
+        selected?.filename ||
+        selected?.fileName ||
+        fileSource?.publicId ||
+        fileSource?.filename ||
+        fileSource?.fileName ||
+        extractCloudinaryPublicIdFromUrl(resolvedUrl);
+
+      return {
+        ...selected,
+        name: normalizeDocumentName(selected),
+        url: resolvedUrl,
+        publicId: resolvedPublicId,
+        displayReuploaded:
+          reuploadedDocumentNames.has(docName) ||
+          !!selected?.displayReuploaded ||
+          !!selected?.reuploaded ||
+          String(selected?.status || "").trim().toLowerCase() === "reuploaded",
+      };
+    });
+  };
+
+  const hydrateLeadsWithDocuments = (leadList, servicesList = []) => {
+    const list = Array.isArray(leadList) ? leadList : [];
+    return list.map((lead) => {
+      const serviceKey = normalizeServiceKey(lead?.serviceName);
+
+      const matchedService = Array.isArray(servicesList)
+        ? servicesList.find((s) => normalizeServiceKey(s?.title) === serviceKey)
+        : null;
+
+      let requiredDocs = [];
+      if (matchedService && Array.isArray(matchedService.documentsRequired)) {
+        requiredDocs = matchedService.documentsRequired.map((docName) => ({
+          name: docName,
+          status: "Pending",
+          type: "Client",
+        }));
+      }
+
+      const pendingDocs = getPendingUploadsForService(lead?.serviceName);
+      const currentDocs = Array.isArray(lead?.documents) ? lead.documents : [];
+      const mergedDocs = dedupeDocumentsByName([...currentDocs, ...pendingDocs, ...requiredDocs], {
+        reuploadedDocumentNames: lead?.reuploadedDocumentNames,
+      });
+
+      const executorRejected = (lead) => {
+        if (!lead || lead?.status !== "Rejected") return false;
+        const execMsg = String(lead?.executorMessage || "").trim();
+        const prMsg = String(lead?.prFeedback || "").toLowerCase();
+        const adminMsg = String(lead?.adminMessage || "").toLowerCase();
+        const executorIndicators = ["executor", "assignment rejected", "rejected by executor"];
+        return (
+          execMsg.length > 0 ||
+          executorIndicators.some((ind) => prMsg.includes(ind)) ||
+          executorIndicators.some((ind) => adminMsg.includes(ind))
+        );
+      };
+
+      const executorRejectedFlag = executorRejected(lead);
+      const serviceRejected = String(lead?.status || "").trim().toLowerCase() === "rejected";
+      const draftRejected = String(lead?.status || "").trim().toLowerCase() === "draftrejected";
+
+      const finalDocs = mergedDocs.map((doc) => {
+        let resolvedStatus = doc?.status || "Pending";
+        if (serviceRejected) {
+          resolvedStatus = "Rejected";
+        } else if (draftRejected && String(doc?.type || "").trim().toLowerCase() === "draft") {
+          resolvedStatus = "Rejected";
+        }
+
+        return {
+          ...doc,
+          status: resolvedStatus,
+          executorRejected: executorRejectedFlag && serviceRejected,
+          displayReuploaded:
+            serviceRejected || draftRejected
+              ? false
+              : !!doc?.displayReuploaded || !!doc?.reuploaded || String(doc?.status || "").trim().toLowerCase() === "reuploaded",
+        };
+      });
+
+      return {
+        ...lead,
+        documents: finalDocs,
+      };
+    });
   };
 
   const getRequiredServiceDocumentNames = (lead) => {
@@ -289,23 +528,11 @@ const PRDashboard = () => {
 
   const handleConfirmDelete = async () => {
     const lead = deleteConfirm.lead;
-    const serviceName = lead?.serviceName || "this service";
-
     setDeleteConfirm((prev) => ({ ...prev, isLoading: true }));
-
-    try {
-      const apiUrl = import.meta.env.VITE_API_URL;
-      await axios.delete(`${apiUrl}/leads/${lead._id}`, {
-        headers: { Authorization: `Bearer ${storedUser.token}` },
-      });
-      toast.success("Service deleted");
-      setExpandedId((prev) => (prev === lead._id ? null : prev));
-      setLeads((prev) => prev.filter((item) => item._id !== lead._id));
-      setDeleteConfirm({ isOpen: false, lead: null, isLoading: false });
-    } catch (error) {
-      toast.error(error.response?.data?.message || "Failed to delete service");
-      setDeleteConfirm((prev) => ({ ...prev, isLoading: false }));
-    }
+    setHiddenLeads((prev) => (prev.includes(lead._id) ? prev : [...prev, lead._id]));
+    setExpandedId((prev) => (prev === lead._id ? null : prev));
+    toast.success("Service hidden from this dashboard");
+    setDeleteConfirm({ isOpen: false, lead: null, isLoading: false });
   };
 
   const handleFileUpload = async (leadId, file, type) => {
@@ -337,7 +564,11 @@ const PRDashboard = () => {
         };
 
         if (type === "Draft") {
+          // Once the draft is uploaded, move the lead into the review-complete stage.
+          updatePayload.status = "ExecutionFinished";
           updatePayload.draftReadyToSend = true;
+        } else if (type === "Final") {
+          updatePayload.status = "Completed";
         }
 
         await axios.patch(`${apiUrl}/leads/${leadId}`, updatePayload, {
@@ -461,6 +692,12 @@ const PRDashboard = () => {
     const rawStatus = String(lead?.status || "");
     const userMessage = String(lead?.userMessage || "").toLowerCase();
     const looksLikeUserDraftRejection = userMessage.includes("draft rejected by user");
+    const hasFinalDocument = Array.isArray(lead?.documents)
+      && lead.documents.some((doc) => {
+        const docType = String(doc?.type || "").trim().toLowerCase();
+        const docName = String(doc?.name || "").trim().toLowerCase();
+        return docType === "final" || docName.startsWith("final");
+      });
 
     if (
       rawStatus === "DraftRejected" ||
@@ -468,6 +705,10 @@ const PRDashboard = () => {
         looksLikeUserDraftRejection)
     ) {
       return "DraftRejected";
+    }
+
+    if (hasFinalDocument && rawStatus !== "Rejected" && rawStatus !== "InformationRequired") {
+      return "Completed";
     }
 
     return rawStatus;
@@ -497,19 +738,37 @@ const PRDashboard = () => {
     const map = {
       'open': 'New Request',
       'pendingreview': 'PR Reviewing',
-      'informationrequired': 'Action Required',
+      'informationrequired': isPrReuploadReviewState(lead) ? 'PR Reviewing' : 'Rejected by PR',
       'pr_accepted': 'Pending Executor Approval',
       'assignedtoexecutor': 'Coordination',
-      'inprogress': 'Execution',
+      'inprogress': 'Accepted by Executor',
       'executionfinished': 'Review',
       'draftsent': 'Waiting for User Draft Approval',
       'draftrejected': 'Draft Rejected by User',
-      'draftaccepted': 'Approved',
-      'useraccepted': 'Approved',
-      'completed': 'Done',
+      'draftaccepted': 'Draft Accepted',
+      'useraccepted': 'Draft Accepted',
+      'completed': 'Service Completed',
     };
     
     return map[s] || status;
+  };
+
+  const isPrReuploadReviewState = (lead) => {
+    if (!lead) return false;
+    const statusLower = String(lead?.status || "").trim().toLowerCase();
+    if (!["rejected", "informationrequired"].includes(statusLower)) return false;
+
+    const docs = getVisibleDocuments(lead) || [];
+    const hasReuploaded = docs.some((d) => !!d?.displayReuploaded || !!d?.reuploaded || String(d?.status || "").toLowerCase() === "reuploaded");
+    const hasRejected = docs.some((d) => String(d?.status || "").toLowerCase() === "rejected");
+
+    const execMsg = String(lead?.executorMessage || "").toLowerCase();
+    const prMsg = String(lead?.prFeedback || "").toLowerCase();
+    const adminMsg = String(lead?.adminMessage || "").toLowerCase();
+    const executorIndicators = ["executor", "assignment rejected", "rejected by executor"];
+    const isExecutorOrigin = execMsg.length > 0 || executorIndicators.some(ind => prMsg.includes(ind) || adminMsg.includes(ind));
+
+    return hasReuploaded && !isExecutorOrigin && !hasRejected;
   };
 
   const isAutomatedExecutorMessage = (msg) => {
@@ -568,15 +827,6 @@ const PRDashboard = () => {
       grouped.get(key).push(doc);
     }
 
-    const hasAnyReplacementGroup = Array.from(grouped.values()).some((group) =>
-      group.length > 1 ||
-      group.some(
-        (doc) =>
-          !!doc?.reuploaded ||
-          String(doc?.status || "").trim().toLowerCase() === "reuploaded",
-      ),
-    );
-
     return Array.from(grouped.values()).map((group) => {
       const selected =
         group.find(
@@ -595,32 +845,24 @@ const PRDashboard = () => {
         normalizedStatus === "under review";
 
       const normalizedName = normalizeDocumentKey(selected?.name);
-      const isStaleOrphanRejected =
-        !isReuploaded &&
-        normalizedStatus === "rejected" &&
-        hasAnyReplacementGroup;
       const isNotPartOfServiceRequirements =
         requiredDocNames.size > 0 &&
         normalizedName &&
         !requiredDocNames.has(normalizedName);
 
-      if (isStaleOrphanRejected || (!isDraftDocument && serviceRejected && isNotPartOfServiceRequirements)) {
-        return null;
-      }
-
       const draftRejected = String(lead?.status || "").trim().toLowerCase() === "draftrejected";
       const draftAccepted = ["draftaccepted", "useraccepted", "completed"].includes(String(lead?.status || "").trim().toLowerCase());
-      const draftShared = ["draftsent", "draftrejected", "draftaccepted", "useraccepted"].includes(String(lead?.status || "").trim().toLowerCase());
+      const draftShared = ["draftsent", "draftrejected", "draftaccepted", "useraccepted", "completed"].includes(String(lead?.status || "").trim().toLowerCase());
       const displayStatus = isDraftDocument
-        ? isReuploaded
-          ? "Draft Reuploaded"
-          : draftRejected
+        ? draftRejected
             ? "Draft Rejected"
             : draftAccepted
-              ? "Draft Accepted"
-              : draftShared
+              ? "Accepted"
+              : isReuploaded
                 ? "Draft Shared"
-                : (selected?.status || "Pending Review")
+                : draftShared
+                ? "Draft Shared"
+                : "Draft Uploaded"
         : executorRejectedService || serviceRejected
           ? "Rejected"
         : isReuploaded && isPendingReviewState
@@ -635,17 +877,27 @@ const PRDashboard = () => {
     }).filter(Boolean);
   }
 
+  const visibleLeads = leads.filter((lead) => !hiddenLeads.includes(lead._id));
+
   const stats = {
-    total: leads.length,
-    pending: leads.filter((lead) => ["Open", "PendingReview"].includes(lead.status))
+    total: visibleLeads.length,
+    pending: visibleLeads.filter((lead) => ["Open", "PendingReview"].includes(getEffectiveLeadStatus(lead)))
       .length,
-    completed: leads.filter((lead) => lead.status === "Completed").length,
+    completed: visibleLeads.filter((lead) => getEffectiveLeadStatus(lead) === "Completed").length,
+    revenueValue: visibleLeads.reduce(
+      (sum, lead) =>
+        sum +
+        (shouldCountLeadRevenue(lead)
+          ? getLeadRevenueAmount(lead)
+          : 0),
+      0,
+    ),
     revenue: formatInr(
-      leads.reduce(
+      visibleLeads.reduce(
         (sum, lead) =>
           sum +
           (shouldCountLeadRevenue(lead)
-            ? getServicePricing(lead?.serviceName).amount
+            ? getLeadRevenueAmount(lead)
             : 0),
         0,
       ),
@@ -653,7 +905,7 @@ const PRDashboard = () => {
   };
 
   const searchTerm = searchQuery.trim().toLowerCase();
-  const filteredLeads = leads.filter((lead) => {
+  const filteredLeads = visibleLeads.filter((lead) => {
     if (!searchTerm) return true;
     const docs = Array.isArray(lead?.documents) ? lead.documents : [];
     const docText = docs
@@ -672,8 +924,8 @@ const PRDashboard = () => {
       lead?.userMessage,
       lead?._id,
       lead?.createdAt ? new Date(lead.createdAt).toLocaleDateString("en-IN") : "",
-      String(getServicePricing(lead?.serviceName)?.amount || ""),
-      formatInr(getServicePricing(lead?.serviceName)?.amount || 0),
+      String(getLeadRevenueAmount(lead) || ""),
+      formatInr(getLeadRevenueAmount(lead) || 0),
       docText,
     ]
       .filter(Boolean)
@@ -688,7 +940,7 @@ const PRDashboard = () => {
       return;
     }
     if (!filteredLeads.some((lead) => lead._id === selectedLeadId)) {
-      setSelectedLeadId(filteredLeads[0]._id);
+      setSelectedLeadId(filteredLeads[0]?._id || null);
     }
   }, [filteredLeads, selectedLeadId]);
 
@@ -711,6 +963,7 @@ const PRDashboard = () => {
       getEffectiveLeadStatus={getEffectiveLeadStatus}
       getDisplayStatus={getDisplayStatus}
       getVisibleDocuments={getVisibleDocuments}
+      getLeadRevenueAmount={getLeadRevenueAmount}
       handleUpdateLeadStatus={handleUpdateLeadStatus}
       handleDocumentStatus={handleDocumentStatus}
       handleClearExecutorMessage={handleClearExecutorMessage}
@@ -928,7 +1181,7 @@ const PRDashboard = () => {
             {[
               { label: "Total Requests", value: stats.total },
               { label: "Pending Review", value: stats.pending },
-              { label: "Completed", value: stats.completed },
+              { label: "Completed Services", value: stats.completed },
               { label: "Revenue", value: stats.revenue },
             ].map((item, idx) => (
               <div
@@ -1107,8 +1360,8 @@ const PRDashboard = () => {
                                                     <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: docStatus === 'Accepted' ? "#10b981" : docStatus === 'Rejected' ? "#ef4444" : "#f59e0b" }}></span>
                                                     <span style={{ fontSize: "0.7rem", fontWeight: 800, textTransform: "uppercase", color: docStatus === 'Accepted' ? "#10b981" : docStatus === 'Rejected' ? "#ef4444" : "#f59e0b" }}>{docStatus}</span>
                                                     {doc.displayReuploaded && (
-                                                      <span style={{ fontSize: "0.65rem", fontWeight: 900, textTransform: "uppercase", color: "#38bdf8", background: "rgba(56, 189, 248, 0.12)", border: "1px solid rgba(56, 189, 248, 0.25)", padding: "2px 8px", borderRadius: "999px", letterSpacing: "0.05em" }}>
-                                                        Reuploaded
+                                                      <span style={{ fontSize: "0.65rem", fontWeight: 900, textTransform: "uppercase", color: "#16a34a", background: "rgba(22, 163, 74, 0.12)", border: "1px solid rgba(22, 163, 74, 0.25)", padding: "2px 8px", borderRadius: "999px", letterSpacing: "0.05em" }}>
+                                                        Draft Shared
                                                       </span>
                                                     )}
                                                   </div>
@@ -1298,7 +1551,7 @@ const PRDashboard = () => {
                                   if (serviceAccepted) {
                                     return (
                                       <div style={{ display: "flex", alignItems: "center", gap: 10, color: "#10b981", fontSize: "1rem", fontWeight: 800, padding: "8px 16px", background: "rgba(16,185,129,0.1)", borderRadius: 12, border: "1px solid rgba(16,185,129,0.2)" }}>
-                                        <CheckCircle size={20} /> SERVICE ACCEPTED
+                                        <CheckCircle size={20} /> ACCEPTED BY EXECUTOR
                                       </div>
                                     );
                                   }
@@ -1316,13 +1569,24 @@ const PRDashboard = () => {
                                           clientDocs.every((d) => d.status === 'Accepted');
                                         const anyRejected = clientDocs.some(d => d.status === 'Rejected');
 
-                                        if (allAccepted) {
-                                          return <button onClick={() => handleUpdateLeadStatus(lead._id, 'AssignedToExecutor')} style={{ padding: "1.2rem", borderRadius: "14px", background: "#10b981", color: "white", border: "none", fontWeight: 800, cursor: "pointer", fontSize: "0.9rem" }}>ACCEPT SERVICE & START COORDINATION</button>;
-                                        } else if (anyRejected) {
-                                          return <div style={{ padding: "1.2rem", borderRadius: "14px", background: "rgba(239, 68, 68, 0.05)", border: "1px solid rgba(239, 68, 68, 0.2)", color: "#ef4444", fontSize: "0.8rem", fontWeight: 700, textAlign: "center" }}>Documents rejected. Waiting for user to re-upload.</div>;
-                                        } else {
-                                          return <div style={{ padding: "1.2rem", borderRadius: "14px", background: "rgba(245, 158, 11, 0.05)", border: "1px solid rgba(245, 158, 11, 0.2)", color: "#f59e0b", fontSize: "0.8rem", fontWeight: 700, textAlign: "center" }}>Accept all documents to proceed.</div>;
-                                        }
+                                        return (
+                                          <button
+                                            onClick={() => handleUpdateLeadStatus(lead._id, 'AssignedToExecutor')}
+                                            disabled={!allAccepted}
+                                            style={{
+                                              padding: "1.2rem",
+                                              borderRadius: "14px",
+                                              background: allAccepted ? "#10b981" : "rgba(255,255,255,0.05)",
+                                              color: allAccepted ? "white" : "rgba(255,255,255,0.2)",
+                                              border: allAccepted ? "none" : "1px solid rgba(255,255,255,0.1)",
+                                              fontWeight: 800,
+                                              cursor: allAccepted ? "pointer" : "not-allowed",
+                                              fontSize: "0.9rem"
+                                            }}
+                                          >
+                                            ACCEPT SERVICE & START COORDINATION
+                                          </button>
+                                        );
                                       })()}
 
                                       <button onClick={() => openRejectForm(lead._id)} style={{ padding: "1.2rem", borderRadius: "14px", background: "rgba(239, 68, 68, 0.1)", color: "#ef4444", border: "1px solid rgba(239, 68, 68, 0.2)", fontWeight: 800, cursor: "pointer" }}>REJECT ENTIRE SERVICE</button>
@@ -1409,14 +1673,14 @@ const PRDashboard = () => {
                                   </div>
                                 )}
 
-                                {lead.prMessage && (
-                                  <div style={{ marginTop: "1.5rem", padding: "1.5rem", background: "rgba(16, 185, 129, 0.05)", border: "1px dashed rgba(16, 185, 129, 0.3)", borderRadius: "16px", color: "#10b981" }}>
+                                {lead.executorMessage && (
+                                  <div style={{ marginTop: "1.5rem", padding: "1.5rem", background: "rgba(59,130,246,0.05)", border: "1px dashed rgba(59,130,246,0.3)", borderRadius: "16px", color: "#3b82f6" }}>
                                     <div style={{ fontSize: "0.7rem", fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "8px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
                                       <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                                        <MessageSquare size={14} /> Message from Admin
+                                        <MessageSquare size={14} /> Message from Executor
                                       </span>
                                       <button
-                                        onClick={(e) => handleClearAdminPrMessage(lead._id, e)}
+                                        onClick={(e) => handleClearExecutorMessage(lead._id, e)}
                                         title="Remove message"
                                         style={{
                                           border: "1px solid rgba(239, 68, 68, 0.35)",
@@ -1435,7 +1699,7 @@ const PRDashboard = () => {
                                       </button>
                                     </div>
                                     <p style={{ fontSize: "0.9rem", fontWeight: 500, margin: 0, fontStyle: "italic", opacity: 0.95 }}>
-                                      "{lead.prMessage}"
+                                      "{lead.executorMessage}"
                                     </p>
                                   </div>
                                 )}

@@ -15,6 +15,8 @@ services:
         value: 5000
       - key: FRONTEND_URL
         value: https://vithartha-frontend.onrender.com
+      - key: DOCUMENT_LINK_LIFETIME_SECONDS
+        value: 8
       - key: MONGODB_URI
         sync: false
       - key: JWT_SECRET
@@ -46,6 +48,8 @@ services:
     envVars:
       - key: VITE_API_URL
         value: https://vithartha-backend.onrender.com/api # Matches backend
+      - key: VITE_DOCUMENT_LINK_LIFETIME_SECONDS
+        value: 8
       - key: VITE_GOOGLE_CLIENT_ID
         sync: false
       - key: VITE_OPENROUTER_API_KEY

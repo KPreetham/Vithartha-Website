@@ -32,12 +32,7 @@ const Profile = () => {
       industry: "",
     },
   });
-  const [isLightMode, setIsLightMode] = useState(() => {
-    if (typeof document !== "undefined" && document.body) {
-      return document.body.classList.contains("light-mode");
-    }
-    return localStorage.getItem("theme") === "light";
-  });
+  const isLightMode = true;
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -69,32 +64,7 @@ const Profile = () => {
     fetchProfile();
   }, []);
 
-  useEffect(() => {
-    const syncThemeState = () => {
-      const fromBody =
-        typeof document !== "undefined" && document.body
-          ? document.body.classList.contains("light-mode")
-          : false;
-      const fromStorage = localStorage.getItem("theme") === "light";
-      setIsLightMode(fromBody || fromStorage);
-    };
 
-    syncThemeState();
-
-    const observer = new MutationObserver(syncThemeState);
-    if (document.body) {
-      observer.observe(document.body, {
-        attributes: true,
-        attributeFilter: ["class"],
-      });
-    }
-
-    window.addEventListener("storage", syncThemeState);
-    return () => {
-      observer.disconnect();
-      window.removeEventListener("storage", syncThemeState);
-    };
-  }, []);
 
   const handleUpdate = async (e) => {
     e.preventDefault();
@@ -134,21 +104,15 @@ const Profile = () => {
     border: editable
       ? "1px solid #22c55e"
       : isLightMode
-        ? "1px solid rgba(0, 0, 0, 0.15)"
+        ? "1px solid rgba(0, 0, 0, 0.2)"
         : "1px solid rgba(255, 255, 255, 0.1)",
-    background: editable
-      ? isLightMode
-        ? "#ffffff"
-        : "rgba(34, 197, 94, 0.03)"
-      : isLightMode
-        ? "rgba(0, 0, 0, 0.02)"
-        : "rgba(255, 255, 255, 0.02)",
+    background: "#ffffff",
     color: editable
       ? isLightMode
         ? "#111111"
         : "#ffffff"
       : isLightMode
-        ? "rgba(0, 0, 0, 0.6)"
+        ? "#111111"
         : "rgba(255, 255, 255, 0.5)",
     fontSize: "0.9rem",
     outline: "none",
@@ -160,7 +124,7 @@ const Profile = () => {
   const labelStyle = {
     fontSize: "0.75rem",
     fontWeight: 600,
-    color: isLightMode ? "rgba(0, 0, 0, 0.5)" : "rgba(255, 255, 255, 0.4)",
+    color: isLightMode ? "#111111" : "rgba(255, 255, 255, 0.4)",
     textTransform: "uppercase",
     letterSpacing: "0.05em",
     marginLeft: "4px",
@@ -171,7 +135,7 @@ const Profile = () => {
     roleKey === "admin"
       ? "Admin"
       : roleKey === "pr"
-        ? "PR Professional"
+        ? "PR"
         : roleKey === "executor"
           ? "Service Executor"
           : "Client";
@@ -184,7 +148,7 @@ const Profile = () => {
         : roleKey === "executor"
           ? "#f59e0b"
           : isLightMode
-            ? "rgba(0, 0, 0, 0.55)"
+            ? "rgba(0, 0, 0, 0.72)"
             : "rgba(255, 255, 255, 0.6)";
 
   return (
@@ -196,7 +160,7 @@ const Profile = () => {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: isLightMode ? "#f3f4f6" : "#070708",
+        background: "#ffffff",
         padding: "100px 20px 40px",
         position: "relative",
         overflow: "hidden",
@@ -212,7 +176,7 @@ const Profile = () => {
           width: "600px",
           height: "600px",
           background: isLightMode
-            ? "radial-gradient(circle, rgba(34, 197, 94, 0.08) 0%, transparent 70%)"
+            ? "radial-gradient(circle, rgba(0, 0, 0, 0.04) 0%, transparent 70%)"
             : "radial-gradient(circle, rgba(34, 197, 94, 0.05) 0%, transparent 70%)",
           pointerEvents: "none",
           zIndex: 0,
@@ -220,54 +184,63 @@ const Profile = () => {
       />
 
       <style>{`
+                .profile-form,
+                .profile-card,
+                .profile-container {
+                  color-scheme: light;
+                }
+
                 .profile-input {
                     -webkit-appearance: none;
                     appearance: none;
                     background-clip: padding-box;
+                    background-color: #ffffff !important;
+                    background-image: none !important;
+                    box-shadow: none;
+                    color-scheme: light;
+                }
+
+                .profile-form .profile-input,
+                .profile-form .profile-input:focus,
+                .profile-form .profile-input:hover,
+                .profile-form .profile-input:active {
+                    background-color: #ffffff !important;
+                    background-image: none !important;
+                }
+
+                .profile-form .profile-input:-webkit-autofill,
+                .profile-form .profile-input:-webkit-autofill:hover,
+                .profile-form .profile-input:-webkit-autofill:focus,
+                .profile-form .profile-input:-webkit-autofill:active,
+                .profile-form .profile-input:autofill {
+                    -webkit-text-fill-color: #111111 !important;
+                    -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important;
+                    box-shadow: 0 0 0 1000px #ffffff inset !important;
+                    background-color: #ffffff !important;
+                    background-image: none !important;
+                    caret-color: #111111;
+                    transition: background-color 9999s ease-in-out 0s;
                 }
 
                 body:not(.light-mode) .profile-input {
-                    color-scheme: dark;
+                    color-scheme: light;
                 }
 
                 body.light-mode .profile-input {
                     color-scheme: light;
                 }
 
-                body:not(.light-mode) .profile-input:-webkit-autofill,
-                body:not(.light-mode) .profile-input:-webkit-autofill:hover,
-                body:not(.light-mode) .profile-input:-webkit-autofill:focus,
-                body:not(.light-mode) .profile-input:-webkit-autofill:active {
-                    -webkit-text-fill-color: white !important;
-                    -webkit-box-shadow: 0 0 0 1000px rgba(34, 197, 94, 0.03) inset !important;
-                    box-shadow: 0 0 0 1000px rgba(34, 197, 94, 0.03) inset !important;
-                    border: 1px solid #22c55e !important;
-                    caret-color: white;
-                    transition: background-color 9999s ease-in-out 0s;
-                }
-
-                body:not(.light-mode) .profile-input:autofill {
-                    -webkit-text-fill-color: white !important;
-                    box-shadow: 0 0 0 1000px #111114 inset !important;
-                    caret-color: white;
-                }
-
-                body.light-mode .profile-input:-webkit-autofill,
-                body.light-mode .profile-input:-webkit-autofill:hover,
-                body.light-mode .profile-input:-webkit-autofill:focus,
-                body.light-mode .profile-input:-webkit-autofill:active {
-                    -webkit-text-fill-color: #111111 !important;
-                    -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important;
-                    box-shadow: 0 0 0 1000px #ffffff inset !important;
-                    border: 1px solid #22c55e !important;
-                    caret-color: #111111;
-                    transition: background-color 9999s ease-in-out 0s;
-                }
-
-                body.light-mode .profile-input:autofill {
-                    -webkit-text-fill-color: #111111 !important;
-                    box-shadow: 0 0 0 1000px #ffffff inset !important;
-                    caret-color: #111111;
+                .profile-input.profile-phone-input:-webkit-autofill,
+                .profile-input.profile-phone-input:-webkit-autofill:hover,
+                .profile-input.profile-phone-input:-webkit-autofill:focus,
+                .profile-input.profile-phone-input:-webkit-autofill:active,
+                .profile-input.profile-phone-input:autofill {
+                  -webkit-text-fill-color: #111111 !important;
+                  -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important;
+                  box-shadow: 0 0 0 1000px #ffffff inset !important;
+                  background-color: #ffffff !important;
+                  background-image: none !important;
+                  caret-color: #111111;
                 }
 
                 @media (max-width: 768px) {
@@ -403,15 +376,13 @@ const Profile = () => {
         style={{
           width: "100%",
           maxWidth: "850px",
-          background: isLightMode
-            ? "linear-gradient(165deg, #ffffff 0%, #f7f7fa 100%)"
-            : "linear-gradient(165deg, #111114 0%, #0a0a0c 100%)",
+          background: "whitesmoke",
           borderRadius: "30px",
           border: isLightMode
-            ? "1px solid rgba(0, 0, 0, 0.1)"
+            ? "1px solid rgba(0, 0, 0, 0.06)"
             : "1px solid rgba(255, 255, 255, 0.08)",
           boxShadow: isLightMode
-            ? "0 20px 60px -20px rgba(0, 0, 0, 0.25)"
+            ? "0 10px 40px -10px rgba(0, 0, 0, 0.1)"
             : "0 40px 100px -20px rgba(0, 0, 0, 0.8)",
           padding: "3rem",
           position: "relative",
@@ -427,7 +398,7 @@ const Profile = () => {
             gap: "1.5rem",
             marginBottom: "3rem",
             borderBottom: isLightMode
-              ? "1px solid rgba(0, 0, 0, 0.08)"
+              ? "1px solid rgba(0, 0, 0, 0.06)"
               : "1px solid rgba(255, 255, 255, 0.06)",
             paddingBottom: "2.5rem",
           }}
@@ -437,7 +408,7 @@ const Profile = () => {
               position: "relative",
               width: "72px",
               height: "72px",
-              background: isLightMode ? "#f3f4f6" : "#1a1a1e",
+              background: isLightMode ? "#ffffff" : "#1a1a1e",
               borderRadius: "18px",
               display: "flex",
               alignItems: "center",
@@ -455,13 +426,13 @@ const Profile = () => {
                 strokeWidth={2.5}
               />
             ) : roleKey === "pr" ? (
-              <Briefcase
+              <User
                 size={36}
                 color={isLightMode ? "#3b82f6" : "#3b82f6"}
                 strokeWidth={2.5}
               />
             ) : roleKey === "executor" ? (
-              <Zap
+              <User
                 size={36}
                 color={isLightMode ? "#f59e0b" : "#f59e0b"}
                 strokeWidth={2.5}
@@ -509,16 +480,14 @@ const Profile = () => {
               {user.name}
               <span
                 style={{
-                  fontSize: "0.7rem",
-                  padding: "4px 10px",
+                  fontSize: roleKey === "pr" || roleKey === "executor" ? "0.85rem" : "0.7rem",
+                  padding: roleKey === "pr" || roleKey === "executor" ? "0" : "4px 10px",
                   background:
                     roleKey === "admin"
-                      ? "rgba(34, 197, 94, 0.1)"
-                      : roleKey === "pr"
-                        ? "rgba(59, 130, 246, 0.1)"
-                        : roleKey === "executor"
-                          ? "rgba(245, 158, 11, 0.1)"
-                          : "rgba(255, 255, 255, 0.05)",
+                      ? "rgba(34, 197, 94, 0.15)"
+                      : roleKey === "pr" || roleKey === "executor"
+                        ? "transparent"
+                        : "rgba(0, 0, 0, 0.05)",
                   color: roleAccent,
                   borderRadius: "8px",
                   textTransform: "uppercase",
@@ -534,7 +503,7 @@ const Profile = () => {
               style={{
                 fontSize: "1rem",
                 color: isLightMode
-                  ? "rgba(0, 0, 0, 0.55)"
+                  ? "rgba(0, 0, 0, 0.72)"
                   : "rgba(255, 255, 255, 0.4)",
                 margin: "4px 0 0",
                 fontWeight: 500,
@@ -584,7 +553,7 @@ const Profile = () => {
         </div>
 
         {/* Form Content */}
-        <form onSubmit={handleUpdate} autoComplete="off">
+        <form className="profile-form" onSubmit={handleUpdate} autoComplete="off">
           <div
             className="profile-form-grid"
             style={{
@@ -642,8 +611,10 @@ const Profile = () => {
               <div>
                 <label style={labelStyle}>Phone Number</label>
                 <input
-                  className="profile-input"
-                  autoComplete="off"
+                  className="profile-input profile-phone-input"
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel-national"
                   name="profile_phone"
                   disabled={!isEditing}
                   value={formData.profile.phone}

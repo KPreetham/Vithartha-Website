@@ -2,21 +2,35 @@ import React from "react";
 import { motion } from "framer-motion";
 
 const Loader = ({ minimal = false }) => {
+  const hasLoadedBefore = typeof window !== "undefined" ? sessionStorage.getItem("fin2line_loaded") : null;
+  const progressDuration = hasLoadedBefore ? 2.05 : 4.15;
+
+  const shellStyle = {
+    position: "fixed",
+    inset: 0,
+    zIndex: 10001,
+    overflow: "hidden",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background:
+      "radial-gradient(circle at top, rgba(255,255,255,1) 0%, rgba(248,250,252,1) 40%, rgba(226,232,240,1) 100%)",
+  };
+
+  const accentStyle = {
+    position: "absolute",
+    inset: 0,
+    pointerEvents: "none",
+  };
+
   if (minimal) {
     return (
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        style={{
-          position: "fixed",
-          inset: 0,
-          zIndex: 10001,
-          background: "var(--bg)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
+        transition={{ duration: 0.4 }}
+        style={shellStyle}
       >
         <div style={{ position: "relative", width: "50px", height: "50px" }}>
           <motion.div
@@ -41,126 +55,75 @@ const Loader = ({ minimal = false }) => {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 10001,
-        background: "var(--bg)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        overflow: "hidden",
-      }}
+      transition={{ duration: 0.6, ease: "easeInOut" }}
+      style={shellStyle}
     >
-      {/* Background Accents for Depth */}
       <div
         style={{
-          position: "absolute",
-          width: "60vw",
-          height: "60vw",
-          background:
-            "radial-gradient(circle, rgba(139, 26, 45, 0.08) 0%, transparent 70%)",
-          top: "-10%",
-          right: "-10%",
-          zIndex: 0,
-          pointerEvents: "none",
-        }}
-      />
-      <div
-        style={{
-          position: "absolute",
-          width: "50vw",
-          height: "50vw",
-          background:
-            "radial-gradient(circle, rgba(74, 182, 160, 0.08) 0%, transparent 70%)",
-          bottom: "-10%",
-          left: "-10%",
-          zIndex: 0,
-          pointerEvents: "none",
-        }}
-      />
-
-      <div
-        style={{
-          position: "relative",
-          width: "200px",
-          height: "200px",
           display: "flex",
+          flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
+          gap: "28px",
           zIndex: 1,
         }}
       >
-        {/* Rotating Outer Ring (Advanced UI) */}
         <motion.div
-          animate={{ rotate: 360 }}
-          transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
-          style={{
-            width: "130px",
-            height: "130px",
-            borderRadius: "50%",
-            border: "2px solid transparent",
-            borderTop: "2px solid rgba(74, 182, 160, 0.6)",
-            borderBottom: "2px solid rgba(139, 26, 45, 0.6)",
-            position: "absolute",
-          }}
-        />
-
-        {/* Second Counter-Rotating Ring */}
-        <motion.div
-          animate={{ rotate: -360 }}
-          transition={{ duration: 5, repeat: Infinity, ease: "linear" }}
-          style={{
-            width: "150px",
-            height: "150px",
-            borderRadius: "50%",
-            border: "1px solid transparent",
-            borderLeft: "1px solid rgba(239, 160, 32, 0.4)",
-            borderRight: "1px solid rgba(74, 182, 160, 0.4)",
-            position: "absolute",
-          }}
-        />
-
-        {/* Logo Container - Absolute Centering within relative parent */}
-        <motion.div
-          initial={{ scale: 0.8, opacity: 0 }}
+          initial={{ scale: 0.96, opacity: 0, y: 8 }}
           animate={{
-            scale: [1, 1.04, 1],
+            scale: [1, 1.02, 1],
             opacity: 1,
+            y: [0, -3, 0],
           }}
           transition={{
-            scale: { duration: 3, repeat: Infinity, ease: "easeInOut" },
-            opacity: { duration: 0.5 },
+            scale: { duration: 2.8, repeat: Infinity, ease: "easeInOut" },
+            y: { duration: 2.8, repeat: Infinity, ease: "easeInOut" },
+            opacity: { duration: 0.45 },
           }}
           style={{
-            width: "220px",
-            height: "220px",
-            background: "rgba(255, 255, 255, 0.04)",
-            backdropFilter: "blur(15px)",
-            borderRadius: "24px",
+            width: 164,
+            height: 164,
+            background:
+              "linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(248,250,252,0.88) 100%)",
+            backdropFilter: "blur(18px)",
+            borderRadius: 42,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            border: "1px solid rgba(255, 255, 255, 0.12)",
-            boxShadow:
-              "0 20px 50px rgba(0,0,0,0.4), inset 0 0 20px rgba(255,255,255,0.02)",
-            position: "absolute",
+            border: "1px solid rgba(17,24,39,0.06)",
+            boxShadow: "0 24px 60px rgba(15,23,42,0.08)",
+            position: "relative",
             zIndex: 2,
           }}
         >
-          <div style={{
-            width: "120px",
-            height: "120px",
-            borderRadius: "50%",
-            overflow: "hidden",
-            boxShadow: "0 0 30px rgba(0,0,0,0.5)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}>
+          <div
+            style={{
+              position: "absolute",
+              inset: 14,
+              borderRadius: 38,
+              background:
+                "radial-gradient(circle at 30% 25%, rgba(22,163,74,0.08) 0%, transparent 38%), radial-gradient(circle at 70% 75%, rgba(249,115,22,0.08) 0%, transparent 32%)",
+              pointerEvents: "none",
+            }}
+          />
+          <div
+            style={{
+              width: 108,
+              height: 108,
+              borderRadius: 28,
+              overflow: "hidden",
+              boxShadow: "0 10px 28px rgba(15,23,42,0.08)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "#ffffff",
+              position: "relative",
+              zIndex: 1,
+            }}
+          >
             <img
               src="/logo2.png"
-              alt="Loading Logo"
+              alt="Fin2Line Logo"
               style={{
                 width: "100%",
                 height: "100%",
@@ -171,51 +134,59 @@ const Loader = ({ minimal = false }) => {
           </div>
         </motion.div>
 
-        {/* Subtle Text below (Offset) */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5, duration: 0.5 }}
+        {/* Sleek, professional progress loader with matching green/orange gradient */}
+        <div
           style={{
-            position: "absolute",
-            bottom: "-60px",
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
-            gap: "0.5rem",
+            gap: "10px",
           }}
         >
-          <span
+          <div
             style={{
-              fontFamily: "var(--font-display)",
-              fontSize: "0.85rem",
-              fontWeight: 800,
-              textTransform: "uppercase",
-              letterSpacing: "0.25em",
-              background: "linear-gradient(135deg, #4AB6A0, #8B1A2D)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-              opacity: 0.8,
+              width: "220px",
+              height: "4px",
+              background: "rgba(15, 23, 42, 0.06)",
+              borderRadius: "999px",
+              position: "relative",
+              overflow: "hidden",
             }}
           >
-            Fin2Line
-          </span>
-          <div style={{ display: "flex", gap: "5px" }}>
-            {[0, 1, 2].map((i) => (
-              <motion.div
-                key={i}
-                animate={{ opacity: [0.2, 0.8, 0.2] }}
-                transition={{ duration: 1.5, repeat: Infinity, delay: i * 0.2 }}
-                style={{
-                  width: "5px",
-                  height: "5px",
-                  borderRadius: "50%",
-                  background: "rgba(255,255,255,0.3)",
-                }}
-              />
-            ))}
+            <motion.div
+              initial={{ width: "0%" }}
+              animate={{ width: "100%" }}
+              transition={{
+                duration: progressDuration,
+                ease: "easeInOut",
+              }}
+              style={{
+                position: "absolute",
+                left: 0,
+                top: 0,
+                bottom: 0,
+                background: "linear-gradient(90deg, #16a34a 0%, #f97316 100%)",
+                borderRadius: "999px",
+                boxShadow: "0 0 8px rgba(22, 163, 74, 0.2), 0 0 8px rgba(249, 115, 22, 0.2)",
+              }}
+            />
           </div>
-        </motion.div>
+          <motion.span
+            initial={{ opacity: 0.5 }}
+            animate={{ opacity: [0.5, 0.85, 0.5] }}
+            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+            style={{
+              fontSize: "10px",
+              fontWeight: 600,
+              letterSpacing: "0.18em",
+              color: "#64748b",
+              textTransform: "uppercase",
+              marginTop: "2px",
+            }}
+          >
+            Fin2Line Consulting
+          </motion.span>
+        </div>
       </div>
     </motion.div>
   );

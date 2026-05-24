@@ -3,6 +3,7 @@ import {
   X,
   Send,
   Bot,
+  MessageSquare,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import axios from "axios";
@@ -238,28 +239,37 @@ const AIAssistant = () => {
           y: { repeat: Infinity, duration: 3.5, ease: "easeInOut" },
         }}
         onClick={() => setIsOpen(true)}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = "#FF5519";
+          e.currentTarget.style.boxShadow = "0 6px 25px rgba(255, 107, 53, 0.5)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = "#FF6B35";
+          e.currentTarget.style.boxShadow = "0 4px 20px rgba(255, 107, 53, 0.4)";
+        }}
         aria-label="Open AI assistant"
         style={{
           position: "fixed",
           bottom: "1.75rem",
           right: "1.75rem",
           zIndex: 9999,
-          width: "64px",
-          height: "64px",
+          width: "56px",
+          height: "56px",
           padding: "0",
-          borderRadius: "16px",
+          borderRadius: "50%",
           border: "none",
-          background: "transparent",
+          background: "#FF6B35",
           color: "#fff",
-          boxShadow: "none",
+          boxShadow: "0 4px 20px rgba(255, 107, 53, 0.4)",
           cursor: "pointer",
           display: isOpen ? "none" : "flex",
           alignItems: "center",
           justifyContent: "center",
           overflow: "hidden",
+          transition: "all 0.3s ease",
         }}
       >
-        <RobotLauncher />
+        <MessageSquare size={28} color="#fff" strokeWidth={2} />
       </motion.button>
 
       <AnimatePresence>
@@ -276,9 +286,9 @@ const AIAssistant = () => {
               height: "min(600px, calc(100vh - 8rem))",
               zIndex: 10000,
               borderRadius: "24px",
-              border: "1px solid rgba(255,255,255,0.1)",
-              background: "rgba(13, 18, 32, 0.95)",
-              boxShadow: "0 20px 50px rgba(0,0,0,0.5)",
+              border: "1px solid rgba(0,0,0,0.1)",
+              background: "#ffffff",
+              boxShadow: "0 20px 50px rgba(0,0,0,0.15)",
               backdropFilter: "blur(20px)",
               display: "flex",
               flexDirection: "column",
@@ -289,8 +299,8 @@ const AIAssistant = () => {
             <div
               style={{
                 padding: "1.2rem",
-                background: "rgba(255,255,255,0.03)",
-                borderBottom: "1px solid rgba(255,255,255,0.08)",
+                background: "#f8f8f8",
+                borderBottom: "1px solid rgba(0,0,0,0.08)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
@@ -302,19 +312,19 @@ const AIAssistant = () => {
                     width: "36px",
                     height: "36px",
                     borderRadius: "10px",
-                    background: "var(--grad-primary)",
+                    background: "#FF6B35",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                   }}
                 >
-                  <Bot size={20} color="#fff" />
+                  <Bot size={16} color="#fff" />
                 </div>
                 <div>
-                  <div style={{ fontWeight: 700, color: "#fff", fontSize: "0.95rem" }}>
+                  <div style={{ fontWeight: 700, color: "#000", fontSize: "0.95rem" }}>
                     Fin2Line Assistant
                   </div>
-                  <div style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.5)" }}>
+                  <div style={{ fontSize: "0.7rem", color: "rgba(0,0,0,0.5)" }}>
                     Always active
                   </div>
                 </div>
@@ -324,7 +334,7 @@ const AIAssistant = () => {
                 style={{
                   background: "transparent",
                   border: "none",
-                  color: "rgba(255,255,255,0.5)",
+                  color: "rgba(0,0,0,0.5)",
                   cursor: "pointer",
                   padding: "0.5rem",
                 }}
@@ -352,11 +362,11 @@ const AIAssistant = () => {
                     maxWidth: "85%",
                     padding: "0.8rem 1rem",
                     borderRadius: msg.role === "user" ? "18px 18px 2px 18px" : "18px 18px 18px 2px",
-                    background: msg.role === "user" ? "var(--grad-primary)" : "rgba(255,255,255,0.05)",
-                    color: "#fff",
+                    background: msg.role === "user" ? "#FF6B35" : "#f0f0f0",
+                    color: msg.role === "user" ? "#fff" : "#000",
                     fontSize: "0.9rem",
                     lineHeight: 1.5,
-                    border: msg.role === "user" ? "none" : "1px solid rgba(255,255,255,0.08)",
+                    border: msg.role === "user" ? "none" : "1px solid rgba(0,0,0,0.08)",
                   }}
                 >
                   {msg.content}
@@ -364,7 +374,7 @@ const AIAssistant = () => {
               ))}
               {isLoading && (
                 <div style={{ alignSelf: "flex-start", padding: "0.5rem 0" }}>
-                  <TypingDots accent="#7F57FB" />
+                  <TypingDots accent="#FF6B35" />
                 </div>
               )}
               <div ref={messagesEndRef} />
@@ -374,8 +384,8 @@ const AIAssistant = () => {
             <div
               style={{
                 padding: "1.2rem",
-                background: "rgba(255,255,255,0.02)",
-                borderTop: "1px solid rgba(255,255,255,0.08)",
+                background: "#ffffff",
+                borderTop: "1px solid rgba(0,0,0,0.08)",
                 display: "flex",
                 gap: "0.75rem",
               }}
@@ -389,11 +399,11 @@ const AIAssistant = () => {
                 className="ai-assistant-input"
                 style={{
                   flex: 1,
-                  background: "rgba(255,255,255,0.05)",
-                  border: "1px solid rgba(255,255,255,0.1)",
+                  background: "#f5f5f5",
+                  border: "1px solid rgba(0,0,0,0.1)",
                   borderRadius: "12px",
                   padding: "0.75rem 1rem",
-                  color: "#fff",
+                  color: "#000",
                   outline: "none",
                   fontSize: "0.9rem",
                 }}
@@ -405,7 +415,7 @@ const AIAssistant = () => {
                   width: "44px",
                   height: "44px",
                   borderRadius: "12px",
-                  background: "var(--grad-primary)",
+                  background: "#FF6B35",
                   border: "none",
                   color: "#fff",
                   display: "flex",

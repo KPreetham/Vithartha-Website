@@ -35,7 +35,7 @@ const Register = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [agreed, setAgreed] = useState(false);
-  const accentColor = "#7F57FB";
+  const accentColor = "#FB6A21";
 
   useEffect(() => {
     if (noticeMessage) {
@@ -93,8 +93,8 @@ const Register = () => {
     display: "flex",
     alignItems: "center",
     gap: "0.75rem",
-    background: "var(--bg-card)",
-    border: "1px solid var(--border)",
+    background: "#ffffff",
+    border: "1px solid rgba(17,17,17,0.12)",
     borderRadius: "8px",
     padding: "0.8rem 1rem",
     transition: "border-color 0.2s ease",
@@ -107,7 +107,7 @@ const Register = () => {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "var(--bg)",
+        background: "#f5f5f5",
         position: "relative",
         overflow: "hidden",
         padding: "4.5rem 1rem 1rem",
@@ -119,8 +119,8 @@ const Register = () => {
           position: "absolute",
           inset: 0,
           background: `
-                    radial-gradient(ellipse 40% 30% at 20% 20%, rgba(127,87,251,0.07) 0%, transparent 60%),
-                    radial-gradient(ellipse 40% 30% at 80% 80%, rgba(106,54,251,0.05) 0%, transparent 60%)
+                    radial-gradient(ellipse 40% 30% at 20% 20%, rgba(251,106,33,0.07) 0%, transparent 60%),
+                    radial-gradient(ellipse 40% 30% at 80% 80%, rgba(245,95,24,0.05) 0%, transparent 60%)
                 `,
           pointerEvents: "none",
         }}
@@ -139,9 +139,10 @@ const Register = () => {
       >
         <div
           style={{
-            background: "var(--modal-gradient)",
+            background: "#ffffff",
+            color: "#111111",
             borderRadius: "20px",
-            border: "1px solid var(--border)",
+            border: "1px solid rgba(17,17,17,0.12)",
             padding: "1.3rem 2.2rem",
             boxShadow: "var(--shadow-lg)",
           }}
@@ -157,16 +158,16 @@ const Register = () => {
               display: "flex",
               alignItems: "center",
               gap: "0.4rem",
-              color: "var(--text-muted)",
+              color: "#111111",
               fontSize: "0.78rem",
               fontWeight: 600,
               marginBottom: "0.7rem",
               padding: 0,
               transition: "color 0.2s",
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text)")}
+            onMouseEnter={(e) => (e.currentTarget.style.color = "#111111")}
             onMouseLeave={(e) =>
-              (e.currentTarget.style.color = "var(--text-muted)")
+              (e.currentTarget.style.color = "#111111")
             }
           >
             <ArrowLeft size={13} /> Back
@@ -202,7 +203,7 @@ const Register = () => {
               style={{
                 fontSize: "1.4rem",
                 fontWeight: 800,
-                color: "var(--text)",
+                color: "#111111",
                 marginBottom: "0.1rem",
                 letterSpacing: "-0.02em",
               }}
@@ -232,7 +233,7 @@ const Register = () => {
                 <label
                   style={{
                     display: "block",
-                    color: "var(--text-muted)",
+                    color: "#111111",
                     fontSize: "0.68rem",
                     fontWeight: 600,
                     marginBottom: "0.25rem",
@@ -243,7 +244,7 @@ const Register = () => {
                   Full Name *
                 </label>
                 <div style={inputStyle}>
-                  <User size={14} color="rgba(127,87,251,0.75)" />
+                  <User size={14} color="rgba(251,106,33,0.75)" />
                   <input
                     id="reg-name"
                     type="text"
@@ -256,7 +257,7 @@ const Register = () => {
                       background: "none",
                       border: "none",
                       outline: "none",
-                      color: "var(--text)",
+                      color: "#111111",
                       fontSize: "0.85rem",
                       width: "100%",
                     }}
@@ -265,7 +266,7 @@ const Register = () => {
                     }
                     onBlur={(e) =>
                     (e.currentTarget.parentElement.style.borderColor =
-                      "var(--border)")
+                      "rgba(17,17,17,0.12)")
                     }
                   />
                 </div>
@@ -274,7 +275,7 @@ const Register = () => {
                 <label
                   style={{
                     display: "block",
-                    color: "var(--text-muted)",
+                    color: "#111111",
                     fontSize: "0.68rem",
                     fontWeight: 600,
                     marginBottom: "0.25rem",
@@ -285,7 +286,7 @@ const Register = () => {
                   Company
                 </label>
                 <div style={inputStyle}>
-                  <Building size={14} color="rgba(127,87,251,0.75)" />
+                  <Building size={14} color="rgba(251,106,33,0.75)" />
                   <input
                     id="reg-company"
                     type="text"
@@ -297,7 +298,7 @@ const Register = () => {
                       background: "none",
                       border: "none",
                       outline: "none",
-                      color: "var(--text)",
+                      color: "#111111",
                       fontSize: "0.85rem",
                       width: "100%",
                     }}
@@ -306,7 +307,7 @@ const Register = () => {
                     }
                     onBlur={(e) =>
                     (e.currentTarget.parentElement.style.borderColor =
-                      "var(--border)")
+                      "rgba(17,17,17,0.12)")
                     }
                   />
                 </div>
@@ -318,7 +319,7 @@ const Register = () => {
               <label
                 style={{
                   display: "block",
-                  color: "var(--text-muted)",
+                  color: "#111111",
                   fontSize: "0.68rem",
                   fontWeight: 600,
                   marginBottom: "0.25rem",
@@ -329,7 +330,7 @@ const Register = () => {
                 Email Address *
               </label>
               <div style={inputStyle}>
-                <Mail size={14} color="rgba(127,87,251,0.75)" />
+                <Mail size={14} color="rgba(251,106,33,0.75)" />
                 <input
                   id="reg-email"
                   type="email"
@@ -343,7 +344,7 @@ const Register = () => {
                     background: "none",
                     border: "none",
                     outline: "none",
-                    color: "var(--text)",
+                    color: "#111111",
                     fontSize: "0.85rem",
                     width: "100%",
                     opacity: fromGoogle ? 0.8 : 1,
@@ -353,7 +354,7 @@ const Register = () => {
                   }
                   onBlur={(e) =>
                   (e.currentTarget.parentElement.style.borderColor =
-                    "var(--border)")
+                    "rgba(17,17,17,0.12)")
                   }
                 />
               </div>
@@ -364,7 +365,7 @@ const Register = () => {
               <label
                 style={{
                   display: "block",
-                  color: "var(--text-muted)",
+                  color: "#111111",
                   fontSize: "0.68rem",
                   fontWeight: 600,
                   marginBottom: "0.25rem",
@@ -375,7 +376,7 @@ const Register = () => {
                 Password *
               </label>
               <div style={inputStyle}>
-                <Lock size={14} color="rgba(127,87,251,0.75)" />
+                <Lock size={14} color="rgba(251,106,33,0.75)" />
                 <input
                   id="reg-password"
                   type={showPassword ? "text" : "password"}
@@ -388,7 +389,7 @@ const Register = () => {
                     background: "none",
                     border: "none",
                     outline: "none",
-                    color: "var(--text)",
+                    color: "#111111",
                     fontSize: "0.85rem",
                     flex: 1,
                   }}
@@ -397,7 +398,7 @@ const Register = () => {
                   }
                   onBlur={(e) =>
                   (e.currentTarget.parentElement.style.borderColor =
-                    "var(--border)")
+                    "rgba(17,17,17,0.12)")
                   }
                 />
                 <button
@@ -407,7 +408,7 @@ const Register = () => {
                     background: "none",
                     border: "none",
                     cursor: "pointer",
-                    color: "rgba(127,87,251,0.7)",
+                    color: "#111111",
                     padding: 0,
                     display: "flex",
                   }}
@@ -469,8 +470,8 @@ const Register = () => {
                 borderRadius: "8px",
                 background:
                   !agreed || loading
-                    ? "rgba(127,87,251,0.35)"
-                    : "linear-gradient(135deg, #7F57FB 0%, #6A36FB 100%)",
+                    ? "rgba(251,106,33,0.35)"
+                    : "linear-gradient(135deg, #FB6A21 0%, #F55F18 100%)",
                 color: "white",
                 fontWeight: 800,
                 border: "none",
@@ -482,18 +483,18 @@ const Register = () => {
                 alignItems: "center",
                 justifyContent: "center",
                 gap: "0.5rem",
-                boxShadow: agreed ? "0 6px 20px rgba(127,87,251,0.3)" : "none",
+                boxShadow: agreed ? "0 6px 20px rgba(251,106,33,0.3)" : "none",
                 transition: "all 0.3s ease",
                 marginTop: "0.1rem",
               }}
               onMouseEnter={(e) => {
                 if (agreed && !loading)
                   e.currentTarget.style.boxShadow =
-                    "0 12px 32px rgba(127,87,251,0.45)";
+                    "0 12px 32px rgba(251,106,33,0.45)";
               }}
               onMouseLeave={(e) =>
               (e.currentTarget.style.boxShadow = agreed
-                ? "0 8px 24px rgba(127,87,251,0.3)"
+                ? "0 8px 24px rgba(251,106,33,0.3)"
                 : "none")
               }
             >
