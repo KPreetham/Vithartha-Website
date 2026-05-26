@@ -138,6 +138,7 @@ const Register = () => {
         }}
       >
         <div
+          className="auth-card"
           style={{
             background: "#ffffff",
             color: "#111111",
@@ -246,6 +247,7 @@ const Register = () => {
                 <div style={inputStyle}>
                   <User size={14} color="rgba(251,106,33,0.75)" />
                   <input
+                    className="auth-input"
                     id="reg-name"
                     type="text"
                     name="name"
@@ -288,6 +290,7 @@ const Register = () => {
                 <div style={inputStyle}>
                   <Building size={14} color="rgba(251,106,33,0.75)" />
                   <input
+                    className="auth-input"
                     id="reg-company"
                     type="text"
                     name="company"
@@ -332,6 +335,7 @@ const Register = () => {
               <div style={inputStyle}>
                 <Mail size={14} color="rgba(251,106,33,0.75)" />
                 <input
+                  className="auth-input"
                   id="reg-email"
                   type="email"
                   name="email"
@@ -378,6 +382,7 @@ const Register = () => {
               <div style={inputStyle}>
                 <Lock size={14} color="rgba(251,106,33,0.75)" />
                 <input
+                  className="auth-input"
                   id="reg-password"
                   type={showPassword ? "text" : "password"}
                   name="password"

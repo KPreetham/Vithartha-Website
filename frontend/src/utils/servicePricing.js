@@ -209,6 +209,10 @@ export const shouldCountLeadRevenue = (lead) => {
   const status = String(lead?.status || "").trim();
   if (!status) return true;
 
+  if (status === "Completed") {
+    return true;
+  }
+
   if (["Rejected", "Closed", "DraftRejected"].includes(status)) {
     return false;
   }

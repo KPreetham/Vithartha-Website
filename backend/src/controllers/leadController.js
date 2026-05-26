@@ -19,9 +19,32 @@ const filterUnsentDraftsForResponse = (leadOrLeads, role) => {
     return leadOrLeads;
   }
 
+  const collapseDuplicateDraftDocuments = (documents) => {
+    if (!Array.isArray(documents) || documents.length <= 1) return documents;
+
+    const draftDocuments = [...documents]
+      .filter((doc) => String(doc?.type || "").trim().toLowerCase() === "draft")
+      .sort((a, b) => {
+        const aTime = new Date(a?.uploadedAt || a?.createdAt || 0).getTime();
+        const bTime = new Date(b?.uploadedAt || b?.createdAt || 0).getTime();
+        return bTime - aTime;
+      });
+
+    if (draftDocuments.length <= 1) return documents;
+
+    const latestDraft = draftDocuments[0];
+    return documents.filter((doc) => {
+      if (String(doc?.type || "").trim().toLowerCase() !== "draft") return true;
+      return doc === latestDraft;
+    });
+  };
+
   const filterLeadDocs = (lead) => {
     if (!lead) return lead;
     const leadObj = typeof lead.toObject === "function" ? lead.toObject() : lead;
+    if (leadObj.documents) {
+      leadObj.documents = collapseDuplicateDraftDocuments(leadObj.documents);
+    }
     if (isDraftSentStatus(leadObj.status)) {
       return leadObj;
     }
@@ -600,6 +623,22 @@ export const updateLead = async (req, res) => {
             ? req.body.documents
             : [];
 
+      const incomingDraftDocs = incomingDocsRaw.filter(
+        (doc) => String(doc?.type || "").trim().toLowerCase() === "draft",
+      );
+      const existingDraftDocs = currentDocuments.filter(
+        (doc) => String(doc?.type || "").trim().toLowerCase() === "draft",
+      );
+      const shouldReplaceDraftDocs = incomingDraftDocs.length > 0 && existingDraftDocs.length > 0;
+
+      const incomingFinalDocs = incomingDocsRaw.filter(
+        (doc) => String(doc?.type || "").trim().toLowerCase() === "final",
+      );
+      const existingFinalDocs = currentDocuments.filter(
+        (doc) => String(doc?.type || "").trim().toLowerCase() === "final",
+      );
+      const shouldReplaceFinalDocs = incomingFinalDocs.length > 0 && existingFinalDocs.length > 0;
+
       const currentDocumentNames = new Set(
         currentDocuments
           .map((doc) => normalizeDocumentName(doc?.name))
@@ -613,7 +652,15 @@ export const updateLead = async (req, res) => {
           String(doc?.status || "").trim().toLowerCase() === "reuploaded" ||
           !!doc?.reuploaded;
         // A document is a reupload if it's explicitly marked OR it replaces an existing document
-        if (incomingName && (currentDocumentNames.has(incomingName) || markedReupload)) {
+        if (
+          incomingName &&
+          (
+            currentDocumentNames.has(incomingName) ||
+            markedReupload ||
+            (shouldReplaceDraftDocs && String(doc?.type || "").trim().toLowerCase() === "draft") ||
+            (shouldReplaceFinalDocs && String(doc?.type || "").trim().toLowerCase() === "final")
+          )
+        ) {
           inferredReuploads.add(incomingName);
         }
       }
@@ -622,12 +669,17 @@ export const updateLead = async (req, res) => {
       if (inferredReuploads.size > 0) {
         const preservedDocuments = currentDocuments.filter((doc) => {
           const docName = normalizeDocumentName(doc?.name);
-          return !inferredReuploads.has(docName);
+          if (inferredReuploads.has(docName)) return false;
+          if (shouldReplaceDraftDocs && String(doc?.type || "").trim().toLowerCase() === "draft") return false;
+          if (shouldReplaceFinalDocs && String(doc?.type || "").trim().toLowerCase() === "final") return false;
+          return true;
         });
 
         const taggedIncomingDocuments = incomingDocsRaw.map((doc) => {
           const docName = normalizeDocumentName(doc?.name);
-          const isReupload = inferredReuploads.has(docName);
+          const isDraftDoc = String(doc?.type || "").trim().toLowerCase() === "draft";
+          const isFinalDoc = String(doc?.type || "").trim().toLowerCase() === "final";
+          const isReupload = inferredReuploads.has(docName) || (shouldReplaceDraftDocs && isDraftDoc) || (shouldReplaceFinalDocs && isFinalDoc);
           const isFinal = String(doc?.type || "").trim().toLowerCase() === "final";
 
           return {
@@ -703,7 +755,10 @@ export const updateLead = async (req, res) => {
     if (inferredReuploads.size > 0) {
       // Re-calculate incoming docs to store (only those that were reuploaded)
       const currentFinalDocs = Array.isArray(updatedLead.documents) ? updatedLead.documents : [];
-      const docsToPersist = currentFinalDocs.filter(d => inferredReuploads.has(normalizeDocumentName(d.name)));
+      const docsToPersist = currentFinalDocs.filter((d) =>
+        inferredReuploads.has(normalizeDocumentName(d.name)) ||
+        (String(d?.type || "").trim().toLowerCase() === "draft" && currentFinalDocs.filter((doc) => String(doc?.type || "").trim().toLowerCase() === "draft").length === 1),
+      );
 
       await persistReuploadedDocuments({
         lead: updatedLead,

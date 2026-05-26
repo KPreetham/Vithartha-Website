@@ -2274,13 +2274,6 @@ const Recommendations = () => {
       }
 
       if (serverDocsArr.length > 0) {
-        const nonRejected = [...serverDocsArr]
-          .sort((a, b) => {
-            const aTime = new Date(a?.uploadedAt || a?.createdAt || 0).getTime();
-            const bTime = new Date(b?.uploadedAt || b?.createdAt || 0).getTime();
-            return bTime - aTime;
-          })
-          .find((d) => d?.status !== "Rejected");
         const latest =
           [...serverDocsArr].sort((a, b) => {
             const aTime = new Date(a?.uploadedAt || a?.createdAt || 0).getTime();
@@ -2288,16 +2281,16 @@ const Recommendations = () => {
             return bTime - aTime;
           })[0] || null;
 
-        const selectedDoc = nonRejected || latest;
+        const latestStatus = String(latest?.status || "").trim().toLowerCase();
         return {
           uploaded: true,
-          reuploadRequired: !nonRejected && latest?.status === "Rejected",
+          reuploadRequired: latestStatus === "rejected",
           message:
             String(latest?.rejectionMessage || "").trim() ||
             "This document was rejected. Please reupload the corrected file.",
-          uploadedName: selectedDoc?.name || docName,
-          uploadedUrl: selectedDoc?.url || "",
-          publicId: selectedDoc?.publicId || "",
+          uploadedName: latest?.name || docName,
+          uploadedUrl: latest?.url || "",
+          publicId: latest?.publicId || "",
           uploadedNames: serverDocsArr.map((d) => d?.name).filter(Boolean),
           uploadedUrls: serverDocsArr.map((d) => d?.url).filter(Boolean),
           fullDocs: serverDocsArr,

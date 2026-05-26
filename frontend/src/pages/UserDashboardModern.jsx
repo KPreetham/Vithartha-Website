@@ -83,7 +83,6 @@ const UserDashboardModern = ({
   handleMessageChange,
   handleSendMessageToPR,
   handleDeleteAdvisorMessage,
-  handleDeleteExecutorMessage,
   deleteConfirm,
   handleConfirmDelete,
   setDeleteConfirm,
@@ -948,16 +947,6 @@ const UserDashboardModern = ({
                           <button type="button" onClick={(e) => handleDeleteRejectionMessage(activeLead._id, e)} style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "inherit", cursor: "pointer" }}>×</button>
                         </div>
                         <div style={{ color: "#111111", fontSize: "0.95rem", fontStyle: "italic" }}>"{activeLead.prFeedback}"</div>
-                      </div>
-                    )}
-
-                    {activeLead.executorMessage && !isSystemMessage(activeLead.executorMessage) && !showRejectionBanner && (
-                      <div className="inner-card" style={{ padding: 16, borderRadius: 18, border: "1px solid rgba(139,92,246,0.22)", background: "rgba(139,92,246,0.05)" }}>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 8, color: "#7c3aed" }}>
-                          <strong style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Sparkles size={16} /> Message from Executor</strong>
-                          <button type="button" onClick={(e) => handleDeleteExecutorMessage(activeLead._id, e)} style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "inherit", cursor: "pointer" }}>×</button>
-                        </div>
-                        <div style={{ color: "#111111", fontSize: "0.95rem", fontStyle: "italic" }}>"{activeLead.executorMessage}"</div>
                       </div>
                     )}
 

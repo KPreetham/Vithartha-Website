@@ -37,6 +37,10 @@ import {
   shouldCountLeadRevenue,
 } from "../utils/servicePricing";
 import PRDashboardModern from "./PRDashboardModern";
+import {
+  loadHiddenServiceIds,
+  saveHiddenServiceIds,
+} from "../utils/hiddenServiceStorage";
 
 const PRDashboard = () => {
   const [leads, setLeads] = useState([]);
@@ -46,18 +50,27 @@ const PRDashboard = () => {
   const [services, setServices] = useState([]);
   const [uploadingId, setUploadingId] = useState(null);
   const [messageDrafts, setMessageDrafts] = useState({});
+  const [showCommunicationBox, setShowCommunicationBox] = useState(true);
   const [rejectDrafts, setRejectDrafts] = useState({});
   const [rejectingLeadId, setRejectingLeadId] = useState(null);
   const [docRejectDrafts, setDocRejectDrafts] = useState({});
   const [rejectingDocKey, setRejectingDocKey] = useState(null);
-  const [hiddenLeads, setHiddenLeads] = useState([]);
+  const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+  const currentUserId = storedUser?._id || storedUser?.id || "";
+  const [hiddenLeads, setHiddenLeads] = useState(() => loadHiddenServiceIds("pr-dashboard", currentUserId));
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, lead: null, isLoading: false });
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedLeadId, setSelectedLeadId] = useState(null);
   const navigate = useNavigate();
-
-  const storedUser = JSON.parse(localStorage.getItem("user"));
   const isUserRole = normalizeRole(storedUser?.role) === "user";
+
+  useEffect(() => {
+    setHiddenLeads(loadHiddenServiceIds("pr-dashboard", currentUserId));
+  }, [currentUserId]);
+
+  useEffect(() => {
+    saveHiddenServiceIds("pr-dashboard", currentUserId, hiddenLeads);
+  }, [currentUserId, hiddenLeads]);
 
   useEffect(() => {
     fetchData();
@@ -785,6 +798,9 @@ const PRDashboard = () => {
   const canManageDraftForLead = (lead) =>
     ['InProgress', 'ExecutionFinished', 'DraftSent', 'DraftRejected', 'DraftAccepted', 'UserAccepted', 'Completed'].includes(lead?.status);
 
+  const canUploadDraftForLead = (lead) =>
+    ['InProgress', 'ExecutionFinished', 'DraftSent', 'DraftRejected', 'DraftAccepted', 'UserAccepted'].includes(lead?.status);
+
   const hasDraftDocument = (lead) =>
     Array.isArray(lead?.documents) && lead.documents.some((d) => d.type === 'Draft');
 
@@ -818,8 +834,15 @@ const PRDashboard = () => {
       return bTime - aTime;
     });
 
+    const latestDraft = sorted.find((doc) => String(doc?.type || "").trim().toLowerCase() === "draft");
+    const latestFinal = sorted.find((doc) => String(doc?.type || "").trim().toLowerCase() === "final");
+    const nonSpecialDocs = sorted.filter((doc) => {
+      const type = String(doc?.type || "").trim().toLowerCase();
+      return type !== "draft" && type !== "final";
+    });
+
     const grouped = new Map();
-    for (const doc of sorted) {
+    for (const doc of nonSpecialDocs) {
       const key = normalizeDocumentKey(doc?.name);
       if (!key) continue;
 
@@ -827,7 +850,7 @@ const PRDashboard = () => {
       grouped.get(key).push(doc);
     }
 
-    return Array.from(grouped.values()).map((group) => {
+    const collapsed = Array.from(grouped.values()).map((group) => {
       const selected =
         group.find(
           (doc) =>
@@ -875,6 +898,32 @@ const PRDashboard = () => {
         displayReuploaded: isDraftDocument ? isReuploaded : serviceRejected ? false : isReuploaded,
       };
     }).filter(Boolean);
+
+    const appendedDocs = [];
+
+    if (latestDraft) {
+      appendedDocs.push({
+        ...latestDraft,
+        status: String(lead?.status || "").trim().toLowerCase() === "draftrejected" ? "Rejected" : latestDraft?.status,
+        displayReuploaded:
+          !!latestDraft?.displayReuploaded ||
+          !!latestDraft?.reuploaded ||
+          String(latestDraft?.status || "").trim().toLowerCase() === "reuploaded",
+      });
+    }
+
+    if (latestFinal) {
+      appendedDocs.push({
+        ...latestFinal,
+        status: latestFinal?.status,
+        displayReuploaded:
+          !!latestFinal?.displayReuploaded ||
+          !!latestFinal?.reuploaded ||
+          String(latestFinal?.status || "").trim().toLowerCase() === "reuploaded",
+      });
+    }
+
+    return [...collapsed, ...appendedDocs];
   }
 
   const visibleLeads = leads.filter((lead) => !hiddenLeads.includes(lead._id));
@@ -1776,26 +1825,26 @@ const PRDashboard = () => {
                                             <>
                                               <input type="file" id={`draft-${lead._id}`} hidden onChange={(e) => handleFileUpload(lead._id, e.target.files[0], 'Draft')} />
                                               <button
-                                                disabled={!canManageDraftForLead(lead)}
+                                                disabled={!canUploadDraftForLead(lead)}
                                                 onClick={() => document.getElementById(`draft-${lead._id}`).click()}
                                                 style={{
                                                   padding: "1.2rem",
                                                   borderRadius: "14px",
-                                                  background: canManageDraftForLead(lead) ? "rgba(67, 97, 238, 0.1)" : "rgba(255,255,255,0.02)",
-                                                  color: canManageDraftForLead(lead) ? "#4361ee" : "rgba(255,255,255,0.2)",
+                                                  background: canUploadDraftForLead(lead) ? "rgba(67, 97, 238, 0.1)" : "rgba(255,255,255,0.02)",
+                                                  color: canUploadDraftForLead(lead) ? "#4361ee" : "rgba(255,255,255,0.2)",
                                                   border: "1px solid rgba(67, 97, 238, 0.2)",
                                                   fontWeight: 800,
                                                   display: "flex",
                                                   alignItems: "center",
                                                   justifyContent: "center",
                                                   gap: "10px",
-                                                  cursor: canManageDraftForLead(lead) ? "pointer" : "not-allowed"
+                                                  cursor: canUploadDraftForLead(lead) ? "pointer" : "not-allowed"
                                                 }}
                                               >
                                                 {uploadingId === `${lead._id}-Draft` ? (
                                                   <><Loader2 size={18} className="animate-spin" /> UPLOADING...</>
                                                 ) : (
-                                                  <><Upload size={18} /> UPLOAD DRAFT</>
+                                                  <><Upload size={18} /> {canUploadDraftForLead(lead) ? "UPLOAD DRAFT" : "DRAFT DISABLED"}</>
                                                 )}
                                               </button>
                                             </>
@@ -1835,25 +1884,50 @@ const PRDashboard = () => {
                                 )}
 
                                 {/* Direct Messaging to Client - Now at Bottom */}
-                                <div style={{ marginTop: "1.5rem", background: "rgba(255,255,255,0.02)", padding: "1.5rem", borderRadius: "16px", border: "1px solid rgba(255,255,255,0.05)" }}>
-                                  <div style={{ fontSize: "0.65rem", fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "1rem" }}>Communicate with Client</div>
-                                  <div className="pr-chat-input" style={{ display: "flex", gap: "10px" }}>
-                                    <input
-                                      placeholder="Type instructions or missing info details here..."
-                                      value={messageDrafts[lead._id] || ""}
-                                      onChange={(e) => setMessageDrafts({ ...messageDrafts, [lead._id]: e.target.value })}
-                                      style={{ flex: 1, padding: "1rem", borderRadius: "12px", background: "rgba(0,0,0,0.2)", color: "white", border: "1px solid rgba(255,255,255,0.1)", outline: "none", fontSize: "0.85rem" }}
-                                    />
+                                {showCommunicationBox && (
+                                  <div style={{ marginTop: "1.5rem", background: "rgba(255,255,255,0.02)", padding: "1.5rem", borderRadius: "16px", border: "1px solid rgba(255,255,255,0.05)", position: "relative" }}>
                                     <button
-                                      onClick={() => {
-                                        handleSendMessageToClient(lead._id, messageDrafts[lead._id]);
+                                      type="button"
+                                      onClick={() => setShowCommunicationBox(false)}
+                                      aria-label="Close message box"
+                                      title="Close message box"
+                                      style={{
+                                        position: "absolute",
+                                        top: 12,
+                                        right: 12,
+                                        width: 28,
+                                        height: 28,
+                                        borderRadius: 999,
+                                        border: "1px solid rgba(255,255,255,0.1)",
+                                        background: "rgba(0,0,0,0.2)",
+                                        color: "white",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        cursor: "pointer",
                                       }}
-                                      style={{ width: "50px", height: "50px", borderRadius: "12px", background: "#4361ee", color: "white", border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
                                     >
-                                      <Send size={18} />
+                                      <X size={16} />
                                     </button>
+                                    <div style={{ fontSize: "0.65rem", fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "1rem", paddingRight: 36 }}>Communicate with Client</div>
+                                    <div className="pr-chat-input" style={{ display: "flex", gap: "10px" }}>
+                                      <input
+                                        placeholder="Type instructions or missing info details here..."
+                                        value={messageDrafts[lead._id] || ""}
+                                        onChange={(e) => setMessageDrafts({ ...messageDrafts, [lead._id]: e.target.value })}
+                                        style={{ flex: 1, padding: "1rem", borderRadius: "12px", background: "rgba(0,0,0,0.2)", color: "white", border: "1px solid rgba(255,255,255,0.1)", outline: "none", fontSize: "0.85rem" }}
+                                      />
+                                      <button
+                                        onClick={() => {
+                                          handleSendMessageToClient(lead._id, messageDrafts[lead._id]);
+                                        }}
+                                        style={{ width: "50px", height: "50px", borderRadius: "12px", background: "#4361ee", color: "white", border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+                                      >
+                                        <Send size={18} />
+                                      </button>
+                                    </div>
                                   </div>
-                                </div>
+                                )}
                               </div>
                             </div>
                           </div>

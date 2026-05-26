@@ -120,6 +120,7 @@ const PRDashboardModern = ({
 }) => {
   const [documentsOpen, setDocumentsOpen] = React.useState(false);
   const [isMessageTargetOpen, setIsMessageTargetOpen] = React.useState(false);
+  const [showCommunicationBox, setShowCommunicationBox] = React.useState(true);
   const [messageTarget, setMessageTarget] = React.useState("user");
   const [syncedSidebarHeight, setSyncedSidebarHeight] = React.useState(null);
   const detailsPanelRef = React.useRef(null);
@@ -216,7 +217,21 @@ const PRDashboardModern = ({
     : leadStatus;
   const docs = lead ? getVisibleDocuments(lead) : [];
   const clientDocs = docs;
-  const draftFinalDocs = rawDocs.filter((d) => ["Draft", "Final"].includes(String(d?.type || "").trim()));
+  const draftFinalDocs = (() => {
+    const sortedDocs = [...rawDocs].sort((a, b) => {
+      const aTime = new Date(a?.uploadedAt || a?.createdAt || 0).getTime();
+      const bTime = new Date(b?.uploadedAt || b?.createdAt || 0).getTime();
+      return bTime - aTime;
+    });
+    const latestDraft = sortedDocs.find((doc) => String(doc?.type || "").trim().toLowerCase() === "draft");
+    const latestFinal = sortedDocs.find((doc) => String(doc?.type || "").trim().toLowerCase() === "final");
+    return sortedDocs.filter((doc) => {
+      const type = String(doc?.type || "").trim().toLowerCase();
+      if (type === "final") return doc === latestFinal;
+      if (type !== "draft") return false;
+      return doc === latestDraft;
+    });
+  })();
   const uploadedClientDocs = clientDocs.filter((d) => {
     const status = String(d?.status || "").trim().toLowerCase();
     return ["uploaded", "accepted", "verified", "approved", "completed", "reuploaded", "under review"].includes(status) || !!d?.url;
@@ -225,6 +240,7 @@ const PRDashboardModern = ({
   const serviceAccepted = ["PR_Accepted", "AssignedToExecutor", "InProgress", "ExecutionFinished", "DraftSent", "DraftRejected", "DraftAccepted", "UserAccepted", "Completed"].includes(effectiveServiceStatus);
   const draftWorkflowStarted =
     ["InProgress", "ExecutionFinished", "DraftSent", "DraftRejected", "DraftAccepted", "UserAccepted", "Completed"].includes(effectiveServiceStatus);
+  const canUploadDraft = ["InProgress", "ExecutionFinished", "DraftSent", "DraftRejected", "DraftAccepted", "UserAccepted"].includes(effectiveServiceStatus);
   const serviceProgressPercent = (() => {
     if (!lead) return 0;
     
@@ -1262,11 +1278,11 @@ const PRDashboardModern = ({
                                 <button
                                   className="fulfillment-btn"
                                   onClick={() => draftInputRef.current.click()}
-                                  disabled={isDraftUploading}
-                                  style={{ flex: isCompactMobile ? "none" : "1 1 0", width: isCompactMobile ? "100%" : "auto", minWidth: 0, padding: "12px 10px", borderRadius: 12, border: "1px dashed rgba(22, 163, 74, 0.4)", background: "white", color: "#16a34a", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, whiteSpace: "nowrap" }}
+                                  disabled={isDraftUploading || !canUploadDraft}
+                                  style={{ flex: isCompactMobile ? "none" : "1 1 0", width: isCompactMobile ? "100%" : "auto", minWidth: 0, padding: "12px 10px", borderRadius: 12, border: "1px dashed rgba(22, 163, 74, 0.4)", background: canUploadDraft ? "white" : "rgba(17,24,39,0.04)", color: canUploadDraft ? "#16a34a" : "#9ca3af", fontWeight: 700, fontSize: "0.82rem", cursor: canUploadDraft ? "pointer" : "not-allowed", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, whiteSpace: "nowrap" }}
                                 >
                                   {isDraftUploading ? <Loader2 className="animate-spin" size={18} /> : <Upload size={18} />}
-                                  {isDraftUploading ? "Uploading..." : "Upload Draft"}
+                                    {isDraftUploading ? "Uploading..." : canUploadDraft ? "Upload Draft" : "Draft Disabled"}
                                 </button>
                                 <button
                                   className="fulfillment-btn"
@@ -1424,15 +1440,39 @@ const PRDashboardModern = ({
                       </PremiumCard>
 
                       {/* Communication Hub */}
-                      <PremiumCard style={{ padding: "18px 22px", background: "#ffffff", border: "1px solid rgba(17,24,39,0.12)", borderRadius: 20, overflow: "visible" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
-                          <div>
-                            <h3 style={{ fontSize: "1.1rem", fontWeight: 800, marginBottom: 2, color: "#111111" }}>Communication with the Client, Team</h3>
-                            <p style={{ color: "#6b7280", fontSize: "0.82rem" }}>Direct coordination with clients and team members.</p>
+                      {showCommunicationBox && (
+                        <PremiumCard style={{ padding: "18px 22px", background: "#ffffff", border: "1px solid rgba(17,24,39,0.12)", borderRadius: 20, overflow: "visible", position: "relative" }}>
+                          <button
+                            type="button"
+                            onClick={() => setShowCommunicationBox(false)}
+                            aria-label="Close message box"
+                            style={{
+                              position: "absolute",
+                              top: 14,
+                              right: 14,
+                              width: 28,
+                              height: 28,
+                              borderRadius: 999,
+                              border: "1px solid rgba(17,24,39,0.1)",
+                              background: "#ffffff",
+                              color: "#6b7280",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              cursor: "pointer",
+                            }}
+                            title="Close message box"
+                          >
+                            <X size={16} />
+                          </button>
+                          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20, paddingRight: 40 }}>
+                            <div>
+                              <h3 style={{ fontSize: "1.1rem", fontWeight: 800, marginBottom: 2, color: "#111111" }}>Communication with the Client, Team</h3>
+                              <p style={{ color: "#6b7280", fontSize: "0.82rem" }}>Direct coordination with clients and team members.</p>
+                            </div>
                           </div>
-                        </div>
 
-                        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
                           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                             <label style={{ fontSize: "0.75rem", fontWeight: 800, color: "#111111", textTransform: "uppercase", letterSpacing: "0.05em" }}>Message Recipient</label>
                             <div 
@@ -1556,8 +1596,9 @@ const PRDashboardModern = ({
                               <Send size={18} /> Send Message
                             </button>
                           </div>
-                        </div>
-                      </PremiumCard>
+                          </div>
+                        </PremiumCard>
+                      )}
                     </div>
                   </div>
                 ) : (

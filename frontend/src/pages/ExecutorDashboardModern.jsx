@@ -28,6 +28,10 @@ import {
   shouldCountLeadRevenue,
 } from "../utils/servicePricing";
 import { viewDocument } from "../utils/documentViewer";
+import {
+  loadHiddenServiceIds,
+  saveHiddenServiceIds,
+} from "../utils/hiddenServiceStorage";
 
 const PremiumCard = ({ children, style = {}, className = "" }) => (
   <div
@@ -88,7 +92,9 @@ const ExecutorDashboardModern = () => {
   const [rejectingLeadId, setRejectingLeadId] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, lead: null, isLoading: false });
   const [localDeleteConfirm, setLocalDeleteConfirm] = useState({ isOpen: false, lead: null });
-  const [hiddenLeads, setHiddenLeads] = useState([]);
+  const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+  const currentUserId = storedUser?._id || storedUser?.id || "";
+  const [hiddenLeads, setHiddenLeads] = useState(() => loadHiddenServiceIds("executor-dashboard", currentUserId));
   const [documentsOpen, setDocumentsOpen] = useState(true);
   const [syncedSidebarHeight, setSyncedSidebarHeight] = useState(null);
   const detailsPanelRef = useRef(null);
@@ -98,8 +104,14 @@ const ExecutorDashboardModern = () => {
   const [isMobile, setIsMobile] = useState(
     () => (typeof window !== "undefined" ? window.innerWidth <= 768 : false),
   );
-  
-  const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+
+  useEffect(() => {
+    setHiddenLeads(loadHiddenServiceIds("executor-dashboard", currentUserId));
+  }, [currentUserId]);
+
+  useEffect(() => {
+    saveHiddenServiceIds("executor-dashboard", currentUserId, hiddenLeads);
+  }, [currentUserId, hiddenLeads]);
 
   useEffect(() => {
     fetchLeads();
@@ -302,8 +314,14 @@ const ExecutorDashboardModern = () => {
       const bTime = new Date(b?.uploadedAt || b?.createdAt || 0).getTime();
       return bTime - aTime;
     });
+    const latestDraft = sorted.find((doc) => String(doc?.type || "").trim().toLowerCase() === "draft");
+    const latestFinal = sorted.find((doc) => String(doc?.type || "").trim().toLowerCase() === "final");
+    const nonSpecialDocs = sorted.filter((doc) => {
+      const type = String(doc?.type || "").trim().toLowerCase();
+      return type !== "draft" && type !== "final";
+    });
     const grouped = new Map();
-    for (const doc of sorted) {
+    for (const doc of nonSpecialDocs) {
       const key = String(doc?.name || "")
         .trim()
         .toLowerCase()
@@ -314,7 +332,7 @@ const ExecutorDashboardModern = () => {
       if (!grouped.has(key)) grouped.set(key, []);
       grouped.get(key).push(doc);
     }
-    return Array.from(grouped.values()).map((group) => {
+    const collapsed = Array.from(grouped.values()).map((group) => {
       const selected = group.find((doc) => !!doc?.displayReuploaded || !!doc?.reuploaded || String(doc?.status || "").trim().toLowerCase() === "reuploaded") || group[0];
       const draftRejected = String(lead?.status || "").trim().toLowerCase() === "draftrejected";
       const isDraftDocument = String(selected?.type || "").trim().toLowerCase() === "draft";
@@ -324,6 +342,32 @@ const ExecutorDashboardModern = () => {
         displayReuploaded: !!selected?.displayReuploaded || group.length > 1 || !!selected?.reuploaded || String(selected?.status || "").trim().toLowerCase() === "reuploaded",
       };
     });
+
+    const appendedDocs = [];
+
+    if (latestDraft) {
+      appendedDocs.push({
+        ...latestDraft,
+        status: String(lead?.status || "").trim().toLowerCase() === "draftrejected" ? "Rejected" : latestDraft?.status,
+        displayReuploaded:
+          !!latestDraft?.displayReuploaded ||
+          !!latestDraft?.reuploaded ||
+          String(latestDraft?.status || "").trim().toLowerCase() === "reuploaded",
+      });
+    }
+
+    if (latestFinal) {
+      appendedDocs.push({
+        ...latestFinal,
+        status: latestFinal?.status,
+        displayReuploaded:
+          !!latestFinal?.displayReuploaded ||
+          !!latestFinal?.reuploaded ||
+          String(latestFinal?.status || "").trim().toLowerCase() === "reuploaded",
+      });
+    }
+
+    return [...collapsed, ...appendedDocs];
   }
 
   function hasFinalDocument(lead) {
@@ -952,13 +996,6 @@ const ExecutorDashboardModern = () => {
                           <button type="button" onClick={(e) => handleClearPrMessage(activeLead._id, e)} style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid rgba(0,0,0,0.12)", background: "transparent", color: "inherit", cursor: "pointer" }}>×</button>
                         </div>
                         <div style={{ color: "#111111", fontSize: "0.95rem" }}>{activeLead.prToExecutorMessage}</div>
-                      </div>
-                    )}
-
-                    {activeLead.userMessage && !isSystemMessage(activeLead.userMessage) && (
-                      <div className="inner-card" style={{ padding: 16, borderRadius: 18, border: "1px solid rgba(139,92,246,0.22)", background: "rgba(139,92,246,0.05)" }}>
-                        <div style={{ color: "#8b5cf6", fontWeight: 800, fontSize: "0.7rem", textTransform: "uppercase", marginBottom: 8 }}>Message from Client</div>
-                        <div style={{ color: "#111111", fontSize: "0.95rem" }}>{activeLead.userMessage}</div>
                       </div>
                     )}
 

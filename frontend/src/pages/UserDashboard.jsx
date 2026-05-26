@@ -26,6 +26,10 @@ import {
 import { viewDocument } from "../utils/documentViewer";
 import ConfirmationModal from "../components/ConfirmationModal";
 import UserDashboardModern from "./UserDashboardModern";
+import {
+  loadHiddenServiceIds,
+  saveHiddenServiceIds,
+} from "../utils/hiddenServiceStorage";
 
 
 const PremiumCard = ({
@@ -91,7 +95,9 @@ const UserDashboard = () => {
   const [uploadingId, setUploadingId] = useState(null);
   const [draftRejectDrafts, setDraftRejectDrafts] = useState({});
   const [draftRejectingLeadId, setDraftRejectingLeadId] = useState(null);
-  const [hiddenLeads, setHiddenLeads] = useState([]);
+  const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+  const currentUserId = storedUser?._id || storedUser?.id || "";
+  const [hiddenLeads, setHiddenLeads] = useState(() => loadHiddenServiceIds("user-dashboard", currentUserId));
   const [dismissedDetailsMissingSignatureByLead, setDismissedDetailsMissingSignatureByLead] = useState(() => {
     const saved = localStorage.getItem("dismissedServiceMessages");
     return saved ? JSON.parse(saved) : {};
@@ -99,9 +105,15 @@ const UserDashboard = () => {
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, lead: null, isLoading: false });
   const uploadInputRef = useRef(null);
   const navigate = useNavigate();
-
-  const storedUser = JSON.parse(localStorage.getItem("user"));
   const isAdmin = storedUser?.role === "admin";
+
+  useEffect(() => {
+    setHiddenLeads(loadHiddenServiceIds("user-dashboard", currentUserId));
+  }, [currentUserId]);
+
+  useEffect(() => {
+    saveHiddenServiceIds("user-dashboard", currentUserId, hiddenLeads);
+  }, [currentUserId, hiddenLeads]);
 
   const extractCloudinaryPublicIdFromUrl = (url) => {
     const rawUrl = String(url || "").trim();
@@ -200,16 +212,22 @@ const UserDashboard = () => {
       const bTime = new Date(b?.uploadedAt || b?.createdAt || 0).getTime();
       return bTime - aTime;
     });
+    const latestDraft = sorted.find((doc) => String(doc?.type || "").trim().toLowerCase() === "draft");
+    const latestFinal = sorted.find((doc) => String(doc?.type || "").trim().toLowerCase() === "final");
+    const nonSpecialDocs = sorted.filter((doc) => {
+      const type = String(doc?.type || "").trim().toLowerCase();
+      return type !== "draft" && type !== "final";
+    });
 
     const grouped = new Map();
-    for (const doc of sorted) {
+    for (const doc of nonSpecialDocs) {
       const key = normalizeServiceKey(normalizeDocumentName(doc));
       if (!key) continue;
       if (!grouped.has(key)) grouped.set(key, []);
       grouped.get(key).push(doc);
     }
 
-    return Array.from(grouped.values()).map((group) => {
+    const collapsed = Array.from(grouped.values()).map((group) => {
       const reuploadedDoc = group.find(
         (doc) =>
           !!doc?.displayReuploaded ||
@@ -267,6 +285,40 @@ const UserDashboard = () => {
           String(selected?.status || "").trim().toLowerCase() === "reuploaded",
       };
     });
+
+    const appendedDocs = [];
+
+    if (latestDraft) {
+      const latestDraftName = normalizeText(normalizeDocumentName(latestDraft));
+      const latestDraftCount = sorted.filter((doc) => String(doc?.type || "").trim().toLowerCase() === "draft").length;
+      appendedDocs.push({
+        ...latestDraft,
+        name: normalizeDocumentName(latestDraft),
+        displayReuploaded:
+          reuploadedDocumentNames.has(latestDraftName) ||
+          latestDraftCount > 1 ||
+          !!latestDraft?.displayReuploaded ||
+          !!latestDraft?.reuploaded ||
+          String(latestDraft?.status || "").trim().toLowerCase() === "reuploaded",
+      });
+    }
+
+    if (latestFinal) {
+      const latestFinalName = normalizeText(normalizeDocumentName(latestFinal));
+      const latestFinalCount = sorted.filter((doc) => String(doc?.type || "").trim().toLowerCase() === "final").length;
+      appendedDocs.push({
+        ...latestFinal,
+        name: normalizeDocumentName(latestFinal),
+        displayReuploaded:
+          reuploadedDocumentNames.has(latestFinalName) ||
+          latestFinalCount > 1 ||
+          !!latestFinal?.displayReuploaded ||
+          !!latestFinal?.reuploaded ||
+          String(latestFinal?.status || "").trim().toLowerCase() === "reuploaded",
+      });
+    }
+
+    return [...collapsed, ...appendedDocs];
   };
 
   const hydrateLeadsWithDocuments = (leadList, servicesList = services) => {
@@ -1197,7 +1249,6 @@ const UserDashboard = () => {
       messageByLead={messageByLead}
       handleMessageChange={handleMessageChange}
       handleSendMessageToPR={handleSendMessageToPR}
-      handleDeleteExecutorMessage={handleDeleteExecutorMessage}
       handleDeleteAdvisorMessage={handleDeleteAdvisorMessage}
       deleteConfirm={deleteConfirm}
       handleConfirmDelete={handleConfirmDelete}

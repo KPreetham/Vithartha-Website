@@ -34,6 +34,10 @@ import {
 } from "../utils/servicePricing";
 import { viewDocument } from "../utils/documentViewer";
 import AdminDashboardModern from "./AdminDashboardModern";
+import {
+  loadHiddenServiceIds,
+  saveHiddenServiceIds,
+} from "../utils/hiddenServiceStorage";
 
 const PremiumCard = ({ children, style = {}, className = "" }) => {
   return (
@@ -77,10 +81,20 @@ const AdminDashboard = () => {
   const [messageTarget, setMessageTarget] = useState("client");
   const [messageText, setMessageText] = useState("");
   const [uploadingId, setUploadingId] = useState(null);
-  const [hiddenLeads, setHiddenLeads] = useState([]);
+  const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+  const currentUserId = storedUser?._id || storedUser?.id || "";
+  const [hiddenLeads, setHiddenLeads] = useState(() => loadHiddenServiceIds("admin-dashboard", currentUserId));
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, lead: null, isLoading: false });
   const [dismissedReviewSummarySignatureByLead, setDismissedReviewSummarySignatureByLead] = useState({});
   const [dismissedDetailsMissingSignatureByLead, setDismissedDetailsMissingSignatureByLead] = useState({});
+
+  useEffect(() => {
+    setHiddenLeads(loadHiddenServiceIds("admin-dashboard", currentUserId));
+  }, [currentUserId]);
+
+  useEffect(() => {
+    saveHiddenServiceIds("admin-dashboard", currentUserId, hiddenLeads);
+  }, [currentUserId, hiddenLeads]);
 
   const getMessageFieldByTarget = (target) => {
     if (target === "pr") return "adminToPrMessage";
@@ -556,8 +570,15 @@ const AdminDashboard = () => {
       return bTime - aTime;
     });
 
+    const latestDraft = sorted.find((doc) => String(doc?.type || "").trim().toLowerCase() === "draft");
+    const latestFinal = sorted.find((doc) => String(doc?.type || "").trim().toLowerCase() === "final");
+    const nonSpecialDocs = sorted.filter((doc) => {
+      const type = String(doc?.type || "").trim().toLowerCase();
+      return type !== "draft" && type !== "final";
+    });
+
     const grouped = new Map();
-    for (const doc of sorted) {
+    for (const doc of nonSpecialDocs) {
       const key = normalizeDocumentKey(doc?.name);
       if (!key) continue;
 
@@ -567,7 +588,7 @@ const AdminDashboard = () => {
 
     const executorRejected = isExecutorRejectedLead(lead);
 
-    return Array.from(grouped.values()).map((group) => {
+    const collapsed = Array.from(grouped.values()).map((group) => {
       const selected =
         group.find(
           (doc) =>
@@ -607,6 +628,32 @@ const AdminDashboard = () => {
         executorRejected: executorRejected && serviceRejected && !isReuploaded,
       };
     });
+
+    const appendedDocs = [];
+
+    if (latestDraft) {
+      appendedDocs.push({
+        ...latestDraft,
+        status: String(lead?.status || "").trim().toLowerCase() === "draftrejected" ? "Rejected" : latestDraft?.status,
+        displayReuploaded:
+          !!latestDraft?.displayReuploaded ||
+          !!latestDraft?.reuploaded ||
+          String(latestDraft?.status || "").trim().toLowerCase() === "reuploaded",
+      });
+    }
+
+    if (latestFinal) {
+      appendedDocs.push({
+        ...latestFinal,
+        status: latestFinal?.status,
+        displayReuploaded:
+          !!latestFinal?.displayReuploaded ||
+          !!latestFinal?.reuploaded ||
+          String(latestFinal?.status || "").trim().toLowerCase() === "reuploaded",
+      });
+    }
+
+    return [...collapsed, ...appendedDocs];
   };
 
   // --- Hydration helpers (merge server docs with any pending local uploads) ---
