@@ -175,6 +175,7 @@ const Onboarding = () => {
     industry: "",
     currentRevenue: "",
     employeeCount: "",
+    manualNeed: "",
     needs: [],
     urgency: "",
   });
@@ -334,6 +335,27 @@ const Onboarding = () => {
     { id: "Planning", label: "In the next 1–3 months", icon: PieChart, color: "#16a34a" },
     { id: "Exploring", label: "Just exploring for now", icon: BarChart, color: "#16a34a" },
   ];
+
+  const hasTextValue = (value) => typeof value === "string" && value.trim().length > 0;
+  const hasSelectedBoolean = (value) => value === true || value === false;
+
+  const canProceedFromStep1 =
+    path === "filing"
+      ? hasSelectedBoolean(formData.salaried) &&
+        hasSelectedBoolean(formData.capitalGains) &&
+        hasSelectedBoolean(formData.houseProperty)
+      : path === "capital"
+        ? hasSelectedBoolean(formData.capitalGains) && hasSelectedBoolean(formData.houseProperty)
+        : path === "starting"
+          ? hasTextValue(formData.expectedRevenue) &&
+            hasSelectedBoolean(formData.registered) &&
+              hasTextValue(formData.industry) &&
+              hasTextValue(formData.manualNeed)
+          : path === "having"
+              ? hasTextValue(formData.currentRevenue) &&
+                hasTextValue(formData.employeeCount) &&
+                hasTextValue(formData.manualNeed)
+            : false;
 
   const progressPct = ((step + 1) / 3) * 100;
 
@@ -503,6 +525,9 @@ const Onboarding = () => {
                   <h2 style={{ fontSize: "1.35rem", fontWeight: 800, color: "#111111", marginBottom: "0.2rem", letterSpacing: "-0.02em" }}>
                     {path === "filing" ? "Tax Details" : path === "starting" ? "Startup Info" : "Business Insights"}
                   </h2>
+                  <p style={{ color: "#94a3b8", fontSize: "0.78rem", fontWeight: 500, margin: 0 }}>
+                    All fields in this step are required.
+                  </p>
                   <p style={{ color: "#64748b", fontSize: "0.85rem", fontWeight: 500 }}>
                     Customize your expert roadmap.
                   </p>
@@ -534,6 +559,12 @@ const Onboarding = () => {
                       />
                       <Question label="Registered the entity yet?" value={formData.registered} onChange={(v) => setFormData({ ...formData, registered: v })} />
                       <InputQuestion label="Primary Industry" placeholder="e.g. Technology" value={formData.industry} onChange={(v) => setFormData({ ...formData, industry: v })} />
+                      <InputQuestion
+                        label="Enter Required services"
+                        placeholder="e.g. GST Registration, Company Incorporation"
+                        value={formData.manualNeed}
+                        onChange={(v) => setFormData({ ...formData, manualNeed: v })}
+                      />
                     </>
                   )}
 
@@ -551,6 +582,12 @@ const Onboarding = () => {
                         value={formData.employeeCount}
                         onChange={(v) => setFormData({ ...formData, employeeCount: v })}
                       />
+                      <InputQuestion
+                        label="Enter Required services"
+                        placeholder="e.g. GST Filing, Payroll, ROC Filings"
+                        value={formData.manualNeed}
+                        onChange={(v) => setFormData({ ...formData, manualNeed: v })}
+                      />
                     </>
                   )}
                 </div>
@@ -559,7 +596,27 @@ const Onboarding = () => {
                   <motion.button whileHover={{ x: -2 }} onClick={handleBack} style={{ background: "none", border: "none", color: "#64748b", display: "flex", alignItems: "center", gap: "0.4rem", cursor: "pointer", fontWeight: 700, fontSize: "0.85rem" }}>
                     <ArrowLeft size={14} /> Back
                   </motion.button>
-                  <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={handleNext} style={{ padding: "0.7rem 1.5rem", borderRadius: "12px", background: "#111111", color: "white", fontWeight: 700, border: "none", fontSize: "0.85rem", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.5rem", transition: "all 0.2s" }}>
+                  <motion.button
+                    whileHover={canProceedFromStep1 ? { scale: 1.02 } : {}}
+                    whileTap={canProceedFromStep1 ? { scale: 0.98 } : {}}
+                    onClick={handleNext}
+                    disabled={!canProceedFromStep1}
+                    style={{
+                      padding: "0.7rem 1.5rem",
+                      borderRadius: "12px",
+                      background: canProceedFromStep1 ? "#111111" : "rgba(17,24,39,0.1)",
+                      color: canProceedFromStep1 ? "white" : "#94a3b8",
+                      fontWeight: 700,
+                      border: "none",
+                      fontSize: "0.85rem",
+                      cursor: canProceedFromStep1 ? "pointer" : "not-allowed",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      transition: "all 0.2s",
+                      boxShadow: "none",
+                    }}
+                  >
                     Next <ArrowRight size={14} />
                   </motion.button>
                 </div>

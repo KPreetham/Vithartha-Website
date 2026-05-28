@@ -2590,6 +2590,130 @@ const Recommendations = () => {
   const SERVICE_PHRASES = Array.from(SERVICE_LOOKUP.entries())
     .sort((a, b) => b[0].length - a[0].length);
 
+  const getServiceSearchText = (service) =>
+    normalizeText(
+      [service?.title, service?.description, service?.category, service?.trigger]
+        .filter(Boolean)
+        .join(" "),
+    );
+
+  const resolveManualNeedEntry = (entry) => {
+    const normalizedEntry = normalizeText(entry);
+    if (!normalizedEntry) return null;
+
+    const directTitle = SERVICE_LOOKUP.get(normalizedEntry);
+    if (directTitle) {
+      return ALL_SERVICES.find(
+        (service) => normalizeText(service?.title) === normalizeText(directTitle),
+      ) || null;
+    }
+
+    const aliasResolved = resolveBestServiceTitleForAlias(normalizedEntry);
+    if (aliasResolved) {
+      const aliasMatch = ALL_SERVICES.find(
+        (service) => normalizeText(service?.title) === normalizeText(aliasResolved),
+      );
+      if (aliasMatch) return aliasMatch;
+    }
+
+    const tokens = normalizedEntry.split(" ").filter((token) => token.length > 2);
+    if (tokens.length === 0) return null;
+
+    let bestMatch = null;
+    let bestScore = 0;
+
+    ALL_SERVICES.forEach((service) => {
+      const serviceText = getServiceSearchText(service);
+      if (!serviceText) return;
+
+      let score = 0;
+      tokens.forEach((token) => {
+        if (!serviceText.includes(token)) return;
+        score += token.length >= 5 ? 2 : 1;
+      });
+
+      if (normalizedEntry.includes(serviceText) || serviceText.includes(normalizedEntry)) {
+        score += 3;
+      }
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatch = service;
+      }
+    });
+
+    return bestScore >= 2 ? bestMatch : null;
+  };
+
+  const getRelatedFallbackServices = (input) => {
+    const normalizedInput = normalizeText(input);
+    const tokens = splitManualNeed(input)
+      .join(" ")
+      .toLowerCase()
+      .split(/[^a-z0-9]+/g)
+      .map((token) => token.trim())
+      .filter((token) => token && token.length > 2);
+
+    const candidates = ALL_SERVICES.map((service) => {
+      const serviceText = getServiceSearchText(service);
+      let score = 0;
+
+      tokens.forEach((token) => {
+        if (!serviceText.includes(token)) return;
+        score += token.length >= 6 ? 3 : 1;
+      });
+
+      if (normalizedInput && serviceText.includes(normalizedInput)) {
+        score += 10;
+      }
+
+      return { service, score };
+    }).sort((a, b) => b.score - a.score || a.service.title.localeCompare(b.service.title));
+
+    const positiveMatches = candidates
+      .filter((item) => item.score > 0)
+      .map((item) => item.service)
+      .slice(0, 2);
+
+    if (positiveMatches.length > 0) {
+      return positiveMatches;
+    }
+
+    const pathFallbackAliases =
+      activeProfile.path === "having"
+        ? ["Virtual CFO Service", "Accounts Bookkeeping"]
+        : ["Company Incorporation", "GST Registration"];
+
+    const fallback = [];
+    const usedTitles = new Set();
+
+    pathFallbackAliases.forEach((alias) => {
+      const normalizedAlias = normalizeText(alias);
+      const resolved =
+        SERVICE_LOOKUP.get(normalizedAlias) ||
+        resolveBestServiceTitleForAlias(normalizedAlias);
+      const service = ALL_SERVICES.find(
+        (item) => normalizeText(item.title) === normalizeText(resolved),
+      );
+
+      if (service && !usedTitles.has(service.title)) {
+        usedTitles.add(service.title);
+        fallback.push(service);
+      }
+    });
+
+    if (fallback.length < 2) {
+      candidates.forEach(({ service }) => {
+        if (fallback.length >= 2) return;
+        if (usedTitles.has(service.title)) return;
+        usedTitles.add(service.title);
+        fallback.push(service);
+      });
+    }
+
+    return fallback.slice(0, 2);
+  };
+
   const findServiceTitles = (input) => {
     const entries = splitManualNeed(input);
     const matchedTitles = new Set();
@@ -2621,56 +2745,37 @@ const Recommendations = () => {
       .map((raw) => ({ raw, normalized: normalizeText(raw) }))
       .filter((e) => e.normalized);
 
-    const matchedTitles = findServiceTitles(input);
-    const matchedServices = ALL_SERVICES.filter((s) => matchedTitles.has(s.title));
+    const orderedServices = [];
+    const usedTitles = new Set();
 
-    const matchedNormalizedTitles = new Set(
-      matchedServices.map((s) => normalizeText(s.title)),
-    );
+    normalizedEntries.forEach((entry) => {
+      const resolvedService = resolveManualNeedEntry(entry.raw);
+      if (resolvedService && !usedTitles.has(resolvedService.title)) {
+        orderedServices.push(resolvedService);
+        usedTitles.add(resolvedService.title);
+        return;
+      }
 
-    const customServices = normalizedEntries
-      .filter((e) => {
-        const resolvedTitle = SERVICE_LOOKUP.get(e.normalized);
-        if (resolvedTitle) return false;
-        if (matchedNormalizedTitles.has(e.normalized)) return false;
-        return true;
-      })
-      .map((e) => ({
-        title: e.raw,
+      if (usedTitles.has(entry.raw)) return;
+      orderedServices.push({
+        title: entry.raw,
         description:
           "This is a service you requested during onboarding. Open it to share details and documents with our team.",
         category: "Advisory",
         trigger: "Requested",
-      }));
-
-    // Preserve the user's order as much as possible:
-    // 1) catalog matches resolved from entries (in entry order)
-    // 2) any remaining catalog matches (from phrase scan)
-    // 3) custom requested cards for unmatched entries
-    const orderedMatched = [];
-    const usedTitles = new Set();
-
-    normalizedEntries.forEach((e) => {
-      const resolvedTitle = SERVICE_LOOKUP.get(e.normalized);
-      if (!resolvedTitle) return;
-
-      const svc = ALL_SERVICES.find(
-        (s) => normalizeText(s.title) === normalizeText(resolvedTitle),
-      );
-      if (svc && !usedTitles.has(svc.title)) {
-        orderedMatched.push(svc);
-        usedTitles.add(svc.title);
-      }
+      });
+      usedTitles.add(entry.raw);
     });
 
-    matchedServices.forEach((svc) => {
-      if (!usedTitles.has(svc.title)) {
-        orderedMatched.push(svc);
-        usedTitles.add(svc.title);
-      }
-    });
+    const hasAnyResolvedService = orderedServices.some(
+      (service) => ALL_SERVICES.some((catalogService) => service.title === catalogService.title),
+    );
 
-    return [...orderedMatched, ...customServices];
+    if (hasAnyResolvedService) {
+      return orderedServices;
+    }
+
+    return getRelatedFallbackServices(input);
   };
 
   const selectedPathRules = {
