@@ -27,11 +27,14 @@ import {
   ChevronUp,
   Loader2,
   XCircle,
+  Edit,
+  Trash2,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { formatInr, getServicePricing, parseFeeAmount } from "../utils/servicePricing";
 import { viewDocument } from "../utils/documentViewer";
 import { normalizeRole } from "../utils/roleRouting";
+import ConfirmationModal from "../components/ConfirmationModal";
 
 const iconMap = {
   "GST COMPLIANCE": Shield,
@@ -370,6 +373,16 @@ const AdminServicesView = () => {
         s.serviceName?.toLowerCase().includes(searchQuery.toLowerCase()),
       ),
   );
+
+  // Prevent body scroll when service detail modal is open
+  useEffect(() => {
+    if (selectedService) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => { document.body.style.overflow = ""; };
+  }, [selectedService]);
 
   // Auto-expand users that match search
   useEffect(() => {
@@ -1638,6 +1651,8 @@ const ServiceCard = ({
   service,
   idx,
   onClick,
+  isAdmin = false,
+  onDelete,
   isLightMode = false,
   isMobile = false,
   topBadge = null,
@@ -1656,6 +1671,34 @@ const ServiceCard = ({
         zIndex: topBadge ? 3 : 1,
       }}
     >
+      {isAdmin && (service?._id || service?.id) && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete && onDelete(service);
+          }}
+          title="Delete service"
+          style={{
+            position: "absolute",
+            top: "8px",
+            right: "8px",
+            zIndex: 10,
+            width: "32px",
+            height: "32px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            border: "1px solid #cbd5e1",
+            borderRadius: "50%",
+            background: "#f1f5f9",
+            color: "#64748b",
+            cursor: "pointer",
+            transition: "all 0.2s ease",
+          }}
+        >
+          <X size={16} />
+        </button>
+      )}
       <div
         onClick={() => onClick(service)}
         style={{
@@ -1816,6 +1859,50 @@ const NoServicesFound = ({ onClear, isLightMode = false }) => (
   </div>
 );
 
+const calculateMarketAverage = (marketFeesStr) => {
+  if (!marketFeesStr) return null;
+  const cleanStr = String(marketFeesStr).replace(/,/g, "");
+  const numbers = cleanStr.match(/\d+/g);
+  if (numbers && numbers.length >= 2) {
+    const num1 = parseFloat(numbers[0]);
+    const num2 = parseFloat(numbers[1]);
+    return (num1 + num2) / 2;
+  } else if (numbers && numbers.length === 1) {
+    return parseFloat(numbers[0]);
+  }
+  return null;
+};
+
+const getFormattedMarketAverage = (marketFeesStr) => {
+  if (!marketFeesStr) return "—";
+  const avg = calculateMarketAverage(marketFeesStr);
+  let result = marketFeesStr;
+  if (avg !== null) {
+    result = formatInr(avg);
+  }
+  
+  if (String(marketFeesStr).toLowerCase().includes("/month")) {
+    result += "/month";
+  } else if (String(marketFeesStr).toLowerCase().includes("/year")) {
+    result += "/year";
+  }
+  return result;
+};
+
+const getOnlyDigitsAndCommas = (val) => {
+  const raw = String(val || "").trim();
+  const clean = raw.replace(/^rs\.?\s*/i, "");
+  const digits = clean.replace(/[^\d,]/g, "");
+  return digits;
+};
+
+const formatOnlyDigits = (val) => {
+  const digits = String(val || "").replace(/\D/g, "");
+  if (!digits) return "";
+  const num = parseInt(digits, 10);
+  return num.toLocaleString("en-IN");
+};
+
 const Recommendations = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -1851,10 +1938,36 @@ const Recommendations = () => {
     }
     return {};
   }); // { [serviceTitle]: { [docName]: Array<{ name, url }> | { name, url } } }
-  const isAdmin = storedUser?.role === "admin";
+  const isAdmin = normalizeRole(storedUser?.role) === "admin";
   const [dismissedServiceRejectionSignatures, setDismissedServiceRejectionSignatures] = useState({});
+  const [overriddenOurFees, setOverriddenOurFees] = useState({});
+  const [ourFeeInputValue, setOurFeeInputValue] = useState("");
   const [isEditingService, setIsEditingService] = useState(false);
   const [editedService, setEditedService] = useState(null);
+  const [isSavingService, setIsSavingService] = useState(false);
+  const [isAddingDocument, setIsAddingDocument] = useState(false);
+  const [newDocumentName, setNewDocumentName] = useState("");
+  const [deleteConfirmDocName, setDeleteConfirmDocName] = useState(null);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [editingDocName, setEditingDocName] = useState(null);
+  const [editDocumentNameInput, setEditDocumentNameInput] = useState("");
+  const [serviceToDelete, setServiceToDelete] = useState(null);
+  const [isServiceDeleteConfirmOpen, setIsServiceDeleteConfirmOpen] = useState(false);
+  const [isServiceDeleting, setIsServiceDeleting] = useState(false);
+  const [isAddingService, setIsAddingService] = useState(false);
+  const [customCategoryInput, setCustomCategoryInput] = useState("");
+  const [isAddDocModalOpen, setIsAddDocModalOpen] = useState(false);
+  const [addDocInput, setAddDocInput] = useState("");
+  const [newServiceForm, setNewServiceForm] = useState({
+    title: "",
+    description: "",
+    category: "Advisory",
+    marketFees: "",
+    recommendedFees: "",
+    workingDays: 2,
+    documentsRequired: [],
+  });
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [isCompactMobile, setIsCompactMobile] = useState(window.innerWidth <= 480);
   const [isLightMode, setIsLightMode] = useState(() => {
@@ -1868,13 +1981,21 @@ const Recommendations = () => {
     ? getServicePricing(selectedService.title)
     : null;
   const selectedServiceRecommendedFeeAmount = selectedService
-    ? (parseFeeAmount(selectedService.recommendedFees) ??
+    ? (parseFeeAmount(overriddenOurFees[selectedService?._id || selectedService?.id]) ??
       selectedServicePricing?.amount ??
-      1000)
-    : 1000;
+      1)
+    : 1;
   const serviceSearchPlaceholder = isCompactMobile
     ? "Search services..."
     : "Search for any financial or legal service...";
+
+  useEffect(() => {
+    if (!selectedService) {
+      setIsEditingService(false);
+      setEditedService(null);
+      setOurFeeInputValue("");
+    }
+  }, [selectedService]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -2001,18 +2122,30 @@ const Recommendations = () => {
     (service) => {
       if (!service) return [];
 
-      // If the service has documentsRequired from DB, use them
+      const normalizeDocName = (s) => String(s || "").trim().toLowerCase();
+
+      // If the service has documentsRequired from DB, show only those — no auto-injection
       if (Array.isArray(service.documentsRequired) && service.documentsRequired.length > 0) {
         return service.documentsRequired
-          .filter((docName) => normalizeText(docName) !== "gross annual value data")
+          .filter((docName) => normalizeDocName(docName) !== "gross annual value data")
           .map(docName => ({
             name: docName,
-            required: true, // Assuming all listed docs are required for simplicity
+            required: true,
             desc: `Please upload your ${docName}`
           }));
       }
 
-      // Fallback to registry logic
+      // Fallback to registry logic (legacy services without DB documents)
+      // Inject PAN + Aadhaar only in this fallback path, not for admin-created services
+      const UNIVERSAL_DOCS = ["PAN Card", "Aadhaar Card"];
+      const injectUniversalDocs = (docs) => {
+        const present = new Set(docs.map((d) => normalizeDocName(d.name || d)));
+        const toAdd = UNIVERSAL_DOCS
+          .filter((name) => !present.has(normalizeDocName(name)))
+          .map((name) => ({ name, required: true, desc: `Copy of ${name}` }));
+        return [...toAdd, ...docs];
+      };
+
       let list = [...DOCUMENTS_REGISTRY.common];
 
       // Use userData from location state if available, else fallback to storedUser profile
@@ -2048,10 +2181,309 @@ const Recommendations = () => {
         }
       }
 
-      return list;
+      return injectUniversalDocs(list);
     },
     [userData, storedUser?.profile],
   );
+
+  const handleAddDocument = async () => {
+    if (!selectedService) return;
+
+    const trimmedName = String(newDocumentName || "").trim();
+    if (!trimmedName) {
+      toast.error("Please enter a document name");
+      return;
+    }
+
+    const currentDocs = getActiveDocs(selectedService);
+    const normalizedExisting = new Set(currentDocs.map((doc) => normalizeText(doc.name)));
+    if (normalizedExisting.has(normalizeText(trimmedName))) {
+      toast.error("This document is already added");
+      return;
+    }
+
+    const apiUrl = import.meta.env.VITE_API_URL;
+    const token = storedUser?.token;
+    const serviceId = selectedService._id;
+
+    try {
+      setIsSavingService(true);
+
+      const addRes = await axios.patch(
+        `${apiUrl}/services/${serviceId}/add-document`,
+        { documentName: trimmedName, markAsAdminAdded: true },
+        token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
+      );
+
+      const [refreshServicesRes, refreshLeadsRes] = await Promise.allSettled([
+        axios.get(`${apiUrl}/services`),
+        token
+          ? axios.get(`${apiUrl}/leads`, { headers: { Authorization: `Bearer ${token}` } })
+          : Promise.resolve({ data: [] }),
+      ]);
+
+      if (refreshServicesRes.status === "fulfilled" && Array.isArray(refreshServicesRes.value.data)) {
+        setAllDbServices(refreshServicesRes.value.data);
+        const refreshedSelectedService = refreshServicesRes.value.data.find(
+          (service) => String(service?._id) === String(serviceId),
+        );
+        if (refreshedSelectedService) {
+          setSelectedService(refreshedSelectedService);
+        }
+      }
+
+      if (refreshLeadsRes.status === "fulfilled" && Array.isArray(refreshLeadsRes.value.data)) {
+        setUserLeads(refreshLeadsRes.value.data);
+      }
+
+      try {
+        window.dispatchEvent(new CustomEvent("service-document-added", {
+          detail: {
+            serviceId,
+            serviceTitle: selectedService?.title || "",
+            documentName: trimmedName,
+            updatedLeadsCount: addRes?.data?.updatedLeadsCount || 0,
+          }
+        }));
+      } catch (evtErr) {
+        console.error("Error dispatching service-document-added event:", evtErr);
+      }
+
+      setIsAddingDocument(false);
+      setNewDocumentName("");
+      const updatedCount = addRes?.data?.updatedLeadsCount || 0;
+      toast.success(
+        updatedCount > 0
+          ? `Document added. Propagated to ${updatedCount} existing lead(s).`
+          : "Document added successfully"
+      );
+    } catch (error) {
+      const apiMessage = error?.response?.data?.message;
+      toast.error(apiMessage || "Failed to add document");
+    } finally {
+      setIsSavingService(false);
+    }
+  };
+
+  const handleDeleteDocument = async (docToDeleteName) => {
+    if (!selectedService) return;
+    setIsDeleting(true);
+
+    const storedDocs = Array.isArray(selectedService.documentsRequired) ? selectedService.documentsRequired : [];
+    const nextDocumentsRequired = storedDocs.filter(name => name !== docToDeleteName);
+
+    const apiUrl = import.meta.env.VITE_API_URL;
+    const token = storedUser?.token;
+
+    try {
+      const saveRes = await axios.patch(
+        `${apiUrl}/services/${selectedService._id}`,
+        { documentsRequired: nextDocumentsRequired },
+        token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
+      );
+
+      const refreshRes = await axios.get(`${apiUrl}/services`);
+      const servicesFromServer = Array.isArray(refreshRes.data) ? refreshRes.data : [];
+      setAllDbServices(servicesFromServer);
+      const refreshedSelectedService = servicesFromServer.find(
+        (service) => String(service?._id) === String(selectedService._id),
+      );
+      setSelectedService(
+        saveRes?.data?.service || refreshedSelectedService || {
+          ...selectedService,
+          documentsRequired: nextDocumentsRequired,
+        },
+      );
+      toast.success("Document deleted successfully");
+      setIsDeleteConfirmOpen(false);
+      setDeleteConfirmDocName(null);
+    } catch (error) {
+      const apiMessage = error?.response?.data?.message;
+      toast.error(apiMessage || "Failed to delete document");
+      setIsDeleteConfirmOpen(false);
+      setDeleteConfirmDocName(null);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleDeleteService = async (service) => {
+    if (!service) return;
+    const serviceId = service?._id || service?.id;
+    if (!serviceId) {
+      toast.error("Cannot delete: service has no identifier");
+      setIsServiceDeleteConfirmOpen(false);
+      setServiceToDelete(null);
+      return;
+    }
+    setIsServiceDeleting(true);
+
+    const apiUrl = import.meta.env.VITE_API_URL;
+    const token = storedUser?.token;
+    const deletedTitle = String(service?.title || "").trim().toLowerCase();
+
+    try {
+      await axios.delete(
+        `${apiUrl}/services/${serviceId}`,
+        token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
+      );
+
+      setAllDbServices((prev) =>
+        prev.filter((s) => String(s?._id) !== String(serviceId) && String(s?.id) !== String(serviceId))
+      );
+
+      setUserLeads((prev) => {
+        if (!Array.isArray(prev)) return prev;
+        if (!deletedTitle) return prev;
+        return prev.filter(
+          (lead) => String(lead?.serviceName || "").trim().toLowerCase() !== deletedTitle
+        );
+      });
+
+      if (selectedService && (String(selectedService?._id) === String(serviceId) || String(selectedService?.id) === String(serviceId))) {
+        setSelectedService(null);
+      }
+
+      try {
+        const refreshRes = await axios.get(`${apiUrl}/services`);
+        if (Array.isArray(refreshRes.data)) {
+          setAllDbServices(refreshRes.data);
+        }
+      } catch (refreshErr) {
+        console.error("Error refreshing services after delete:", refreshErr);
+      }
+
+      try {
+        const leadsRes = await axios.get(
+          `${apiUrl}/leads${storedUser?.role === "user" ? `?userId=${storedUser?._id || storedUser?.id}` : ""}`,
+          token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
+        );
+        if (Array.isArray(leadsRes.data)) {
+          setUserLeads(leadsRes.data);
+        }
+      } catch (leadsErr) {
+        console.error("Error refreshing leads after delete:", leadsErr);
+      }
+
+      try {
+        window.dispatchEvent(new CustomEvent("service-deleted", {
+          detail: {
+            serviceId,
+            serviceTitle: service?.title || "",
+            deletedLeads: true,
+          }
+        }));
+      } catch (evtErr) {
+        console.error("Error dispatching service-deleted event:", evtErr);
+      }
+
+      toast.success(`"${service.title}" deleted successfully`);
+      setIsServiceDeleteConfirmOpen(false);
+      setServiceToDelete(null);
+    } catch (error) {
+      const apiMessage = error?.response?.data?.message;
+      toast.error(apiMessage || "Failed to delete service");
+      setIsServiceDeleteConfirmOpen(false);
+      setServiceToDelete(null);
+    } finally {
+      setIsServiceDeleting(false);
+    }
+  };
+
+  const handleCreateService = async () => {
+    const { title, description, category, marketFees, recommendedFees, workingDays, documentsRequired } = newServiceForm;
+    if (!title.trim() || !description.trim()) {
+      toast.error("Service name and description are required");
+      return;
+    }
+
+    const apiUrl = import.meta.env.VITE_API_URL;
+    const token = storedUser?.token;
+
+    // Deduplicate and canonicalize PAN/Aadhaar before sending
+    const canonicalize = (name) => {
+      const s = String(name || "").trim();
+      if (/^pan\b/i.test(s)) return "PAN Card";
+      if (/^(aadhar|aadhaar|adhar|adhaar)\b/i.test(s)) return "Aadhaar Card";
+      return s;
+    };
+    const seenDocs = new Set();
+    const dedupedDocs = (Array.isArray(documentsRequired) ? documentsRequired : [])
+      .map(canonicalize)
+      .filter((name) => { if (!name || seenDocs.has(name.toLowerCase())) return false; seenDocs.add(name.toLowerCase()); return true; });
+
+    try {
+      const res = await axios.post(
+        `${apiUrl}/services`,
+        {
+          title: title.trim(),
+          description: description.trim(),
+          category,
+          marketFees: marketFees ? `Rs. ${formatOnlyDigits(marketFees)}` : "",
+          recommendedFees: recommendedFees ? `Rs. ${formatOnlyDigits(recommendedFees)}` : "",
+          workingDays: Number(workingDays) || 2,
+          documentsRequired: dedupedDocs,
+        },
+        token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
+      );
+
+      const refreshRes = await axios.get(`${apiUrl}/services`);
+      setAllDbServices(Array.isArray(refreshRes.data) ? refreshRes.data : []);
+      toast.success(`"${title}" added successfully`);
+      setIsAddingService(false);
+    } catch (error) {
+      const apiMessage = error?.response?.data?.message;
+      toast.error(apiMessage || "Failed to add service");
+    }
+  };
+
+  const handleEditDocument = async () => {
+    if (!selectedService || !editingDocName) return;
+
+    const trimmedName = String(editDocumentNameInput || "").trim();
+    if (!trimmedName) {
+      toast.error("Please enter a document name");
+      return;
+    }
+
+    const storedDocs = Array.isArray(selectedService.documentsRequired) ? selectedService.documentsRequired : [];
+    const nextDocumentsRequired = storedDocs.map(name =>
+      name === editingDocName ? trimmedName : name
+    );
+
+    const apiUrl = import.meta.env.VITE_API_URL;
+    const token = storedUser?.token;
+
+    try {
+      setIsSavingService(true);
+      const saveRes = await axios.patch(
+        `${apiUrl}/services/${selectedService._id}`,
+        { documentsRequired: nextDocumentsRequired },
+        token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
+      );
+
+      const refreshRes = await axios.get(`${apiUrl}/services`);
+      const servicesFromServer = Array.isArray(refreshRes.data) ? refreshRes.data : [];
+      setAllDbServices(servicesFromServer);
+      const refreshedSelectedService = servicesFromServer.find(
+        (service) => String(service?._id) === String(selectedService._id),
+      );
+      setSelectedService(
+        saveRes?.data?.service || refreshedSelectedService || {
+          ...selectedService,
+          documentsRequired: nextDocumentsRequired,
+        },
+      );
+      setEditingDocName(null);
+      setEditDocumentNameInput("");
+      toast.success("Document updated successfully");
+    } catch (error) {
+      const apiMessage = error?.response?.data?.message;
+      toast.error(apiMessage || "Failed to update document");
+    } finally {
+      setIsSavingService(false);
+    }
+  };
 
   useEffect(() => {
     const fetchAllServices = async () => {
@@ -2099,11 +2531,17 @@ const Recommendations = () => {
 
     const refreshTimer = setInterval(fetchUserLeads, 15000);
     const handleFocus = () => fetchUserLeads();
+    const handleServiceDocumentAdded = () => fetchUserLeads();
+    const handleServiceDeleted = () => fetchUserLeads();
     window.addEventListener("focus", handleFocus);
+    window.addEventListener("service-document-added", handleServiceDocumentAdded);
+    window.addEventListener("service-deleted", handleServiceDeleted);
 
     return () => {
       clearInterval(refreshTimer);
       window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("service-document-added", handleServiceDocumentAdded);
+      window.removeEventListener("service-deleted", handleServiceDeleted);
     };
   }, [isLoggedIn, storedUser?._id, storedUser?.id, storedUser?.role]);
 
@@ -2139,6 +2577,10 @@ const Recommendations = () => {
     (lead) => {
       const status = String(lead?.status || "").trim().toLowerCase();
       if (!lead || (status !== "rejected" && status !== "informationrequired")) return false;
+
+      // Service-level executor rejection that PR has already notified the client about
+      if (lead?.executorServiceRejected === true && lead?.prNotifiedClientServiceRejection === true) return true;
+
       const execMsg = String(lead?.executorMessage || "").trim();
       const prMsg = String(lead?.prFeedback || "").toLowerCase();
       const adminMsg = String(lead?.adminMessage || "").toLowerCase();
@@ -2228,13 +2670,54 @@ const Recommendations = () => {
       const leadStatus = String(lead?.status || "").trim().toLowerCase();
       const isFullRejection = leadStatus === "rejected" || isExecutorRejectedLead(lead);
 
-      if (serviceRejectionState && isFullRejection) {
-        if (localDocsArr.length > 0) {
+      // Check if this specific document needs reupload:
+      // Only docs explicitly notified by PR (prNotifiedClient = true) need reupload.
+      // If no per-doc flags exist (old-style full rejection), fall back to all docs.
+      const leadDocs = Array.isArray(lead?.documents) ? lead.documents : [];
+      const hasPerDocRejection = leadDocs.some(d => d?.executorRejected);
+      // Service-level executor rejection notified by PR — ALL docs need reupload,
+      // even if individual docs still have prNotifiedClient=false staged flags.
+      const isServiceLevelRejectionNotified =
+        lead?.executorServiceRejected === true && lead?.prNotifiedClientServiceRejection === true;
+      const thisDocNeedsReupload = isServiceLevelRejectionNotified || (hasPerDocRejection
+        ? leadDocs.some(d =>
+            normalizeText(d?.name) === normalizeText(docName) &&
+            d?.executorRejected && d?.prNotifiedClient
+          )
+        : isFullRejection); // fallback for old-style full rejections
+
+      if (serviceRejectionState && (thisDocNeedsReupload || (!hasPerDocRejection && isFullRejection))) {
+        // Check if the user already reuploaded this specific doc on the server.
+        // For service-level executor rejection, do NOT use the uploadedAt+url heuristic —
+        // it would match the originally-uploaded docs and hide the reupload button.
+        // When the entire service is rejected (leadStatus === "rejected") or executor
+        // service-level rejection is notified, the uploadedAt+url heuristic must NOT
+        // be used — the original pre-rejection upload would falsely match and hide
+        // the Reupload button, showing "Change" instead.
+        // When leadStatus === "rejected" (entire service rejected), ignore all server-side
+        // reupload flags — d.reuploaded may be set from a previous InformationRequired cycle
+        // and would falsely show "Change" for docs not yet reuploaded in this rejection.
+        // Only local session uploads (localDocsArr) count as "already reuploaded" here.
+        // If this specific doc has an active executor rejection (prNotifiedClient = true),
+        // a previous d.reuploaded flag from an earlier cycle must NOT count — the executor
+        // rejected it again, so the user must reupload fresh. Without this guard a stale
+        // reuploaded=true flag makes the button show "Change" instead of "Reupload".
+        const hasActiveExecutorRejection = leadDocs.some(d =>
+          normalizeText(d?.name) === normalizeText(docName) &&
+          d?.executorRejected === true && d?.prNotifiedClient === true
+        );
+        const alreadyReuploaded = !hasActiveExecutorRejection && leadStatus !== "rejected" && leadDocs.some(d =>
+          normalizeText(d?.name) === normalizeText(docName) &&
+          (!!d?.reuploaded || String(d?.status || "").trim().toLowerCase() === "reuploaded" ||
+           (!isServiceLevelRejectionNotified && d?.uploadedAt && d?.url && !d?.executorRejected))
+        );
+        // Also check local upload state
+        if (localDocsArr.length > 0 || alreadyReuploaded) {
           const first = localDocsArr[0];
           return {
             uploaded: true,
             reuploadRequired: false,
-            message: "Reuploaded. Ready to submit.",
+            message: alreadyReuploaded && !localDocsArr.length ? "Reuploaded. Awaiting review." : "Reuploaded. Ready to submit.",
             uploadedName: first?.name || docName,
             uploadedUrl: first?.url || "",
             publicId: first?.publicId || "",
@@ -2274,8 +2757,29 @@ const Recommendations = () => {
       }
 
       if (serverDocsArr.length > 0) {
+        // Treat admin-added placeholder entries (adminAdded: true and no URL) as not yet uploaded
+        const realServerDocs = serverDocsArr.filter((d) => {
+          const isPlaceholder = d?.adminAdded === true && !d?.url && !d?.publicId && !d?.secure_url && !d?.uploadedUrl;
+          return !isPlaceholder;
+        });
+
+        if (realServerDocs.length === 0) {
+          return {
+            uploaded: false,
+            reuploadRequired: false,
+            message: "",
+            uploadedName: docName,
+            uploadedUrl: "",
+            publicId: "",
+            uploadedNames: [],
+            uploadedUrls: [],
+            fullDocs: [],
+            adminAdded: true,
+          };
+        }
+
         const latest =
-          [...serverDocsArr].sort((a, b) => {
+          [...realServerDocs].sort((a, b) => {
             const aTime = new Date(a?.uploadedAt || a?.createdAt || 0).getTime();
             const bTime = new Date(b?.uploadedAt || b?.createdAt || 0).getTime();
             return bTime - aTime;
@@ -2291,9 +2795,9 @@ const Recommendations = () => {
           uploadedName: latest?.name || docName,
           uploadedUrl: latest?.url || "",
           publicId: latest?.publicId || "",
-          uploadedNames: serverDocsArr.map((d) => d?.name).filter(Boolean),
-          uploadedUrls: serverDocsArr.map((d) => d?.url).filter(Boolean),
-          fullDocs: serverDocsArr,
+          uploadedNames: realServerDocs.map((d) => d?.name).filter(Boolean),
+          uploadedUrls: realServerDocs.map((d) => d?.url).filter(Boolean),
+          fullDocs: realServerDocs,
         };
       }
 
@@ -2310,6 +2814,23 @@ const Recommendations = () => {
     [getLatestLeadForService, uploadedDocs],
   );
 
+  const isDocumentAdminAdded = useCallback(
+    (serviceTitle, docName) => {
+      if (!isUserRole) return false;
+      const lead = getLatestLeadForService(serviceTitle);
+      if (!lead) return false;
+      const docs = Array.isArray(lead.documents) ? lead.documents : [];
+      const target = normalizeText(docName);
+      return docs.some(
+        (d) => normalizeText(d?.name) === target && (
+          d?.adminAdded === true ||
+          (d?.adminAdded === undefined && !d?.url && !d?.publicId && !d?.secure_url && !d?.uploadedUrl && d?.type === "Client" && d?.status === "Pending")
+        ),
+      );
+    },
+    [getLatestLeadForService, isUserRole],
+  );
+
   const getServiceRejectionState = useCallback(
     (serviceTitle) => {
       const lead =
@@ -2322,13 +2843,40 @@ const Recommendations = () => {
         return null;
       }
 
+      // If lead has moved back to PendingReview (user already reuploaded + submitted),
+      // suppress the rejection state entirely — no banner, no reupload button
+      if (status === "pendingreview") return null;
+
       if (isExecutorRejectedLead(lead)) {
+        // Service-level executor rejection — PR has clicked "Notify Client"
+        if (lead?.executorServiceRejected === true && lead?.prNotifiedClientServiceRejection === true) {
+          const reason = getExecutorRejectionReason(lead) || String(lead?.prFeedback || "").trim();
+          return {
+            lead,
+            type: "executor",
+            status: "Rejected by Executor",
+            message: reason || "The executor has rejected this service. Please reupload all required documents.",
+          };
+        }
+        // If lead is InformationRequired and has prNotifiedClient docs, the PR is
+        // forwarding the executor's rejection to the client — show as "Rejected by PR"
+        const hasClientNotifiedDocs = Array.isArray(lead?.documents) &&
+          lead.documents.some(d => d?.executorRejected && d?.prNotifiedClient);
+        if (hasClientNotifiedDocs || String(lead?.status || "").trim().toLowerCase() === "informationrequired") {
+          const prReason = String(lead?.prFeedback || "").trim();
+          return {
+            lead,
+            type: "pr",
+            status: "Rejected by PR",
+            message: prReason || "Some documents were rejected. Please reupload the required documents.",
+          };
+        }
         const reason = getExecutorRejectionReason(lead);
         return {
           lead,
           type: "executor",
-          status: "Rejected by Executor",
-          message: reason || "The executor rejected this service.",
+          status: "Rejected by PR",
+          message: reason || "The service requires document corrections.",
         };
       }
 
@@ -2916,7 +3464,23 @@ const Recommendations = () => {
     sorted.forEach((lead) => {
       const key = String(lead?.serviceName || "").trim().toLowerCase();
       if (key && !map.has(key)) {
-        map.set(key, lead);
+        const normalizedLead = normalizeText(String(lead?.serviceName || "").trim());
+        const serviceStillExists =
+          ALL_SERVICES.some(
+            (service) =>
+              normalizeText(String(service?.title || "")) === normalizedLead,
+          ) ||
+          SERVICE_LOOKUP.has(normalizedLead) ||
+          !!resolveBestServiceTitleForAlias(normalizedLead) ||
+          ALL_SERVICES.some((service) => {
+            const normalizedTitle = normalizeText(String(service?.title || ""));
+            if (!normalizedTitle) return false;
+            const tokens = normalizedLead.split(" ").filter(Boolean);
+            return tokens.length > 0 && tokens.every((t) => normalizedTitle.includes(t));
+          });
+        if (serviceStillExists) {
+          map.set(key, lead);
+        }
       }
     });
 
@@ -3043,6 +3607,21 @@ const Recommendations = () => {
   const isFreshOnboarding =
     !!location.state?.recommendations || !!location.state?.fallback;
 
+  // Prevent body scroll when service detail modal is open
+  useEffect(() => {
+    if (selectedService) {
+      document.body.style.overflow = "hidden";
+      document.documentElement.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+      document.documentElement.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+      document.documentElement.style.overflow = "";
+    };
+  }, [selectedService]);
+
   return (
     <div
       className="home-page-shell"
@@ -3123,17 +3702,33 @@ const Recommendations = () => {
             <div
               style={{
                 display: "flex",
-                justifyContent: "center",
-                maxWidth: "500px",
+                alignItems: "center",
+                gap: "10px",
+                width: "100%",
+                position: "relative",
+                minHeight: "42px",
                 margin: "0 auto",
+                marginBottom: isAdmin ? "0" : "1rem",
               }}
             >
               <div
                 style={{
+                  position: "absolute",
+                  left: "50%",
+                  transform: "translateX(-50%)",
                   display: "flex",
+                  alignItems: "center",
                   width: "100%",
+                  maxWidth: "500px",
+                }}
+              >
+              <div
+                style={{
+                  display: "flex",
                   alignItems: "center",
                   gap: "10px",
+                  maxWidth: "500px",
+                  width: "100%",
                   background: "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
                   border: isLightMode
                     ? "1px solid rgba(181,189,199,0.98)"
@@ -3217,6 +3812,54 @@ const Recommendations = () => {
                   Search
                 </button>
               </div>
+              </div>
+              {isAdmin && (
+                <button
+                  onClick={() => {
+                    setNewServiceForm({
+                      title: "",
+                      description: "",
+                      category: FINAL_CATEGORY_ORDER?.[0] || "Advisory",
+                      marketFees: "",
+                      recommendedFees: "",
+                      workingDays: 2,
+                      documentsRequired: [],
+                    });
+                    setCustomCategoryInput("");
+                    setIsAddingService(true);
+                  }}
+                  title="Add new service"
+                  style={{
+                    padding: "8px 18px",
+                    background: "#10b981",
+                    border: "none",
+                    color: "#fff",
+                    borderRadius: "10px",
+                    fontSize: "0.8rem",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    transition: "all 0.2s ease",
+                    boxShadow: "0 4px 12px rgba(16,185,129,0.25)",
+                    height: "42px",
+                    marginLeft: "auto",
+                    flexShrink: 0,
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "#059669";
+                    e.currentTarget.style.transform = "translateY(-1px)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "#10b981";
+                    e.currentTarget.style.transform = "none";
+                  }}
+                >
+                  + Add Service
+                </button>
+              )}
             </div>
           </motion.div>
         </div>
@@ -3276,6 +3919,11 @@ const Recommendations = () => {
                     service={service}
                     idx={idx}
                     onClick={setSelectedService}
+                    isAdmin={isAdmin}
+                    onDelete={(svc) => {
+                      setServiceToDelete(svc);
+                      setIsServiceDeleteConfirmOpen(true);
+                    }}
                     isLightMode={isLightMode}
                     isMobile={isMobile}
                     topBadge={renderServiceCardBadge(service.title)}
@@ -3353,6 +4001,11 @@ const Recommendations = () => {
                               service={service}
                               idx={idx}
                               onClick={setSelectedService}
+                              isAdmin={isAdmin}
+                              onDelete={(svc) => {
+                                setServiceToDelete(svc);
+                                setIsServiceDeleteConfirmOpen(true);
+                              }}
                               isLightMode={isLightMode}
                               isMobile={isMobile}
                               topBadge={renderServiceCardBadge(service.title)}
@@ -3421,39 +4074,27 @@ const Recommendations = () => {
 
           const fees = (() => {
             const marketFeesRaw = String(selectedService.marketFees || "").trim();
-            const recommendedFeesRaw = String(
-              selectedService.recommendedFees || "",
-            ).trim();
-
-            // If the recommended fees string contains multiple options (eg. separated by
-            // semicolons or pipes), prefer the first non-empty segment for display so
-            // the detail view doesn't show duplicate/compound values.
-            const recommendedFeesClean = (() => {
-              if (!recommendedFeesRaw) return "";
-              const parts = recommendedFeesRaw.split(/[;|\n]+/).map((s) => s.trim()).filter(Boolean);
-              return parts.length > 0 ? parts[0] : recommendedFeesRaw;
+            const sid = selectedService?._id || selectedService?.id;
+            const overriddenFee = overriddenOurFees[sid];
+            const storedFee = (() => {
+              const raw = String(selectedService.recommendedFees || "").trim();
+              if (!raw) return null;
+              const parts = raw.split(/[;|\n]+/).map((s) => s.trim()).filter(Boolean);
+              return parts.length > 0 ? parts[0] : raw;
             })();
-
-            if (marketFeesRaw || recommendedFeesClean) {
-              return {
-                market: marketFeesRaw,
-                recommended: recommendedFeesClean,
-              };
-            }
-
-            const pricing = getServicePricing(selectedService.title);
-            const amount = Number(pricing?.amount || 0);
-            const recommended = String(pricing?.displayPrice || "").trim();
-            const market =
-              Number.isFinite(amount) && amount > 0
-                ? formatInr(Math.round(amount * 1.4))
-                : "";
+            const recommended = overriddenFee || storedFee || String(getServicePricing(selectedService.title).displayPrice || "").trim();
+            const market = marketFeesRaw || (
+              Number.isFinite(Number(getServicePricing(selectedService.title).amount)) && Number(getServicePricing(selectedService.title).amount) > 0
+                ? formatInr(Math.round(Number(getServicePricing(selectedService.title).amount) * 1.4))
+                : ""
+            );
 
             return { market, recommended };
           })();
 
           return (
-            <motion.div
+            <>
+              <motion.div
               key="modal-backdrop"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -3471,10 +4112,8 @@ const Recommendations = () => {
                     ? `${mobileNavbarOffset} 0 0.75rem`
                     : `${mobileNavbarOffset} 0 0`
                   : "clamp(5.5rem, 9vh, 6.5rem) 1.5rem 1.5rem",
-                background: "rgba(0,0,0,0.75)",
-                backdropFilter: "blur(16px)",
-                WebkitBackdropFilter: "blur(16px)",
-                overflowY: "auto",
+                background: "rgba(0,0,0,0.85)",
+                overflow: "hidden",
               }}
               onClick={(e) => { if (e.target === e.currentTarget) setSelectedService(null); }}
             >
@@ -3487,14 +4126,10 @@ const Recommendations = () => {
                 style={{
                   width: "100%",
                   maxWidth: "720px",
-                    maxHeight: isCompactMobile
-                      ? `calc(100dvh - ${mobileNavbarOffset} - 2.25rem)`
-                      : isMobile
-                        ? `calc(100dvh - ${mobileNavbarOffset})`
-                        : "calc(100vh - clamp(7rem, 12vh, 8.5rem))",
+                  maxHeight: "100%",
+                  overflowY: "auto",
                   borderRadius: isMobile ? "16px 16px 0 0" : "12px",
                   border: "1px solid #e2e8f0",
-                  overflow: "hidden",
                   display: "flex",
                   flexDirection: "column",
                   boxShadow: "0 32px 80px rgba(31,41,55,0.18)",
@@ -3580,9 +4215,25 @@ const Recommendations = () => {
                     {(() => {
                       if (serviceRejectionState) {
                         const leadForRej = serviceRejectionState.lead;
-                        const hasRejectedDocs = Array.isArray(leadForRej?.documents)
-                          ? leadForRej.documents.some((d) => String(d?.status || "").trim().toLowerCase() === "rejected")
-                          : false;
+                        const leadStatusLower = String(leadForRej?.status || "").trim().toLowerCase();
+
+                        // If lead has moved back to PendingReview, user already submitted — hide label
+                        if (leadStatusLower === "pendingreview") return null;
+
+                        // Service-level executor rejection: even if individual doc.status isn't "Rejected",
+                        // the service is still in a rejected state if executorServiceRejected is set.
+                        const isServiceLevelRej =
+                          leadForRej?.executorServiceRejected === true &&
+                          leadForRej?.prNotifiedClientServiceRejection === true;
+                        const hasRejectedDocs = isServiceLevelRej || (Array.isArray(leadForRej?.documents)
+                          ? leadForRej.documents.some((d) => {
+                              // Only count docs that are still awaiting reupload (not yet reuploaded)
+                              const docStatus = String(d?.status || "").trim().toLowerCase();
+                              const isRejected = docStatus === "rejected";
+                              const wasReuploaded = !!d?.reuploaded || docStatus === "reuploaded";
+                              return isRejected && !wasReuploaded;
+                            })
+                          : false);
 
                         if (hasRejectedDocs) {
                           return (
@@ -3651,125 +4302,267 @@ const Recommendations = () => {
                         ? "1.25rem 1.25rem 2rem"
                         : "1.75rem 2.5rem 2rem",
                     position: "relative",
+                    color: "#000000",
                   }}
                 >
 
-                  {/* Description */}
                   {isAdmin && isEditingService ? (
-                    <div style={{ marginBottom: "1.5rem" }}>
-                      <label style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--text-muted)", display: "block", marginBottom: "8px" }}>Service Description</label>
-                      <textarea
-                        value={editedService?.description || ""}
-                        onChange={(e) => setEditedService({ ...editedService, description: e.target.value })}
+                    <>
+                      {/* Description (Read-only) & Turnaround (Editable) */}
+                      <div
                         style={{
-                          width: "100%",
-                          padding: "0.8rem",
-                          background: "var(--bg-card)",
-                          border: "1px solid var(--border)",
-                          borderRadius: "12px",
-                          color: "#000000",
-                          fontSize: "0.9rem",
-                          fontWeight: 200,
-                          minHeight: "100px",
-                          outline: "none"
-                        }}
-                      />
-                    </div>
-                  ) : (
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: isMobile ? "column" : "row",
-                        justifyContent: "space-between",
-                        alignItems: "flex-start",
-                        gap: isMobile ? "0.8rem" : "1.5rem",
-                        marginBottom: "1.25rem",
-                      }}
-                    >
-                      <p
-                        style={{
-                          color: "#334155",
-                          fontSize: isMobile ? "0.88rem" : "0.95rem",
-                          lineHeight: 1.6,
-                          margin: 0,
-                          flex: 1,
+                          display: "flex",
+                          flexDirection: isMobile ? "column" : "row",
+                          justifyContent: "space-between",
+                          alignItems: "flex-start",
+                          gap: isMobile ? "0.8rem" : "1.5rem",
+                          marginTop: 0,
+                          marginRight: 0,
+                          marginBottom: "8px",
+                          marginLeft: 0,
+                          padding: 0,
                         }}
                       >
-                        {selectedService.description}
-                      </p>
-
-                      <div style={{ display: "flex", alignItems: "baseline", gap: "6px", flexShrink: 0, alignSelf: "flex-start" }}>
-                        <span style={{ fontSize: "0.62rem", fontWeight: 700, textTransform: "uppercase", color: "#64748b", letterSpacing: "0.05em" }}>Turnaround:</span>
-                        <span style={{ fontSize: "0.88rem", fontWeight: 700, color: "#10b981" }}>2 Working Days</span>
-                      </div>
-                    </div>
-                  )}
-
-
-                  {/* -- Market & Recommended Fees -- */}
-                  {isAdmin && isEditingService ? (
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "1fr",
-                        gap: "0.75rem",
-                        marginBottom: "1.75rem",
-                      }}
-                    >
-                      <div>
-                        <label style={{ fontSize: "0.65rem", fontWeight: 700, color: "#059669", display: "block", marginBottom: "4px" }}>Recommended Fees</label>
-                        <input
-                          type="text"
-                          value={editedService?.recommendedFees || ""}
-                          onChange={(e) => setEditedService({ ...editedService, recommendedFees: e.target.value })}
+                        <p
                           style={{
-                            width: "100%",
-                            padding: "0.6rem",
-                            background: "var(--bg-card)",
-                            border: "1px solid var(--border)",
-                            borderRadius: "10px",
                             color: "#000000",
-                            fontSize: "0.8rem",
-                            outline: "none",
-                            fontWeight: 200
+                            fontSize: isMobile ? "0.88rem" : "0.95rem",
+                            lineHeight: 1.6,
+                            margin: 0,
+                            flex: 1,
                           }}
-                        />
+                        >
+                          {selectedService.description}
+                        </p>
+
+                        <div style={{ display: "flex", alignItems: "baseline", gap: "6px", flexShrink: 0, alignSelf: "flex-start" }}>
+                          <span style={{ fontSize: "0.62rem", fontWeight: 700, textTransform: "uppercase", color: "#000000", letterSpacing: "0.05em" }}>Turnaround:</span>
+                          <input
+                            type="number"
+                            value={editedService?.workingDays || 2}
+                            onChange={(e) => setEditedService({ ...editedService, workingDays: Number(e.target.value) })}
+                            style={{
+                              width: "60px",
+                              padding: "4px 8px",
+                              background: "var(--bg-card)",
+                              border: "1px solid var(--border)",
+                              borderRadius: "6px",
+                              color: "#000000",
+                              fontSize: "0.75rem",
+                              outline: "none",
+                              fontWeight: 700,
+                              textAlign: "center"
+                            }}
+                          />
+                          <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#10b981" }}>Days</span>
+                        </div>
                       </div>
-                    </div>
-                  ) : (
-                    (fees.market || fees.recommended) && (
+
+                      {/* -- Market & Recommended Fees (Styled with Container Border) -- */}
                       <div
                         style={{
                           display: "grid",
-                          gridTemplateColumns: "1fr",
+                          gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
                           gap: "1px",
                           background: "#e2e8f0",
                           border: "1px solid #e2e8f0",
                           borderRadius: "12px",
                           overflow: "hidden",
-                          marginBottom: "1.75rem",
+                          marginBottom: "1.25rem",
                         }}
                       >
                         <div
                           style={{
-                            padding: "0.85rem",
+                            padding: "0.6rem 0.85rem",
                             background: "#f8fafc",
                             textAlign: "left",
-                            transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-                            position: "relative",
-                            zIndex: 1,
-                            cursor: "default"
                           }}
                         >
-                          <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "#000000", textTransform: "uppercase", display: "block", marginBottom: "4px", whiteSpace: "nowrap" }}>Recommended Fees</span>
-                          <span style={{ fontSize: "0.9rem", fontWeight: 700, color: "#10b981" }}>{fees.recommended || "—"}</span>
+                          <label style={{ fontSize: "0.65rem", fontWeight: 700, color: "#059669", display: "block", marginBottom: "4px", textTransform: "uppercase" }}>
+                            Our Fee (Recommended)
+                          </label>
+                          <div
+                             style={{
+                               display: "flex",
+                               alignItems: "center",
+                               background: "#ffffff",
+                               border: "1px solid #cbd5e1",
+                               borderRadius: "8px",
+                               padding: "0.5rem 0.75rem",
+                               boxShadow: "inset 0 1px 2px rgba(0,0,0,0.05)",
+                               transition: "border-color 0.2s",
+                               gap: "4px"
+                             }}
+                           >
+                             <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "#64748b", userSelect: "none" }}>Rs.</span>
+                              <input
+                                type="text"
+                                value={ourFeeInputValue}
+                                onChange={(e) => {
+                                  const raw = e.target.value;
+                                  setOurFeeInputValue(raw);
+                                  const formatted = formatOnlyDigits(raw);
+                                  setEditedService({ ...editedService, recommendedFees: formatted ? `Rs. ${formatted}` : "" });
+                                }}
+                               style={{
+                                 flex: 1,
+                                 border: "none",
+                                 outline: "none",
+                                 background: "transparent",
+                                 padding: 0,
+                                 margin: 0,
+                                 color: "#000000",
+                                 fontSize: "0.85rem",
+                                 fontWeight: 600,
+                               }}
+                               onFocus={(e) => {
+                                 e.currentTarget.parentElement.style.borderColor = "#10b981";
+                               }}
+                               onBlur={(e) => {
+                                 e.currentTarget.parentElement.style.borderColor = "#cbd5e1";
+                               }}
+                             />
+                           </div>
+                        </div>
+                        <div
+                          style={{
+                            padding: "0.6rem 0.85rem",
+                            background: "#f8fafc",
+                            textAlign: "left",
+                          }}
+                        >
+                          <label style={{ fontSize: "0.65rem", fontWeight: 700, color: "#ef4444", display: "block", marginBottom: "4px", textTransform: "uppercase" }}>
+                            Market Fees
+                          </label>
+                          <div
+                             style={{
+                               display: "flex",
+                               alignItems: "center",
+                               background: "#ffffff",
+                               border: "1px solid #cbd5e1",
+                               borderRadius: "8px",
+                               padding: "0.5rem 0.75rem",
+                               boxShadow: "inset 0 1px 2px rgba(0,0,0,0.05)",
+                               transition: "border-color 0.2s",
+                               gap: "4px"
+                             }}
+                           >
+                             <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "#64748b", userSelect: "none" }}>Rs.</span>
+                              <input
+                                type="text"
+                                value={(() => {
+                                  const avg = calculateMarketAverage(editedService?.marketFees);
+                                  return avg ? formatOnlyDigits(String(Math.round(avg))) : "";
+                                })()}
+                                onChange={(e) => {
+                                  const formatted = formatOnlyDigits(e.target.value);
+                                  setEditedService({ ...editedService, marketFees: formatted ? `Rs. ${formatted}` : "" });
+                                }}
+                               style={{
+                                 flex: 1,
+                                 border: "none",
+                                 outline: "none",
+                                 background: "transparent",
+                                 padding: 0,
+                                 margin: 0,
+                                 color: "#000000",
+                                 fontSize: "0.85rem",
+                                 fontWeight: 600,
+                               }}
+                               onFocus={(e) => {
+                                 e.currentTarget.parentElement.style.borderColor = "#ef4444";
+                               }}
+                               onBlur={(e) => {
+                                 e.currentTarget.parentElement.style.borderColor = "#cbd5e1";
+                               }}
+                             />
+                           </div>
                         </div>
                       </div>
-                    )
+                    </>
+                  ) : (
+                    <>
+                      <div
+                        style={{
+                          display: "flex",
+                          flexDirection: isMobile ? "column" : "row",
+                          justifyContent: "space-between",
+                          alignItems: "flex-start",
+                          gap: isMobile ? "0.8rem" : "1.5rem",
+                          marginBottom: "0.5rem",
+                        }}
+                      >
+                        <p
+                          style={{
+                            color: "#000000",
+                            fontSize: isMobile ? "0.88rem" : "0.95rem",
+                            lineHeight: 1.6,
+                            margin: 0,
+                            flex: 1,
+                          }}
+                        >
+                          {selectedService.description}
+                        </p>
+
+                        <div style={{ display: "flex", alignItems: "baseline", gap: "6px", flexShrink: 0, alignSelf: "flex-start" }}>
+                          <span style={{ fontSize: "0.62rem", fontWeight: 700, textTransform: "uppercase", color: "#000000", letterSpacing: "0.05em" }}>Turnaround:</span>
+                          <span style={{ fontSize: "0.88rem", fontWeight: 700, color: "#10b981" }}>{selectedService.workingDays || 2} Working Days</span>
+                        </div>
+                      </div>
+
+                      {/* -- Market & Recommended Fees -- */}
+                      {(fees.market || fees.recommended) && (
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+                            gap: "1px",
+                            background: "#e2e8f0",
+                            border: "1px solid #e2e8f0",
+                            borderRadius: "12px",
+                            overflow: "hidden",
+                            marginBottom: "1.75rem",
+                          }}
+                        >
+                          <div
+                            style={{
+                              padding: "0.85rem",
+                              background: "#f8fafc",
+                              textAlign: "left",
+                              transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+                              position: "relative",
+                              zIndex: 1,
+                              cursor: "default"
+                            }}
+                          >
+                            <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "#000000", textTransform: "uppercase", display: "block", marginBottom: "4px", whiteSpace: "nowrap" }}>Our Fee</span>
+                            <span style={{ fontSize: "0.9rem", fontWeight: 700, color: "#10b981" }}>{fees.recommended || "—"}</span>
+                          </div>
+                          {fees.market && (
+                            <div
+                              style={{
+                                padding: "0.85rem",
+                                background: "#f8fafc",
+                                textAlign: "left",
+                                transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+                                position: "relative",
+                                zIndex: 1,
+                                cursor: "default"
+                              }}
+                            >
+                              <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "#000000", textTransform: "uppercase", display: "block", marginBottom: "4px", whiteSpace: "nowrap" }}>Market Fees</span>
+                              <span style={{ fontSize: "0.9rem", fontWeight: 700, color: "#000000", textDecoration: "line-through", textDecorationThickness: "2px" }}>
+                                {getFormattedMarketAverage(fees.market)}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </>
                   )}
 
-                  {/* -- Admin Management Bar -- */}
-                  {false && (
+                   {/* -- Admin Management Bar -- */}
+                  {isAdmin && (
                     <div
                       style={{
                         display: "flex",
@@ -3777,26 +4570,23 @@ const Recommendations = () => {
                         justifyContent: "space-between",
                         gap: "10px",
                         padding: "1rem",
-                        background: isLightMode
-                          ? "linear-gradient(180deg, rgba(242,244,248,0.98) 0%, rgba(226,230,236,0.98) 100%)"
-                          : "rgba(67, 97, 238, 0.08)",
-                        border: isLightMode
-                          ? "1px solid rgba(214,219,227,0.98)"
-                          : "1px solid rgba(67, 97, 238, 0.2)",
+                        background: "#ffffff",
+                        border: "1px solid #cbd5e1",
                         borderRadius: "12px",
                         marginBottom: "1.5rem",
+                        color: "#000000",
                       }}
                     >
                       <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                        <ShieldAlert size={16} color={isLightMode ? "#111827" : "#4361ee"} style={{ flexShrink: 0 }} />
+                        <ShieldAlert size={16} color="#000000" style={{ flexShrink: 0 }} />
                         <span
                           style={{
                             fontSize: "0.8rem",
                             fontWeight: 700,
-                            color: isLightMode ? "#111827" : "#4361ee",
+                            color: "#000000",
                           }}
                         >
-                          Service Management
+                          Service Details
                         </span>
                       </div>
                       <div style={{ display: "flex", gap: "8px" }}>
@@ -3811,13 +4601,22 @@ const Recommendations = () => {
                                     headers: { Authorization: `Bearer ${token}` }
                                   });
                                   toast.success("Service updated successfully");
+                                  // Store the edited our fee override for immediate display
+                                  setOverriddenOurFees(prev => ({
+                                    ...prev,
+                                    [selectedService?._id || selectedService?.id]: (() => {
+                                      const fee = parseFeeAmount(editedService?.recommendedFees);
+                                      return fee ? `Rs. ${Number(fee).toLocaleString("en-IN")}` : null;
+                                    })()
+                                  }));
                                   setIsEditingService(false);
                                   setSelectedService({ ...selectedService, ...editedService });
                                   // Refresh all services
                                   const refreshRes = await axios.get(`${apiUrl}/services`);
                                   setAllDbServices(refreshRes.data);
                                 } catch (err) {
-                                  toast.error("Failed to update service");
+                                  console.error("Update service error:", err.response?.data || err.message);
+                                  toast.error(err.response?.data?.message || "Failed to update service");
                                 }
                               }}
                               style={{ padding: "6px 14px", background: "#10b981", border: "none", color: "#fff", borderRadius: "8px", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer" }}
@@ -3825,22 +4624,41 @@ const Recommendations = () => {
                               Save
                             </button>
                             <button
-                              onClick={() => setIsEditingService(false)}
-                              style={{ padding: "6px 14px", background: "rgba(0,0,0,0.05)", border: "1px solid rgba(0,0,0,0.1)", color: "var(--text)", borderRadius: "8px", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer" }}
+                              onClick={() => {
+                                setIsEditingService(false);
+                                setOurFeeInputValue("");
+                              }}
+                              style={{ padding: "6px 14px", background: "transparent", border: "1px solid #10b981", color: "#10b981", borderRadius: "8px", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer" }}
                             >
                               Cancel
                             </button>
                           </>
                         ) : (
-                          <button
-                            onClick={() => {
-                              setEditedService({ ...selectedService });
-                              setIsEditingService(true);
-                            }}
-                            style={{ padding: "6px 14px", background: "#4361ee", border: "none", color: "#fff", borderRadius: "8px", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer" }}
-                          >
-                            Edit Service
-                          </button>
+                          <>
+                            <button
+                              onClick={() => {
+                                const sid = selectedService?._id || selectedService?.id;
+                                const overriddenFee = overriddenOurFees[sid];
+                                const displayFee = overriddenFee || selectedService.recommendedFees || "Rs. 1";
+                                setEditedService({ ...selectedService, recommendedFees: displayFee });
+                                const parsed = parseFeeAmount(displayFee);
+                                setOurFeeInputValue(parsed ? formatOnlyDigits(String(parsed)) : "1");
+                                setIsEditingService(true);
+                              }}
+                              style={{ padding: "6px 14px", background: "#10b981", border: "none", color: "#fff", borderRadius: "8px", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer" }}
+                            >
+                              Edit Fees
+                            </button>
+                            <button
+                              onClick={() => {
+                                setIsAddingDocument(true);
+                                setNewDocumentName("");
+                              }}
+                              style={{ padding: "6px 14px", background: "transparent", border: "1px solid #10b981", color: "#10b981", borderRadius: "8px", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer" }}
+                            >
+                              Add Document
+                            </button>
+                          </>
                         )}
                       </div>
                     </div>
@@ -3950,14 +4768,55 @@ const Recommendations = () => {
                     {/* Document List */}
                     <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
                       {(() => {
+                        // True when the entire service was rejected by the executor and PR has notified the client.
+                        const isServiceLevelExecutorRejection =
+                          serviceRejectionState?.type === "executor" &&
+                          serviceRejectionState?.lead?.executorServiceRejected === true &&
+                          serviceRejectionState?.lead?.prNotifiedClientServiceRejection === true;
+                        // True when PR rejected the entire service (lead status = "Rejected").
+                        const isServiceLevelPRRejection =
+                          serviceRejectionState?.type === "pr" &&
+                          String(serviceRejectionState?.lead?.status || "").trim().toLowerCase() === "rejected";
+                        // True when executor rejected specific docs and PR notified the client
+                        // (lead status = "InformationRequired", per-doc prNotifiedClient flags set).
+                        const rejLeadDocs = Array.isArray(serviceRejectionState?.lead?.documents)
+                          ? serviceRejectionState.lead.documents
+                          : [];
+                        const isPerDocExecutorRejection =
+                          rejLeadDocs.some(d => d?.executorRejected === true && d?.prNotifiedClient === true) &&
+                          String(serviceRejectionState?.lead?.status || "").trim().toLowerCase() === "informationrequired";
+
                         return docs.map((doc, idx) => {
                           const state = getDocumentState(selectedService.title, doc.name);
-                          const cardBg = state.reuploadRequired
+                          const isDraftDoc = String(doc?.type || "").trim().toLowerCase() === "draft";
+                          const isFinalDoc = String(doc?.type || "").trim().toLowerCase() === "final"
+                            || String(doc?.name || "").trim().toLowerCase().startsWith("final");
+
+                          const docAlreadyReuploaded = state.message?.toLowerCase().includes("reuploaded");
+
+                          // Per-doc executor rejection: show Reupload ONLY for the specific docs
+                          // that were rejected by the executor and PR notified the client about.
+                          const isThisDocExecutorRejected = isPerDocExecutorRejection && !isDraftDoc && !isFinalDoc &&
+                            rejLeadDocs.some(d =>
+                              normalizeText(d?.name) === normalizeText(doc.name) &&
+                              d?.executorRejected === true && d?.prNotifiedClient === true
+                            );
+
+                          // Force reupload styling for full-service rejection (executor or PR),
+                          // or for the specific executor-rejected doc in per-doc rejection mode.
+                          const forceReupload = (
+                            (isServiceLevelExecutorRejection || isServiceLevelPRRejection || isThisDocExecutorRejected)
+                            && !isDraftDoc && !isFinalDoc
+                            && !state.reuploadRequired && state.uploaded && !docAlreadyReuploaded
+                          );
+                          const effectiveReuploadRequired = state.reuploadRequired || forceReupload;
+
+                          const cardBg = effectiveReuploadRequired
                             ? "#fef2f2"
                             : state.uploaded
                               ? "#ffffff"
                               : "#ffffff";
-                          const cardBorder = state.reuploadRequired
+                          const cardBorder = effectiveReuploadRequired
                             ? "#fca5a5"
                             : "#e2e8f0";
 
@@ -3992,31 +4851,12 @@ const Recommendations = () => {
                                   >
                                     {doc.name}
                                   </p>
-                                  <span
-                                    style={{
-                                      fontSize: "0.55rem",
-                                      padding: "2px 6px",
-                                      background: doc.required
-                                        ? "rgba(239,68,68,0.1)"
-                                        : isLightMode ? "rgba(214,219,227,0.22)" : "rgba(255,255,255,0.06)",
-                                      color: doc.required
-                                        ? "#ef4444"
-                                        : isLightMode ? "#475569" : "#ffffff",
-                                      borderRadius: "5px",
-                                      fontWeight: 800,
-                                      textTransform: "uppercase",
-                                      letterSpacing: "0.05em",
-                                      flexShrink: 0,
-                                    }}
-                                  >
-                                    {doc.required ? "Required" : "Optional"}
-                                  </span>
                                 </div>
                                 <p
                                   style={{
                                     margin: "2px 0 0",
                                     fontSize: "0.67rem",
-                                    color: state.reuploadRequired
+                                    color: effectiveReuploadRequired
                                       ? "#ef4444"
                                       : state.uploaded
                                         ? "#10b981"
@@ -4027,13 +4867,61 @@ const Recommendations = () => {
                                     lineHeight: 1.4,
                                   }}
                                 >
-                                  {state.reuploadRequired
-                                    ? state.message
+                                  {effectiveReuploadRequired
+                                    ? (state.message || "Service rejected by executor. Please reupload this document.")
                                     : state.uploaded
                                       ? `✓ ${state.uploadedName}`
                                       : doc.desc || "Upload this document to proceed"}
                                 </p>
                               </div>
+
+                              {/* Edit & Delete Buttons - Only Visible to Admins */}
+                              {isAdmin && (
+                                <div style={{ display: "flex", gap: "8px", flexShrink: 0 }}>
+                                  <button
+                                    onClick={() => {
+                                      setEditingDocName(doc.name);
+                                      setEditDocumentNameInput(doc.name);
+                                    }}
+                                    style={{
+                                      padding: "6px 12px",
+                                      background: "#3b82f6",
+                                      border: "none",
+                                      color: "#fff",
+                                      borderRadius: "8px",
+                                      fontSize: "0.72rem",
+                                      fontWeight: 700,
+                                      cursor: "pointer",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: "4px"
+                                    }}
+                                  >
+                                    <Edit size={12} /> Edit
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setDeleteConfirmDocName(doc.name);
+                                      setIsDeleteConfirmOpen(true);
+                                    }}
+                                    style={{
+                                      padding: "6px 12px",
+                                      background: "#ef4444",
+                                      border: "none",
+                                      color: "#fff",
+                                      borderRadius: "8px",
+                                      fontSize: "0.72rem",
+                                      fontWeight: 700,
+                                      cursor: "pointer",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: "4px"
+                                    }}
+                                  >
+                                    <Trash2 size={12} /> Delete
+                                  </button>
+                                </div>
+                              )}
 
                               {/* Upload Button - Only Visible to Users */}
                               {isUserRole && (
@@ -4041,12 +4929,12 @@ const Recommendations = () => {
                                   style={{
                                     cursor: uploadingDoc ? "not-allowed" : "pointer",
                                     padding: isMobile ? "6px 12px" : "7px 14px",
-                                    background: state.reuploadRequired
+                                    background: effectiveReuploadRequired
                                       ? "#ef4444"
                                       : state.uploaded
                                         ? "#f1f5f9"
                                         : "#10b981",
-                                    color: state.uploaded && !state.reuploadRequired
+                                    color: state.uploaded && !effectiveReuploadRequired
                                       ? "#334155"
                                       : "#fff",
                                     borderRadius: "9px",
@@ -4057,7 +4945,7 @@ const Recommendations = () => {
                                     gap: "5px",
                                     transition: "all 0.2s",
                                     flexShrink: 0,
-                                    border: state.uploaded && !state.reuploadRequired
+                                    border: state.uploaded && !effectiveReuploadRequired
                                       ? "1px solid #e2e8f0"
                                       : "1px solid transparent",
                                     opacity: (uploadingDoc && uploadingDoc !== doc.name) ? 0.4 : 1,
@@ -4072,7 +4960,7 @@ const Recommendations = () => {
                                   )}
                                   {uploadingDoc === doc.name
                                     ? "Uploading"
-                                    : state.reuploadRequired
+                                    : effectiveReuploadRequired
                                       ? "Reupload"
                                       : state.uploaded
                                         ? "Change"
@@ -4279,7 +5167,7 @@ const Recommendations = () => {
                                   }));
                               })
                               .filter((d) => !!d?.url);
-                            const isServiceRejected = String(existingLead.status || "").toLowerCase() === "rejected";
+                            const isServiceRejected = ["rejected", "informationrequired"].includes(String(existingLead.status || "").toLowerCase());
                             const rejectedDocNames = new Set(
                               (existingLead.documents || []).filter((d) => d?.status === "Rejected").map((d) => String(d?.name || "").trim())
                             );
@@ -4308,7 +5196,8 @@ const Recommendations = () => {
                                 serviceName: selectedService.title,
                                 cost: selectedServiceRecommendedFeeAmount,
                                 recommendedFeeAmount: selectedServiceRecommendedFeeAmount,
-                                recommendedFees: selectedService.recommendedFees || "",
+                                recommendedFees: "Rs. 1",
+                                marketFees: String(selectedService?.marketFees || "").trim(),
                                 documents: docList,
                                 status: docList.length > 0 ? "PendingReview" : "Open",
                               },
@@ -4392,9 +5281,690 @@ const Recommendations = () => {
                 )}
               </motion.div>
             </motion.div>
-          );
+
+            {/* Add Document Modal */}
+            {isAddingDocument && (
+              <div
+                style={{
+                  position: "fixed",
+                  inset: 0,
+                  zIndex: 3000,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  background: "rgba(0, 0, 0, 0.6)",
+                  backdropFilter: "blur(8px)",
+                  padding: "1rem"
+                }}
+              >
+                <div
+                  style={{
+                    width: "100%",
+                    maxWidth: "400px",
+                    background: "#ffffff",
+                    borderRadius: "16px",
+                    padding: "1.5rem",
+                    boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
+                    border: "1px solid #e2e8f0"
+                  }}
+                >
+                  <h3 style={{ margin: "0 0 1rem 0", fontSize: "1.1rem", fontWeight: 700, color: "#0f172a" }}>
+                    Add Required Document
+                  </h3>
+                  <div style={{ marginBottom: "1.25rem" }}>
+                    <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "#475569", marginBottom: "6px" }}>
+                      Document Name
+                    </label>
+                    <input
+                      type="text"
+                      value={newDocumentName}
+                      onChange={(e) => setNewDocumentName(e.target.value)}
+                      placeholder="e.g. Partnership Deed"
+                      style={{
+                        width: "100%",
+                        padding: "0.75rem 0.9rem",
+                        background: "#ffffff",
+                        border: "1px solid #cbd5e1",
+                        borderRadius: "10px",
+                        color: "#0f172a",
+                        fontSize: "0.85rem",
+                        outline: "none"
+                      }}
+                      autoFocus
+                    />
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+                    <button
+                      onClick={() => {
+                        setIsAddingDocument(false);
+                        setNewDocumentName("");
+                      }}
+                      style={{
+                        padding: "8px 16px",
+                        background: "#f1f5f9",
+                        border: "1px solid #cbd5e1",
+                        borderRadius: "8px",
+                        color: "#475569",
+                        fontSize: "0.8rem",
+                        fontWeight: 700,
+                        cursor: "pointer"
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleAddDocument}
+                      style={{
+                        padding: "8px 16px",
+                        background: "linear-gradient(135deg, #8b5cf6, #6d4dff)",
+                        border: "none",
+                        borderRadius: "8px",
+                        color: "#ffffff",
+                        fontSize: "0.8rem",
+                        fontWeight: 700,
+                        cursor: "pointer"
+                      }}
+                    >
+                      Add Document
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Edit Document Modal */}
+            {editingDocName && (
+              <div
+                style={{
+                  position: "fixed",
+                  inset: 0,
+                  zIndex: 3000,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  background: "rgba(0, 0, 0, 0.6)",
+                  backdropFilter: "blur(8px)",
+                  padding: "1rem"
+                }}
+              >
+                <div
+                  style={{
+                    width: "100%",
+                    maxWidth: "400px",
+                    background: "#ffffff",
+                    borderRadius: "16px",
+                    padding: "1.5rem",
+                    boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
+                    border: "1px solid #e2e8f0"
+                  }}
+                >
+                  <h3 style={{ margin: "0 0 1rem 0", fontSize: "1.1rem", fontWeight: 700, color: "#0f172a" }}>
+                    Edit Document Name
+                  </h3>
+                  <div style={{ marginBottom: "1.25rem" }}>
+                    <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "#475569", marginBottom: "6px" }}>
+                      Document Name
+                    </label>
+                    <input
+                      type="text"
+                      value={editDocumentNameInput}
+                      onChange={(e) => setEditDocumentNameInput(e.target.value)}
+                      placeholder="Enter document name"
+                      style={{
+                        width: "100%",
+                        padding: "0.75rem 0.9rem",
+                        background: "#ffffff",
+                        border: "1px solid #cbd5e1",
+                        borderRadius: "10px",
+                        color: "#0f172a",
+                        fontSize: "0.85rem",
+                        outline: "none"
+                      }}
+                      autoFocus
+                    />
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+                    <button
+                      onClick={() => {
+                        setEditingDocName(null);
+                        setEditDocumentNameInput("");
+                      }}
+                      style={{
+                        padding: "8px 16px",
+                        background: "#f1f5f9",
+                        border: "1px solid #cbd5e1",
+                        borderRadius: "8px",
+                        color: "#475569",
+                        fontSize: "0.8rem",
+                        fontWeight: 700,
+                        cursor: "pointer"
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleEditDocument}
+                      style={{
+                        padding: "8px 16px",
+                        background: "linear-gradient(135deg, #8b5cf6, #6d4dff)",
+                        border: "none",
+                        borderRadius: "8px",
+                        color: "#ffffff",
+                        fontSize: "0.8rem",
+                        fontWeight: 700,
+                        cursor: "pointer"
+                      }}
+                    >
+                      Save Changes
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        );
         })()}
       </AnimatePresence>
+
+      <ConfirmationModal
+        isOpen={isDeleteConfirmOpen}
+        title="Delete Document"
+        message={`Are you sure you want to remove "${deleteConfirmDocName}" from the required documents list? This action cannot be undone.`}
+        onConfirm={() => handleDeleteDocument(deleteConfirmDocName)}
+        onCancel={() => {
+          setIsDeleteConfirmOpen(false);
+          setDeleteConfirmDocName(null);
+        }}
+        isLoading={isDeleting}
+      />
+
+      <ConfirmationModal
+        isOpen={isServiceDeleteConfirmOpen}
+        title="Delete Service"
+        message={`Are you sure you want to delete "${serviceToDelete?.title}"? This will permanently remove the service and all its data from the system. This action cannot be undone.`}
+        onConfirm={() => handleDeleteService(serviceToDelete)}
+        onCancel={() => {
+          setIsServiceDeleteConfirmOpen(false);
+          setServiceToDelete(null);
+        }}
+        isLoading={isServiceDeleting}
+      />
+
+      {/* -- Add Service Modal -- */}
+      {isAddingService && (
+        <>
+          <div
+            onClick={() => { setIsAddingService(false); setCustomCategoryInput(""); }}
+            style={{
+              position: "fixed",
+              top: 0, left: 0, right: 0, bottom: 0,
+              background: "rgba(17,24,39,0.45)",
+              zIndex: 99999,
+              backdropFilter: "blur(8px)",
+            }}
+          />
+          <div
+            style={{
+              position: "fixed",
+              top: 0, left: 0, right: 0, bottom: 0,
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "center",
+              zIndex: 100000,
+              pointerEvents: "none",
+              padding: "20vh 16px 16px",
+            }}
+          >
+            <div
+              style={{
+                width: "520px",
+                maxWidth: "100%",
+                maxHeight: "75vh",
+                overflow: "hidden",
+                pointerEvents: "auto",
+                background: "#ffffff",
+                borderRadius: "24px",
+                border: "1px solid rgba(17,24,39,0.08)",
+                boxShadow: "0 25px 50px -12px rgba(0,0,0,0.15)",
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              <div style={{ padding: "24px 28px 0" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
+                <h2 style={{ margin: 0, fontSize: "18px", fontWeight: 800, color: "#111111", letterSpacing: "-0.02em" }}>
+                  Add New Service
+                </h2>
+                <button
+                  onClick={() => { setIsAddingService(false); setCustomCategoryInput(""); }}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "#64748b", padding: "4px" }}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px", overflowY: "auto", flex: 1, padding: "0 28px 24px", scrollbarWidth: "thin" }}>
+                <div>
+                  <label style={{ fontSize: "0.75rem", fontWeight: 700, color: "#475569", display: "block", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                     Service Name <span style={{ color: "#ef4444", marginLeft: "2px" }}>*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={newServiceForm.title}
+                    onChange={(e) => setNewServiceForm({ ...newServiceForm, title: e.target.value })}
+                    placeholder="e.g. GST Registration"
+                    style={{
+                      width: "100%",
+                      padding: "10px 14px",
+                      border: "1px solid #cbd5e1",
+                      borderRadius: "10px",
+                      fontSize: "0.85rem",
+                      color: "#000000",
+                      outline: "none",
+                      background: "#f8fafc",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: "0.75rem", fontWeight: 700, color: "#475569", display: "block", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                     Description <span style={{ color: "#ef4444", marginLeft: "2px" }}>*</span>
+                  </label>
+                  <textarea
+                    value={newServiceForm.description}
+                    onChange={(e) => setNewServiceForm({ ...newServiceForm, description: e.target.value })}
+                    placeholder="Describe the service..."
+                    rows={2}
+                    style={{
+                      width: "100%",
+                      padding: "10px 14px",
+                      border: "1px solid #cbd5e1",
+                      borderRadius: "10px",
+                      fontSize: "0.85rem",
+                      color: "#000000",
+                      outline: "none",
+                      background: "#f8fafc",
+                      resize: "vertical",
+                      fontFamily: "inherit",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: "0.75rem", fontWeight: 700, color: "#475569", display: "block", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                     Category <span style={{ color: "#ef4444", marginLeft: "2px" }}>*</span>
+                  </label>
+                  <select
+                    value={customCategoryInput ? "" : newServiceForm.category}
+                    onChange={(e) => {
+                      setCustomCategoryInput("");
+                      setNewServiceForm({ ...newServiceForm, category: e.target.value });
+                    }}
+                    style={{
+                      width: "100%",
+                      padding: "10px 14px",
+                      border: `1px solid ${customCategoryInput ? "#cbd5e1" : "#10b981"}`,
+                      borderRadius: "10px",
+                      fontSize: "0.85rem",
+                      color: customCategoryInput ? "#94a3b8" : "#000000",
+                      outline: "none",
+                      background: "#f8fafc",
+                      boxSizing: "border-box",
+                      opacity: customCategoryInput ? 0.5 : 1,
+                    }}
+                  >
+                    {FINAL_CATEGORY_ORDER.map((cat) => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px", margin: "8px 0" }}>
+                    <div style={{ flex: 1, height: "1px", background: "#e2e8f0" }} />
+                    <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", whiteSpace: "nowrap" }}>or enter custom</span>
+                    <div style={{ flex: 1, height: "1px", background: "#e2e8f0" }} />
+                  </div>
+
+                  <input
+                    type="text"
+                    value={customCategoryInput}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setCustomCategoryInput(val);
+                      if (val.trim()) {
+                        setNewServiceForm((prev) => ({ ...prev, category: val.trim() }));
+                      } else {
+                        setNewServiceForm((prev) => ({ ...prev, category: FINAL_CATEGORY_ORDER?.[0] || "Advisory" }));
+                      }
+                    }}
+                    placeholder="e.g. Insurance Services"
+                    style={{
+                      width: "100%",
+                      padding: "10px 14px",
+                      border: `1px solid ${customCategoryInput ? "#10b981" : "#cbd5e1"}`,
+                      borderRadius: "10px",
+                      fontSize: "0.85rem",
+                      color: "#000000",
+                      outline: "none",
+                      background: customCategoryInput ? "rgba(16,185,129,0.04)" : "#f8fafc",
+                      boxSizing: "border-box",
+                      transition: "border-color 0.2s, background 0.2s",
+                    }}
+                  />
+                  {customCategoryInput.trim() && (
+                    <div style={{ marginTop: "5px", fontSize: "0.72rem", color: "#10b981", fontWeight: 600 }}>
+                      New category: "{customCategoryInput.trim()}"
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                  <div>
+                    <label style={{ fontSize: "0.75rem", fontWeight: 700, color: "#475569", display: "block", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                       Our Fee (Rs.) <span style={{ color: "#ef4444", marginLeft: "2px" }}>*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={getOnlyDigitsAndCommas(newServiceForm.recommendedFees ? `Rs. ${newServiceForm.recommendedFees}` : "")}
+                      onChange={(e) => {
+                        const formatted = formatOnlyDigits(e.target.value);
+                        setNewServiceForm({ ...newServiceForm, recommendedFees: formatted });
+                      }}
+                      placeholder="0"
+                      style={{
+                        width: "100%",
+                        padding: "10px 14px",
+                        border: "1px solid #cbd5e1",
+                        borderRadius: "10px",
+                        fontSize: "0.85rem",
+                        color: "#000000",
+                        outline: "none",
+                        background: "#f8fafc",
+                        boxSizing: "border-box",
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: "0.75rem", fontWeight: 700, color: "#475569", display: "block", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                       Market Fees (Rs.) <span style={{ color: "#ef4444", marginLeft: "2px" }}>*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={getOnlyDigitsAndCommas(newServiceForm.marketFees ? `Rs. ${newServiceForm.marketFees}` : "")}
+                      onChange={(e) => {
+                        const formatted = formatOnlyDigits(e.target.value);
+                        setNewServiceForm({ ...newServiceForm, marketFees: formatted });
+                      }}
+                      placeholder="0"
+                      style={{
+                        width: "100%",
+                        padding: "10px 14px",
+                        border: "1px solid #cbd5e1",
+                        borderRadius: "10px",
+                        fontSize: "0.85rem",
+                        color: "#000000",
+                        outline: "none",
+                        background: "#f8fafc",
+                        boxSizing: "border-box",
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <label style={{ fontSize: "0.75rem", fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap" }}>
+                    Working Days:
+                  </label>
+                  <input
+                    type="number"
+                    value={newServiceForm.workingDays}
+                    onChange={(e) => setNewServiceForm({ ...newServiceForm, workingDays: Number(e.target.value) })}
+                    min={1}
+                    style={{
+                      width: "60px",
+                      padding: "6px 10px",
+                      border: "1px solid #cbd5e1",
+                      borderRadius: "8px",
+                      fontSize: "0.85rem",
+                      color: "#000000",
+                      outline: "none",
+                      background: "#f8fafc",
+                      textAlign: "center",
+                      fontWeight: 700,
+                    }}
+                  />
+                  <span style={{ fontSize: "0.75rem", color: "#64748b" }}>Days</span>
+                </div>
+
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+                    <label style={{ fontSize: "0.75rem", fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                       Required Documents <span style={{ color: "#ef4444", marginLeft: "2px" }}>*</span>
+                    </label>
+                    <button
+                      onClick={() => {
+                        setAddDocInput("");
+                        setIsAddDocModalOpen(true);
+                      }}
+                      style={{
+                        padding: "4px 12px",
+                        background: "transparent",
+                        border: "1px solid #10b981",
+                        color: "#10b981",
+                        borderRadius: "6px",
+                        fontSize: "0.7rem",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                    >
+                      + Add Document
+                    </button>
+                  </div>
+                  {newServiceForm.documentsRequired.length > 0 && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                      {newServiceForm.documentsRequired.map((doc, i) => (
+                        <div
+                          key={i}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            padding: "6px 12px",
+                            background: "#f8fafc",
+                            border: "1px solid #e2e8f0",
+                            borderRadius: "8px",
+                          }}
+                        >
+                          <span style={{ fontSize: "0.8rem", color: "#334155", fontWeight: 600 }}>{doc}</span>
+                          <button
+                            onClick={() => {
+                              const updated = newServiceForm.documentsRequired.filter((_, idx) => idx !== i);
+                              setNewServiceForm({ ...newServiceForm, documentsRequired: updated });
+                            }}
+                            style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", padding: "2px" }}
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div style={{ padding: "12px 28px 12px", borderTop: "1px solid #e2e8f0" }}>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+                <button
+                  onClick={() => { setIsAddingService(false); setCustomCategoryInput(""); }}
+                  style={{
+                    padding: "10px 22px",
+                    borderRadius: "12px",
+                    border: "1px solid rgba(17,24,39,0.08)",
+                    background: "#f9fafb",
+                    color: "#111111",
+                    cursor: "pointer",
+                    fontSize: "14px",
+                    fontWeight: 700,
+                  }}
+                >
+                  Cancel
+                </button>
+                {(() => {
+                  const isFormValid =
+                    newServiceForm.title.trim() &&
+                    newServiceForm.description.trim() &&
+                    newServiceForm.category.trim() &&
+                    newServiceForm.recommendedFees.trim() &&
+                    newServiceForm.marketFees.trim() &&
+                    Array.isArray(newServiceForm.documentsRequired) &&
+                    newServiceForm.documentsRequired.length > 0;
+
+                  return (
+                    <button
+                      onClick={handleCreateService}
+                      disabled={!isFormValid}
+                      style={{
+                        padding: "10px 22px",
+                        borderRadius: "12px",
+                        border: "none",
+                        background: isFormValid ? "#10b981" : "#94a3b8",
+                        color: "#ffffff",
+                        cursor: isFormValid ? "pointer" : "not-allowed",
+                        fontSize: "14px",
+                        fontWeight: 800,
+                        boxShadow: isFormValid ? "0 4px 12px rgba(16,185,129,0.25)" : "none",
+                        opacity: isFormValid ? 1 : 0.4,
+                      }}
+                    >
+                      Add Service
+                    </button>
+                  );
+                })()}
+              </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {isAddDocModalOpen && (
+        <>
+          <div
+            onClick={() => setIsAddDocModalOpen(false)}
+            style={{
+              position: "fixed",
+              top: 0, left: 0, right: 0, bottom: 0,
+              background: "rgba(17,24,39,0.3)",
+              zIndex: 100001,
+            }}
+          />
+          <div
+            style={{
+              position: "fixed",
+              top: 0, left: 0, right: 0, bottom: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 100002,
+              pointerEvents: "none",
+            }}
+          >
+            <div
+              style={{
+                width: "360px",
+                maxWidth: "90%",
+                pointerEvents: "auto",
+                background: "#ffffff",
+                borderRadius: "20px",
+                boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25)",
+                padding: "24px",
+              }}
+            >
+              <h3 style={{ margin: "0 0 16px", fontSize: "16px", fontWeight: 700, color: "#111111" }}>
+                Add Document
+              </h3>
+              <input
+                type="text"
+                value={addDocInput}
+                onChange={(e) => setAddDocInput(e.target.value)}
+                placeholder="Enter document name"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && addDocInput.trim()) {
+                    const canonical = addDocInput.trim().replace(/^pan\b/i, "PAN Card").replace(/^(aadhar|aadhaar|adhar|adhaar)\b/i, "Aadhaar Card");
+                    const alreadyExists = newServiceForm.documentsRequired.some(
+                      (d) => d.trim().toLowerCase() === canonical.trim().toLowerCase()
+                    );
+                    if (alreadyExists) { toast.error("This document is already added"); return; }
+                    setNewServiceForm({ ...newServiceForm, documentsRequired: [...newServiceForm.documentsRequired, canonical.trim()] });
+                    setIsAddDocModalOpen(false);
+                    setAddDocInput("");
+                  }
+                }}
+                style={{
+                  width: "100%",
+                  padding: "10px 14px",
+                  border: "1px solid #cbd5e1",
+                  borderRadius: "10px",
+                  fontSize: "0.85rem",
+                  color: "#000000",
+                  outline: "none",
+                  background: "#f8fafc",
+                  boxSizing: "border-box",
+                  marginBottom: "16px",
+                }}
+                autoFocus
+              />
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+                <button
+                  onClick={() => {
+                    setIsAddDocModalOpen(false);
+                    setAddDocInput("");
+                  }}
+                  style={{
+                    padding: "8px 18px",
+                    borderRadius: "10px",
+                    border: "1px solid #e2e8f0",
+                    background: "#f9fafb",
+                    color: "#111111",
+                    cursor: "pointer",
+                    fontSize: "13px",
+                    fontWeight: 700,
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    if (addDocInput.trim()) {
+                      const canonical = addDocInput.trim().replace(/^pan\b/i, "PAN Card").replace(/^(aadhar|aadhaar|adhar|adhaar)\b/i, "Aadhaar Card");
+                      const alreadyExists = newServiceForm.documentsRequired.some(
+                        (d) => d.trim().toLowerCase() === canonical.trim().toLowerCase()
+                      );
+                      if (alreadyExists) { toast.error("This document is already added"); return; }
+                      setNewServiceForm({ ...newServiceForm, documentsRequired: [...newServiceForm.documentsRequired, canonical.trim()] });
+                      setIsAddDocModalOpen(false);
+                      setAddDocInput("");
+                    }
+                  }}
+                  style={{
+                    padding: "8px 18px",
+                    borderRadius: "10px",
+                    border: "none",
+                    background: "#10b981",
+                    color: "#ffffff",
+                    cursor: "pointer",
+                    fontSize: "13px",
+                    fontWeight: 800,
+                  }}
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };

@@ -2668,8 +2668,6 @@ body.light-mode .section-tag-whitesmoke {
 
   .rec-modal-content {
     max-width: 95% !important;
-    max-height: 90vh !important;
-    overflow-y: auto !important;
     overscroll-behavior: contain;
     border-radius: 24px !important;
     padding: 1.5rem !important;

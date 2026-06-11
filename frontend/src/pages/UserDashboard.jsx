@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
+import { getStatusLabel, resolveExecutorLabel } from "../utils/statusLabels";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import { motion, AnimatePresence } from "framer-motion";
@@ -78,6 +79,7 @@ import Loader from "../components/Loader";
 import {
   formatInr,
   getLeadRevenueAmount,
+  getServicePricing,
   parseFeeAmount,
   parseAllFeeAmounts,
   shouldCountLeadRevenue,
@@ -99,8 +101,21 @@ const UserDashboard = () => {
   const currentUserId = storedUser?._id || storedUser?.id || "";
   const [hiddenLeads, setHiddenLeads] = useState(() => loadHiddenServiceIds("user-dashboard", currentUserId));
   const [dismissedDetailsMissingSignatureByLead, setDismissedDetailsMissingSignatureByLead] = useState(() => {
-    const saved = localStorage.getItem("dismissedServiceMessages");
-    return saved ? JSON.parse(saved) : {};
+    try {
+      const saved = localStorage.getItem("dismissedDetailsMissingSignatureByLead");
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const [dismissedAdminDocsByLead, setDismissedAdminDocsByLead] = useState(() => {
+    try {
+      const saved = localStorage.getItem("dismissedAdminDocsByLead");
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
   });
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, lead: null, isLoading: false });
   const uploadInputRef = useRef(null);
@@ -332,24 +347,44 @@ const UserDashboard = () => {
 
       let requiredDocs = [];
       if (matchedService && Array.isArray(matchedService.documentsRequired)) {
+        // Identify which document names have admin-added placeholders (to preserve the flag after dedupe)
+        const adminAddedDocNames = new Set(
+          (Array.isArray(lead?.documents) ? lead.documents : [])
+            .filter(d => d?.adminAdded === true && !d?.url && !d?.publicId && !d?.secure_url && !d?.uploadedUrl)
+            .map(d => String(d?.name || "").trim().toLowerCase())
+        );
         requiredDocs = matchedService.documentsRequired.map(docName => ({
           name: docName,
           status: "Pending",
-          type: "Client"
+          type: "Client",
+          adminAdded: adminAddedDocNames.has(String(docName || "").trim().toLowerCase())
         }));
       }
 
       const pendingDocs = getPendingUploadsForService(lead?.serviceName);
       const currentDocs = Array.isArray(lead?.documents) ? lead.documents : [];
+      // Filter out admin-added placeholder entries (adminAdded: true with no URL) so the document
+      // only appears in the dashboard once the user has actually uploaded a file. The requiredDocs
+      // list (from service.documentsRequired) still includes it so the user is prompted to upload.
+      const realCurrentDocs = currentDocs.filter(
+        (d) => !(d?.adminAdded === true && !d?.url && !d?.publicId && !d?.secure_url && !d?.uploadedUrl)
+      );
       const mergedDocs = dedupeDocumentsByName(
-        [...currentDocs, ...pendingDocs, ...requiredDocs],
+        [...realCurrentDocs, ...pendingDocs, ...requiredDocs],
         {
           reuploadedDocumentNames: lead?.reuploadedDocumentNames,
         },
       );
 
       const executorRejected = isExecutorRejectedState(lead);
-      const serviceRejected = String(lead?.status || "").trim().toLowerCase() === "rejected";
+      // A staged service-level executor rejection (not yet notified to client) should
+      // NOT change doc statuses or show any rejection state to the user.
+      const isExecutorServiceRejectionPending =
+        lead?.executorServiceRejected === true &&
+        lead?.prNotifiedClientServiceRejection !== true;
+      const serviceRejected =
+        !isExecutorServiceRejectionPending &&
+        String(lead?.status || "").trim().toLowerCase() === "rejected";
       const draftRejected = String(lead?.status || "").trim().toLowerCase() === "draftrejected";
 
       let finalDocs = mergedDocs.map(doc => {
@@ -421,6 +456,63 @@ const UserDashboard = () => {
     } else {
       setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    const handleServiceDeleted = async () => {
+      try {
+        const user = JSON.parse(localStorage.getItem("user"));
+        const apiUrl = import.meta.env.VITE_API_URL;
+        const userId = user?._id || user?.id;
+        if (!apiUrl) return;
+
+        const [leadsRes, servicesRes] = await Promise.all([
+          axios.get(`${apiUrl}/leads?userId=${userId}`, {
+            headers: user?.token ? { Authorization: `Bearer ${user.token}` } : undefined,
+          }).catch(() => ({ data: [] })),
+          axios.get(`${apiUrl}/services`).catch(() => ({ data: [] })),
+        ]);
+
+        const fetchedServices = Array.isArray(servicesRes.data) ? servicesRes.data : [];
+        const fetchedLeads = Array.isArray(leadsRes.data) ? leadsRes.data : [];
+
+        setServices(fetchedServices);
+        setLeads(hydrateLeadsWithDocuments(fetchedLeads, fetchedServices));
+      } catch (err) {
+        console.error("Error refreshing dashboard after service deletion:", err);
+      }
+    };
+
+    const handleServiceDocumentAdded = async () => {
+      try {
+        const user = JSON.parse(localStorage.getItem("user"));
+        const apiUrl = import.meta.env.VITE_API_URL;
+        const userId = user?._id || user?.id;
+        if (!apiUrl) return;
+
+        const [leadsRes, servicesRes] = await Promise.all([
+          axios.get(`${apiUrl}/leads?userId=${userId}`, {
+            headers: user?.token ? { Authorization: `Bearer ${user.token}` } : undefined,
+          }).catch(() => ({ data: [] })),
+          axios.get(`${apiUrl}/services`).catch(() => ({ data: [] })),
+        ]);
+
+        const fetchedServices = Array.isArray(servicesRes.data) ? servicesRes.data : [];
+        const fetchedLeads = Array.isArray(leadsRes.data) ? leadsRes.data : [];
+
+        setServices(fetchedServices);
+        setLeads(hydrateLeadsWithDocuments(fetchedLeads, fetchedServices));
+      } catch (err) {
+        console.error("Error refreshing dashboard after service document addition:", err);
+      }
+    };
+
+    window.addEventListener("service-deleted", handleServiceDeleted);
+    window.addEventListener("service-document-added", handleServiceDocumentAdded);
+    return () => {
+      window.removeEventListener("service-deleted", handleServiceDeleted);
+      window.removeEventListener("service-document-added", handleServiceDocumentAdded);
+    };
   }, []);
 
   useEffect(() => {
@@ -527,6 +619,16 @@ const UserDashboard = () => {
           headers: { Authorization: `Bearer ${storedUser.token}` },
         });
         setLeads(hydrateLeadsWithDocuments(leadsRes.data));
+
+        // Clear the dismissal signature for this lead so the refreshed state is shown cleanly
+        if (isReuploadFlow) {
+          setDismissedDetailsMissingSignatureByLead((prev) => {
+            const updated = { ...prev };
+            delete updated[leadId];
+            localStorage.setItem("dismissedDetailsMissingSignatureByLead", JSON.stringify(updated));
+            return updated;
+          });
+        }
       }
     } catch (error) {
       console.error("Upload error:", error);
@@ -667,11 +769,22 @@ const UserDashboard = () => {
     }
   };
 
+  // Only count a document as "rejected" for the user if the PR has explicitly notified the client.
+  // executorRejected docs where prNotifiedClient is false are invisible to the user.
   const hasRejectedDocuments = (lead) =>
     Array.isArray(lead?.documents) &&
-    lead.documents.some((doc) => doc?.status === "Rejected");
+    lead.documents.some((doc) => {
+      if (doc?.status !== "Rejected") return false;
+      // If the rejection came from the executor, only count it once PR has notified the client
+      if (doc?.executorRejected && !doc?.prNotifiedClient) return false;
+      return true;
+    });
 
   const isRejectedServiceState = (lead) => {
+    // Staged executor service rejection — not yet visible to user
+    if (lead?.executorServiceRejected === true && lead?.prNotifiedClientServiceRejection !== true) {
+      return false;
+    }
     const status = String(lead?.status || "").trim().toLowerCase();
     if (status === "rejected") return hasRejectedDocuments(lead);
 
@@ -712,12 +825,43 @@ const UserDashboard = () => {
     return String(doc?.rejectionReason || "").trim() || "Document rejected due to quality issues.";
   };
 
+  // Get the list of new admin-added documents that the user has not yet uploaded.
+  // These docs have an admin-added placeholder entry in the lead's documents (adminAdded: true, no URL).
+  const getPendingAdminAddedDocuments = (lead) => {
+    if (!lead) return [];
+    const currentDocs = Array.isArray(lead?.documents) ? lead.documents : [];
+
+    // Find documents that have an admin-added placeholder (adminAdded: true, no URL)
+    const adminAddedPlaceholders = currentDocs.filter((d) => {
+      return d?.adminAdded === true && !d?.url && !d?.publicId && !d?.secure_url && !d?.uploadedUrl;
+    });
+
+    // Return the names of those placeholders that the user hasn't uploaded yet
+    // (the placeholder itself has no URL, so check if there's no other entry with a URL for the same name)
+    return adminAddedPlaceholders
+      .map((d) => String(d?.name || "").trim())
+      .filter((name) => name)
+      .filter((name) => {
+        const target = name.toLowerCase();
+        return !currentDocs.some((d) => {
+          const docName = String(d?.name || "").trim().toLowerCase();
+          const hasUrl = d?.url || d?.publicId || d?.secure_url || d?.uploadedUrl;
+          return docName === target && hasUrl;
+        });
+      });
+  };
+
   const getLeadDocumentsToDisplay = (lead) => {
     if (!lead) return [];
     // We utilize the centralized hydration logic to ensure consistency across the dashboard.
     // This merges backend docs, pending localStorage uploads, and required placeholders.
     const hydratedLeads = hydrateLeadsWithDocuments([lead], services);
-    return hydratedLeads[0]?.documents || [];
+    const docs = hydratedLeads[0]?.documents || [];
+    // Filter out admin-added placeholder entries (adminAdded: true with no URL) so the document
+    // only appears in the dashboard once the user has actually uploaded a file.
+    return docs.filter(
+      (d) => !(d?.adminAdded === true && !d?.url && !d?.publicId && !d?.secure_url && !d?.uploadedUrl)
+    );
   };
 
   const isAdminRejectedState = (lead) =>
@@ -728,11 +872,21 @@ const UserDashboard = () => {
 
   const isPrRejectedState = (lead) => {
     if (!lead || lead?.status !== "Rejected") return false;
+    // If the executor rejected the service but PR hasn't notified the client yet,
+    // suppress ALL rejection state from the user — they should see nothing yet.
+    if (lead?.executorServiceRejected === true && lead?.prNotifiedClientServiceRejection !== true) {
+      return false;
+    }
     return !isExecutorRejectedState(lead);
   };
 
   const isExecutorRejectedState = (lead) => {
     if (!lead || lead?.status !== "Rejected") return false;
+    // If the executor rejected the service but PR hasn't notified the client yet,
+    // hide the rejection from user/admin dashboards — only PR can see it.
+    if (lead?.executorServiceRejected === true && lead?.prNotifiedClientServiceRejection !== true) {
+      return false;
+    }
     const execMsg = String(lead?.executorMessage || "").trim();
     const prMsg = String(lead?.prFeedback || "").toLowerCase();
     const adminMsg = String(lead?.adminMessage || "").toLowerCase();
@@ -763,10 +917,18 @@ const UserDashboard = () => {
     return displayReason ? `Rejected by PR: ${displayReason}` : "Rejected by PR";
   };
 
-  const isDetailsMissingState = (lead) =>
-    !isExecutorRejectedState(lead) &&
-    !isPrRejectedState(lead) &&
-    (isRejectedServiceState(lead) || hasRejectedDocuments(lead));
+  const isDetailsMissingState = (lead) => {
+    // If executor rejection is pending PR notification, don't treat as "details missing" for the user
+    const hasPendingExecutorRejection = Array.isArray(lead?.documents) &&
+      lead.documents.some((d) => d?.executorRejected && !d?.prNotifiedClient);
+    if (hasPendingExecutorRejection) return false;
+
+    return (
+      !isExecutorRejectedState(lead) &&
+      !isPrRejectedState(lead) &&
+      (isRejectedServiceState(lead) || hasRejectedDocuments(lead))
+    );
+  };
 
   const hasDraftReviewInstruction = (lead) => {
     const message = String(lead?.adminMessage || "").toLowerCase();
@@ -860,20 +1022,33 @@ const UserDashboard = () => {
         ...prev,
         [leadId]: signature,
       };
-      localStorage.setItem("dismissedServiceMessages", JSON.stringify(updated));
+      // Use the SAME key as the initializer so the dismissal persists across refreshes
+      localStorage.setItem("dismissedDetailsMissingSignatureByLead", JSON.stringify(updated));
       return updated;
     });
   };
 
-  const visibleLeads = leads.filter((lead) => !hiddenLeads.includes(lead._id));
+  const visibleLeads = leads.filter((lead) => {
+    if (hiddenLeads.includes(lead._id)) return false;
+    const serviceKey = normalizeServiceKey(lead?.serviceName);
+    if (!serviceKey) return false;
+    const serviceExists = services.some(
+      (s) => normalizeServiceKey(s?.title) === serviceKey
+    );
+    return serviceExists;
+  });
 
   const stats = {
-    pending: visibleLeads.filter((l) =>
-      ["Open", "PendingReview", "InformationRequired", "PR_Accepted", "DraftRejected", "Rejected"].includes(l.status),
-    ).length,
-    inProgress: visibleLeads.filter((l) =>
-      ["AssignedToExecutor", "InProgress", "ExecutionFinished", "DraftSent", "DraftAccepted", "UserAccepted"].includes(getEffectiveLeadStatus(l)),
-    ).length,
+    pending: visibleLeads.filter((l) => {
+      // Staged executor rejection looks like "Rejected" to the DB but should count as inProgress for the user
+      if (l?.executorServiceRejected === true && l?.prNotifiedClientServiceRejection !== true) return false;
+      return ["Open", "PendingReview", "InformationRequired", "PR_Accepted", "DraftRejected", "Rejected"].includes(l.status);
+    }).length,
+    inProgress: visibleLeads.filter((l) => {
+      // Staged executor rejection: treat as inProgress from the user's perspective
+      if (l?.executorServiceRejected === true && l?.prNotifiedClientServiceRejection !== true) return true;
+      return ["AssignedToExecutor", "InProgress", "ExecutionFinished", "DraftSent", "DraftAccepted", "UserAccepted"].includes(getEffectiveLeadStatus(l));
+    }).length,
     completed: visibleLeads.filter((l) => getEffectiveLeadStatus(l) === "Completed").length,
     totalCommitment: visibleLeads.reduce(
       (sum, lead) => {
@@ -896,6 +1071,46 @@ const UserDashboard = () => {
       },
       0,
     ),
+  };
+
+  const getServicesByStatus = (status) => {
+    if (status === "pending") {
+      return visibleLeads.filter((l) => {
+        if (l?.executorServiceRejected === true && l?.prNotifiedClientServiceRejection !== true) return false;
+        return ["Open", "PendingReview", "InformationRequired", "PR_Accepted", "DraftRejected", "Rejected"].includes(l.status);
+      });
+    }
+    if (status === "inProgress") {
+      return visibleLeads.filter((l) => {
+        if (l?.executorServiceRejected === true && l?.prNotifiedClientServiceRejection !== true) return true;
+        return ["AssignedToExecutor", "InProgress", "ExecutionFinished", "DraftSent", "DraftAccepted", "UserAccepted"].includes(getEffectiveLeadStatus(l));
+      });
+    }
+    if (status === "completed") {
+      return visibleLeads.filter((l) => getEffectiveLeadStatus(l) === "Completed");
+    }
+    return [];
+  };
+
+  const getTotalRevenueBreakdown = () => {
+    const pendingLeads = visibleLeads.filter((l) => {
+      if (l?.executorServiceRejected === true && l?.prNotifiedClientServiceRejection !== true) return false;
+      return ["Open", "PendingReview", "InformationRequired", "PR_Accepted", "DraftRejected", "Rejected"].includes(l.status);
+    });
+    const inProgressLeads = visibleLeads.filter((l) => {
+      if (l?.executorServiceRejected === true && l?.prNotifiedClientServiceRejection !== true) return true;
+      return ["AssignedToExecutor", "InProgress", "ExecutionFinished", "DraftSent", "DraftAccepted", "UserAccepted"].includes(getEffectiveLeadStatus(l));
+    });
+    const completedLeads = visibleLeads.filter((l) => getEffectiveLeadStatus(l) === "Completed");
+
+    return {
+      pending: pendingLeads.reduce((sum, l) => sum + (shouldCountLeadRevenue(l) ? getCommitmentAmount(l) : 0), 0),
+      inProgress: inProgressLeads.reduce((sum, l) => sum + (shouldCountLeadRevenue(l) ? getCommitmentAmount(l) : 0), 0),
+      completed: completedLeads.reduce((sum, l) => sum + (shouldCountLeadRevenue(l) ? getCommitmentAmount(l) : 0), 0),
+      total: stats.totalCommitment,
+      high: stats.totalCommitmentHigh,
+      small: stats.totalCommitmentSmall,
+    };
   };
 
   function normalizeText(value) {
@@ -921,28 +1136,24 @@ const UserDashboard = () => {
   }
 
   function getCommitmentPair(lead) {
-    const leadRaw = lead?.recommendedFees || lead?.recommendedFeeAmount || "";
-    const catalogFee = getCatalogRecommendedFee(lead?.serviceName);
-
-    // Try to get multiple amounts from lead.recommendedFees
-    const leadAmounts = parseAllFeeAmounts(leadRaw);
-    if (leadAmounts.length >= 2) {
-      // Return them in [High, Small] order as requested
-      const sorted = [...leadAmounts].sort((a, b) => b - a);
-      return { high: sorted[0], small: sorted[1] };
-    }
-
-    // Fallback to catalog if lead doesn't have multiple
     const catalogService = services.find(s => normalizeText(s?.title) === normalizeText(lead?.serviceName));
-    const catalogAmounts = parseAllFeeAmounts(catalogService?.recommendedFees || catalogService?.marketFees || "");
-    if (catalogAmounts.length >= 2) {
-      const sorted = [...catalogAmounts].sort((a, b) => b - a);
-      return { high: sorted[0], small: sorted[1] };
+    const catalogOurFeeAmount = parseFeeAmount(catalogService?.recommendedFees);
+    if (Number.isFinite(catalogOurFeeAmount) && catalogOurFeeAmount > 0) {
+      return { high: catalogOurFeeAmount, small: catalogOurFeeAmount };
     }
-
-    // If only one amount found, use it for both
-    const single = leadAmounts[0] || catalogFee || getLeadRevenueAmount(lead);
-    return { high: single, small: single };
+    const leadRaw = lead?.recommendedFees || lead?.recommendedFeeAmount || "";
+    const leadAmounts = parseAllFeeAmounts(leadRaw);
+    if (leadAmounts.length >= 1) {
+      const ourFee = leadAmounts[0];
+      if (Number.isFinite(ourFee) && ourFee > 0) return { high: ourFee, small: ourFee };
+    }
+    const catalogAmounts = parseAllFeeAmounts(catalogService?.marketFees || "");
+    if (catalogAmounts.length >= 1) {
+      const ourFee = catalogAmounts[0];
+      if (Number.isFinite(ourFee) && ourFee > 0) return { high: ourFee, small: ourFee };
+    }
+    const pricing = getServicePricing(lead?.serviceName);
+    return { high: pricing.amount, small: pricing.amount };
   }
 
   function getCommitmentAmount(lead) {
@@ -959,6 +1170,17 @@ const UserDashboard = () => {
 
     if (status === "DraftRejected") return "Draft Rejected by User";
 
+    if (status === "ExecutionFinished" && lead?.draftSentToPR) {
+      return `Draft Sent to PR by ${resolveExecutorLabel(lead)}`;
+    }
+
+    // Executor rejected the service but PR hasn't clicked "Notify Client" yet —
+    // show as "Executor X Reviewing" so the client sees normal in-progress state.
+    if (lead?.executorServiceRejected === true && lead?.prNotifiedClientServiceRejection !== true) {
+      const executorLabel = resolveExecutorLabel(lead);
+      return `${executorLabel} Reviewing`;
+    }
+
     const rejectionLabel = getRejectionDisplayLabel(lead);
     if (rejectionLabel) return rejectionLabel;
 
@@ -966,27 +1188,33 @@ const UserDashboard = () => {
     if (isDetailsMissingState(lead)) return "Rejected by PR";
     if (isReviewDraftState(lead)) return "Review Draft";
     if (status === "InformationRequired") {
-      // If there are no rejected documents after hydration (user reuploaded), treat as PendingReview
       const hydrated = getLeadDocumentsToDisplay(lead);
       const hasRejectedDoc = Array.isArray(hydrated) && hydrated.some(d => String(d?.status || "").trim().toLowerCase() === "rejected");
       if (!hasRejectedDoc) return "PR Reviewing";
       return "Service rejected by PR. Action required.";
     }
     if (status === "PendingReview" || (status === "Open" && hasUploaded)) return "PR Reviewing";
-    if (status === "PR_Accepted") return "Accepted by PR";
-    if (status === "AssignedToExecutor") return "Awaiting Executor Coordination";
-    if (status === "InProgress") return "Accepted by Executor";
-    if (status === "ExecutionFinished") return "PR Performing Quality Review";
-    if (status === "DraftSent") return "Review Draft";
-    if (status === "DraftAccepted" || status === "UserAccepted") return "Draft Accepted";
-    if (status === "Rejected") return "Service Rejected";
-    if (status === "Completed") return "Service Completed";
-    if (status === "Open") return "Pending Verification";
-    return status;
+    // When executor is reviewing the service — don't show "Rejected" yet if not notified
+    if (status === "AssignedToExecutor" || status === "PR_Accepted") {
+      const hasPendingExecutorRejection = Array.isArray(lead?.documents) &&
+        lead.documents.some((d) => d?.executorRejected && !d?.prNotifiedClient);
+      if (hasPendingExecutorRejection) return "Executor Reviewing";
+    }
+    return getStatusLabel(status, lead, "user");
   };
 
   const getStatusTheme = (lead) => {
     const status = getEffectiveLeadStatus(lead);
+
+    if (status === "ExecutionFinished" && lead?.draftSentToPR) {
+      return { color: "#7c3aed", bg: "rgba(124,58,237,0.1)" };
+    }
+    // Executor rejected the service but PR hasn't clicked "Notify Client" yet —
+    // treat it as in-progress so the user sees a green/progress theme.
+    if (lead?.executorServiceRejected === true && lead?.prNotifiedClientServiceRejection !== true) {
+      return { color: "#10b981", bg: "rgba(16,185,129,0.1)" };
+    }
+
     const rejectionLabel = getRejectionDisplayLabel(lead);
     if (isExecutorRejectedState(lead) || rejectionLabel) {
       return { color: "#ef4444", bg: "rgba(239,68,68,0.12)" };
@@ -1085,6 +1313,17 @@ const UserDashboard = () => {
     : { color: "#9ca3af", bg: "rgba(255,255,255,0.04)" };
 
   const selectedLeadDocuments = selectedLead ? getLeadDocumentsToDisplay(selectedLead) : [];
+  const selectedLeadPendingAdminDocs = selectedLead ? getPendingAdminAddedDocuments(selectedLead) : [];
+  const selectedLeadPendingAdminDocsDismissed = selectedLead ? dismissedAdminDocsByLead[selectedLead._id] === true : false;
+  const handleDismissAdminDocsBanner = useCallback((leadId) => {
+    setDismissedAdminDocsByLead((prev) => {
+      const next = { ...prev, [leadId]: true };
+      try {
+        localStorage.setItem("dismissedAdminDocsByLead", JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  }, []);
   const uploadedDocumentCount = selectedLeadDocuments.filter((doc) => {
     // Keep the count stable after rejections by counting any document that still has a stored file.
     // This preserves the visible upload count even when the backend marks the service/document as rejected.
@@ -1104,11 +1343,22 @@ const UserDashboard = () => {
   const getServiceProgressPercent = (lead) => {
     if (!lead) return 0;
 
+    // Staged executor service rejection — PR hasn't notified client yet.
+    // Show InProgress-level progress so nothing unusual appears.
+    if (lead?.executorServiceRejected === true && lead?.prNotifiedClientServiceRejection !== true) {
+      return 60;
+    }
+
     // Maintain parity with Admin and PR dashboard calculations
     if (isExecutorRejectedState(lead)) return 20;
-    if (isDetailsMissingState(lead)) return 20;
 
+    // DraftRejected must be checked before isDetailsMissingState — the backend marks the
+    // draft document as "Rejected" when the user rejects it, which would make
+    // isDetailsMissingState() return true and incorrectly set progress to 20.
     const status = String(getEffectiveLeadStatus(lead) || "").trim();
+    if (status === "DraftRejected") return 70;
+
+    if (isDetailsMissingState(lead)) return 20;
     const progressByStatus = {
       Open: 10,
       PendingReview: 20,
@@ -1211,11 +1461,16 @@ const UserDashboard = () => {
       selectedLead={selectedLead}
       setSelectedLeadId={setExpandedId}
       selectedLeadDocuments={selectedLeadDocuments}
+      selectedLeadPendingAdminDocs={selectedLeadPendingAdminDocs}
+      selectedLeadPendingAdminDocsDismissed={selectedLeadPendingAdminDocsDismissed}
+      handleDismissAdminDocsBanner={handleDismissAdminDocsBanner}
       uploadedDocumentCount={uploadedDocumentCount}
       documentProgress={documentProgress}
       serviceProgressPercent={serviceProgressPercent}
       serviceDate={serviceDate}
       stats={stats}
+      getServicesByStatus={getServicesByStatus}
+      getTotalRevenueBreakdown={getTotalRevenueBreakdown}
       getStatusTheme={getStatusTheme}
       getDisplayStatus={getDisplayStatus}
       getCommitmentAmount={getCommitmentAmount}

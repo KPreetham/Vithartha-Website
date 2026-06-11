@@ -6,6 +6,8 @@ import {
   updateLead,
   deleteLead,
   updateDocumentStatus,
+  notifyClientDocumentRejection,
+  notifyClientServiceRejection,
   assignLead,
   updatePrFeedback,
   getSignedUrl,
@@ -187,8 +189,24 @@ router.get("/stream/:token", streamDocument); // Guarded by token in controller
 router.patch(
   "/:id/documents/:docId/status",
   protect,
-  authorize("PR", "admin"),
+  authorize("PR", "admin", "executor", "executorN"),
   updateDocumentStatus
+);
+
+// PR notifies client of executor-rejected document (makes it visible to user)
+router.patch(
+  "/:id/documents/:docId/notify-client",
+  protect,
+  authorize("PR", "admin"),
+  notifyClientDocumentRejection
+);
+
+// PR notifies client of executor-rejected entire service (makes it visible to user/admin)
+router.patch(
+  "/:id/notify-client-service-rejection",
+  protect,
+  authorize("PR", "admin"),
+  notifyClientServiceRejection
 );
 
 export default router;

@@ -1,8 +1,10 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   AlertCircle,
   CheckCircle,
+  XCircle,
   ChevronRight,
   Clock,
   Eye,
@@ -22,9 +24,10 @@ import ConfirmationModal from "../components/ConfirmationModal";
 import { getServicePricing } from "../utils/servicePricing";
 import { normalizeRole } from "../utils/roleRouting";
 
-const PremiumCard = ({ children, style = {}, className = "" }) => (
+const PremiumCard = ({ children, style = {}, className = "", onClick }) => (
   <div
     className={className}
+    onClick={onClick}
     style={{
       background: "linear-gradient(145deg, #ffffff 0%, #f9fafb 100%)",
       backdropFilter: "blur(16px)",
@@ -80,20 +83,24 @@ const PRDashboardModern = ({
   searchQuery,
   setSearchQuery,
   stats,
+  getServicesByStatus,
+  getTotalRevenueBreakdown,
   formatInr,
   getEffectiveLeadStatus,
+  isPrServiceDecisionFinalized,
   getDisplayStatus,
   getVisibleDocuments,
   getLeadRevenueAmount,
   handleUpdateLeadStatus,
   handleDocumentStatus,
+  handleNotifyClientDocRejection,
+  handleNotifyClientServiceRejection,
   handleAssignExecutor,
   handleClearExecutorMessage,
   handleClearUserRejectedMessage,
   handleClearAdminPrMessage,
   handleDeleteService,
   handleFileUpload,
-  handleSendDraftToClient,
   handleSendMessage,
   handleRejectDocumentWithMessage,
   handleRejectService,
@@ -118,6 +125,50 @@ const PRDashboardModern = ({
   setDeleteConfirm,
   executors,
 }) => {
+  const getExecutorLabel = (roleKey) => {
+    const r = String(roleKey || "").trim().toLowerCase();
+    if (!r) return "Executor";
+    const match = Array.isArray(executors) && executors.find((ex) => String(ex.role || "").trim().toLowerCase() === r);
+    if (match) return `${match.name} (${r})`;
+    return r.charAt(0).toUpperCase() + r.slice(1);
+  };
+
+  const [serviceListModal, setServiceListModal] = React.useState(null);
+  const [revenuePopup, setRevenuePopup] = React.useState(null);
+  const [assigningExecutorLead, setAssigningExecutorLead] = React.useState(null);
+  const [selectedExecutorRole, setSelectedExecutorRole] = React.useState("");
+  // Tracks which lead IDs have had their executor rejection banner dismissed by the PR
+  const [dismissedExecutorBannerLeads, setDismissedExecutorBannerLeads] = React.useState(new Set());
+
+  // Reset dismissed banners when the active lead changes so the PR sees fresh alerts
+  React.useEffect(() => {
+    setDismissedExecutorBannerLeads(new Set());
+  }, [activeLead?._id]);
+
+  React.useEffect(() => {
+    if (!activeLead) return;
+    const activeLower = String(activeLead?.status || "").trim().toLowerCase();
+    const isFinalized = !["open", "pendingreview", "informationrequired"].includes(activeLower);
+    if (!isFinalized) return;
+
+    // If accepted but executor not yet assigned, keep/open the executor selector
+    const needsExecutorAssignment =
+      activeLower === "pr_accepted" &&
+      !activeLead.assignedExecutor &&
+      !activeLead.executorId;
+
+    if (needsExecutorAssignment) {
+      setAssigningExecutorLead(activeLead._id);
+      return;
+    }
+
+    // Fully finalised — clear any pending UI state
+    setAssigningExecutorLead(null);
+    setSelectedExecutorRole("");
+    setRejectingLeadId?.((current) =>
+      current === activeLead._id ? null : current
+    );
+  }, [activeLead?._id, activeLead?.status, activeLead?.assignedExecutor, activeLead?.executorId, setRejectingLeadId]);
   const [documentsOpen, setDocumentsOpen] = React.useState(false);
   const [isMessageTargetOpen, setIsMessageTargetOpen] = React.useState(false);
   const [showCommunicationBox, setShowCommunicationBox] = React.useState(true);
@@ -127,7 +178,6 @@ const PRDashboardModern = ({
   const [isCompactMobile, setIsCompactMobile] = React.useState(() =>
     typeof window !== "undefined" ? window.innerWidth <= 480 : false,
   );
-  const draftInputRef = React.useRef(null);
   const finalInputRef = React.useRef(null);
 
   const storedUser = typeof window !== "undefined" ? JSON.parse(localStorage.getItem("user") || "{}") : {};
@@ -187,15 +237,11 @@ const PRDashboardModern = ({
     "draft accepted",
     "draft sent to client",
     "draft rejected by user",
-    "document accepted",
-    "document rejected",
     "service updated",
     "executor message removed",
     "user message removed",
     "admin message removed",
     "draft rejected by user: ",
-    "rejected by executor",
-    "assignment rejected",
     "assignment rejected by executor"
   ];
 
@@ -204,11 +250,33 @@ const PRDashboardModern = ({
     const lower = msg.toLowerCase();
     return systemPhrases.some((phrase) => lower.includes(phrase));
   };
-
   const lead = activeLead || null;
   const leadStatus = lead ? getEffectiveLeadStatus(lead) : "";
-  const serviceRejected = String(lead?.status || "").trim().toLowerCase() === "rejected";
-  const isDraftUploading = lead ? uploadingId === `${lead._id}-Draft` : false;
+  const rawStatus = String(lead?.status || "").trim();
+  const normalizedRawStatus = rawStatus.toLowerCase();
+  const serviceRejected = normalizedRawStatus === "rejected";
+
+  // Inline finalization check — do NOT rely solely on the prop function.
+  // Any status that is not "Open", "PendingReview", or "InformationRequired" means
+  // the PR has already made a decision (accept or reject), so hide action buttons.
+  const PENDING_DECISION_STATUSES = new Set(["open", "pendingreview", "informationrequired"]);
+  const serviceDecisionFinalized = lead
+    ? !PENDING_DECISION_STATUSES.has(normalizedRawStatus)
+    : false;
+
+  // PR_Accepted with no executor yet: decision is made (hide accept/reject btns)
+  // but the executor selector should still be shown so assignment can be completed.
+  const isPrAcceptedPendingExecutor =
+    !!lead &&
+    normalizedRawStatus === "pr_accepted" &&
+    !lead.assignedExecutor &&
+    !lead.executorId;
+
+  // Double-gated: finalized check + explicit allowlist for safety
+  const canShowServiceDecisionButtons =
+    !!lead &&
+    !serviceDecisionFinalized &&
+    PENDING_DECISION_STATUSES.has(normalizedRawStatus);
   const isFinalUploading = lead ? uploadingId === `${lead._id}-Final` : false;
   const rawDocs = Array.isArray(lead?.documents) ? lead.documents : [];
   const hasFinalDocument = rawDocs.some((doc) => String(doc?.type || "").trim().toLowerCase() === "final");
@@ -216,14 +284,32 @@ const PRDashboardModern = ({
     ? "Completed"
     : leadStatus;
   const docs = lead ? getVisibleDocuments(lead) : [];
-  const clientDocs = docs;
+  // Exclude draft/final from the client docs list and count — they live in the separate section
+  const clientDocs = docs.filter((d) => {
+    const t = String(d?.type || "").trim().toLowerCase();
+    return t !== "draft" && t !== "final";
+  });
+  // Draft is visible to PR once executor has sent it to PR (draftSentToPR flag) or beyond DraftSent.
+  // When status is DraftRejected and the latest draft document is still "Rejected", the draftSentToPR
+  // flag is stale from the previous cycle — a new draft hasn't arrived yet, so treat it as false.
+  const _rawDraftSentToPRFlag = !!lead?.draftSentToPR;
+  const _latestDraftDoc = [...rawDocs]
+    .sort((a, b) => new Date(b?.uploadedAt || b?.createdAt || 0) - new Date(a?.uploadedAt || a?.createdAt || 0))
+    .find((doc) => String(doc?.type || "").trim().toLowerCase() === "draft");
+  const _latestDraftRejected = String(_latestDraftDoc?.status || "").trim().toLowerCase() === "rejected";
+  const draftSentToPRFlag = _rawDraftSentToPRFlag &&
+    !(effectiveServiceStatus === "DraftRejected" && _latestDraftRejected);
+  const draftSentToClient = ["DraftSent", "DraftAccepted", "DraftRejected", "UserAccepted", "Completed"].includes(effectiveServiceStatus);
+  const draftVisibleToPR = draftSentToPRFlag || draftSentToClient;
   const draftFinalDocs = (() => {
     const sortedDocs = [...rawDocs].sort((a, b) => {
       const aTime = new Date(a?.uploadedAt || a?.createdAt || 0).getTime();
       const bTime = new Date(b?.uploadedAt || b?.createdAt || 0).getTime();
       return bTime - aTime;
     });
-    const latestDraft = sortedDocs.find((doc) => String(doc?.type || "").trim().toLowerCase() === "draft");
+    const latestDraft = draftVisibleToPR
+      ? sortedDocs.find((doc) => String(doc?.type || "").trim().toLowerCase() === "draft")
+      : null;
     const latestFinal = sortedDocs.find((doc) => String(doc?.type || "").trim().toLowerCase() === "final");
     return sortedDocs.filter((doc) => {
       const type = String(doc?.type || "").trim().toLowerCase();
@@ -237,10 +323,9 @@ const PRDashboardModern = ({
     return ["uploaded", "accepted", "verified", "approved", "completed", "reuploaded", "under review"].includes(status) || !!d?.url;
   });
   const hasReuploadedDocs = rawDocs.some((d) => !!d?.displayReuploaded || !!d?.reuploaded || String(d?.status || "").trim().toLowerCase() === "reuploaded");
-  const serviceAccepted = ["PR_Accepted", "AssignedToExecutor", "InProgress", "ExecutionFinished", "DraftSent", "DraftRejected", "DraftAccepted", "UserAccepted", "Completed"].includes(effectiveServiceStatus);
   const draftWorkflowStarted =
     ["InProgress", "ExecutionFinished", "DraftSent", "DraftRejected", "DraftAccepted", "UserAccepted", "Completed"].includes(effectiveServiceStatus);
-  const canUploadDraft = ["InProgress", "ExecutionFinished", "DraftSent", "DraftRejected", "DraftAccepted", "UserAccepted"].includes(effectiveServiceStatus);
+  const hasAssignedExecutor = !!(lead?.assignedExecutor || lead?.executorId);
   const serviceProgressPercent = (() => {
     if (!lead) return 0;
     
@@ -272,13 +357,13 @@ const PRDashboardModern = ({
         PendingReview: "Documents are being reviewed by PR.",
         InformationRequired: "Service rejected by PR. Action required.",
         PR_Accepted: "Documents verified. Awaiting executor assignment.",
-        AssignedToExecutor: "Executor assigned. Service is starting.",
-        InProgress: "Accepted by Executor.",
-        ExecutionFinished: "Execution finished. Undergoing quality review.",
+        AssignedToExecutor: `Assigned to ${getExecutorLabel(lead?.assignedExecutor)} — Service is starting.`,
+        InProgress: `Accepted by ${getExecutorLabel(lead?.assignedExecutor)}.`,
+        ExecutionFinished: draftSentToPRFlag ? `Draft sent by ${getExecutorLabel(lead?.assignedExecutor)} — Review and send to client.` : "Execution finished. Awaiting executor to send draft.",
         DraftSent: "Draft is awaiting user approval.",
         DraftAccepted: "Draft approved by user. Waiting for final completion.",
         UserAccepted: "Draft approved by user. Waiting for final completion.",
-        DraftRejected: "Draft rejected. Waiting for revision.",
+        DraftRejected: draftSentToPRFlag ? `Revised draft sent by ${getExecutorLabel(lead?.assignedExecutor)} — Review and send to client.` : "Draft rejected by user. Awaiting revised draft from executor.",
         Rejected: "Service has been rejected.",
         Completed: "Service completed successfully.",
       }[String(effectiveServiceStatus || "").trim()] || "Service is in progress."
@@ -297,6 +382,7 @@ const PRDashboardModern = ({
 
     if (draftRejectedByUser && docType === "Draft") {
       return {
+        label: "REJECTED BY USER",
         color: "#ef4444",
         bg: "rgba(239,68,68,0.08)",
         border: "rgba(239,68,68,0.15)",
@@ -362,32 +448,47 @@ const PRDashboardModern = ({
   };
 
   const statusPill = lead
-    ? {
-      color:
+    ? (() => {
+        // Use the resolved display label to determine color — this accounts for resubmission
+        // (e.g. when status is still "Rejected" but user has reuploaded, label becomes "PR Reviewing")
+        const resolvedDisplayLabel = getDisplayStatus(effectiveServiceStatus, lead);
+        const isPrReviewingNow = resolvedDisplayLabel === "PR Reviewing";
+        const isStagedExecutorRejection = resolvedDisplayLabel === "Rejected by Executor (Notify Client)";
+        const isRejectedOrInfoReq =
+          effectiveServiceStatus === "InformationRequired" ||
+          effectiveServiceStatus === "Rejected";
+
+        const isRejectedAndReSent = effectiveServiceStatus === "DraftRejected" && draftSentToPRFlag;
+        const color =
           effectiveServiceStatus === "Completed"
             ? "#16a34a"
             : effectiveServiceStatus === "DraftSent"
               ? "#16a34a"
+              : isRejectedAndReSent
+                ? "#7c3aed"
               : effectiveServiceStatus === "DraftRejected"
                 ? "#ef4444"
-              : effectiveServiceStatus === "InformationRequired"
+              : isStagedExecutorRejection
+                ? "#f59e0b"
+              : isRejectedOrInfoReq && !isPrReviewingNow
                 ? "#ef4444"
-                : effectiveServiceStatus === "Rejected"
-                  ? "#ef4444"
-                  : "#16a34a",
-        bg:
+                : "#16a34a";
+        const bg =
           effectiveServiceStatus === "Completed"
             ? "rgba(22, 163, 74, 0.08)"
             : effectiveServiceStatus === "DraftSent"
               ? "rgba(22, 163, 74, 0.08)"
+              : isRejectedAndReSent
+                ? "rgba(124, 58, 237, 0.08)"
               : effectiveServiceStatus === "DraftRejected"
                 ? "rgba(239, 68, 68, 0.08)"
-              : effectiveServiceStatus === "InformationRequired"
+              : isStagedExecutorRejection
+                ? "rgba(245, 158, 11, 0.08)"
+              : isRejectedOrInfoReq && !isPrReviewingNow
                 ? "rgba(239, 68, 68, 0.08)"
-                : effectiveServiceStatus === "Rejected"
-                  ? "rgba(239, 68, 68, 0.08)"
-                  : "rgba(22, 163, 74, 0.08)",
-      }
+                : "rgba(22, 163, 74, 0.08)";
+        return { color, bg };
+      })()
     : { color: "#6b7280", bg: "rgba(17,24,39,0.04)" };
 
   const handleDraftUpload = (type, file) => {
@@ -399,8 +500,36 @@ const PRDashboardModern = ({
     clientDocs.length > 0 &&
     clientDocs.every((doc) => doc.status === "Accepted");
   const draftReadyToSend = lead?.draftReadyToSend === true;
-  const canSendDraftNow = canSendDraftToClient(lead) && draftReadyToSend;
   const canMarkCompleted = draftFinalDocs.some((d) => d.type === "Final") && effectiveServiceStatus !== "Completed";
+
+  const handleServiceListClick = (status) => {
+    const services = getServicesByStatus(status);
+    setServiceListModal({ status, services });
+  };
+
+  const handleRevenuePopupClick = () => {
+    const breakdown = getTotalRevenueBreakdown();
+    const allLeads = filteredLeads;
+    const perService = allLeads
+      .map((l) => ({
+        serviceName: l.serviceName,
+        amount: getLeadRevenueAmount(l) || 0,
+      }))
+      .filter((i) => i.amount > 0);
+    setRevenuePopup({ breakdown: perService, total: breakdown.total });
+  };
+
+  const modalOverlayStyle = {
+    position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh",
+    background: "rgba(0,0,0,0.45)", zIndex: 10000,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    padding: 20,
+  };
+  const modalBoxStyle = {
+    background: "#fff", borderRadius: 16, maxWidth: 540, width: "100%",
+    height: "80vh", maxHeight: "80vh", display: "flex", flexDirection: "column", overflow: "hidden",
+    boxShadow: "0 12px 40px rgba(0,0,0,0.2)",
+  };
 
   const containerStyle = {
     minHeight: "100vh",
@@ -723,15 +852,16 @@ const PRDashboardModern = ({
           <div className="dashboard-shell-inner">
             <div className="dashboard-stat-grid">
               {[
-                { label: "Total Requests", value: stats.total, color: "#16a34a" },
-                { label: "Pending Review", value: stats.pending, color: "#16a34a" },
-                { label: "Completed Services", value: stats.completed, color: "#16a34a" },
-                { label: "Revenue (₹)", value: stats.revenueValue || 0, color: "#16a34a", isMoney: true, moneyValue: stats.revenue },
+                { label: "Services Pending", value: stats.pending, color: "#16a34a", onClick: () => handleServiceListClick("pending") },
+                { label: "Services In Progress", value: stats.inProgress, color: "#16a34a", onClick: () => handleServiceListClick("inProgress") },
+                { label: "Completed Services", value: stats.completed, color: "#16a34a", onClick: () => handleServiceListClick("completed") },
+                { label: "Revenue (₹)", value: stats.revenueValue || 0, color: "#16a34a", isMoney: true, moneyValue: stats.revenue, onClick: handleRevenuePopupClick },
               ].map((card) => {
                 return (
                   <PremiumCard
                     key={card.label}
                     className="stat-card"
+                    onClick={card.onClick}
                     style={{
                       padding: 12,
                       minHeight: 92,
@@ -744,6 +874,8 @@ const PRDashboardModern = ({
                       justifyContent: "center",
                       textAlign: "center",
                       borderRadius: 16,
+                      cursor: card.onClick ? "pointer" : undefined,
+                      transition: "transform 0.15s, box-shadow 0.15s",
                     }}
                   >
                     <div
@@ -854,6 +986,11 @@ const PRDashboardModern = ({
                         : getEffectiveLeadStatus(item);
                       const statusLabel = getDisplayStatus(itemStatus, item);
                       
+                      // If the statusLabel resolved to "PR Reviewing", the user has resubmitted —
+                      // use green/neutral color even if the underlying status is still "Rejected".
+                      const isPrReviewing = statusLabel === "PR Reviewing";
+                      // Staged executor rejection — amber to signal PR action needed
+                      const isStagedExecutorRejection = statusLabel === "Rejected by Executor (Notify Client)";
                       const itemPillColor = 
                         itemStatus === "Completed"
                           ? "#16a34a"
@@ -861,11 +998,11 @@ const PRDashboardModern = ({
                             ? "#16a34a"
                             : itemStatus === "DraftRejected"
                               ? "#ef4444"
-                            : itemStatus === "InformationRequired"
+                            : isStagedExecutorRejection
+                              ? "#f59e0b"
+                            : (itemStatus === "InformationRequired" || itemStatus === "Rejected") && !isPrReviewing
                               ? "#ef4444"
-                              : itemStatus === "Rejected"
-                                ? "#ef4444"
-                                : "#16a34a";
+                              : "#16a34a";
 
                       return (
                         <motion.div
@@ -1024,15 +1161,177 @@ const PRDashboardModern = ({
                       </div>
                     )}
 
-                    {lead.userMessage && String(lead.userMessage || "").trim() && !isSystemMessage(lead.userMessage) && (
-                      <div className="inner-card" style={{ padding: 16, borderRadius: 18, border: "1px solid rgba(239,68,68,0.22)", background: "rgba(239,68,68,0.05)" }}>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 8, color: "#ef4444" }}>
-                          <strong style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><AlertCircle size={16} /> Message from User</strong>
-                          <button type="button" onClick={(e) => handleClearUserRejectedMessage(lead._id, e)} style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid rgba(0,0,0,0.1)", background: "transparent", color: "inherit", cursor: "pointer" }}>×</button>
+                    {/* Executor Service Rejection Banner — only visible in PR dashboard until PR notifies client */}
+                    {(() => {
+                      const isServiceRejectedByExecutor =
+                        lead?.executorServiceRejected === true &&
+                        lead?.prNotifiedClientServiceRejection !== true;
+                      if (!isServiceRejectedByExecutor) return null;
+                      const rejectionReason = String(lead?.executorMessage || "")
+                        .replace(/^assignment rejected by executor:\s*/i, "")
+                        .trim();
+                      return (
+                        <div className="inner-card" style={{ padding: 18, borderRadius: 18, border: "1px solid rgba(239,68,68,0.3)", background: "rgba(239,68,68,0.05)", position: "relative" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, color: "#dc2626" }}>
+                            <AlertCircle size={18} />
+                            <strong style={{ fontSize: "0.95rem", fontWeight: 800 }}>
+                              Executor Rejected Entire Service — Action Required
+                            </strong>
+                          </div>
+                          {rejectionReason && (
+                            <div style={{ color: "#6b7280", fontSize: "0.88rem", marginBottom: 16 }}>
+                              <span style={{ fontWeight: 600, color: "#dc2626" }}>Reason: </span>
+                              {rejectionReason}
+                            </div>
+                          )}
+                          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              onClick={() => handleNotifyClientServiceRejection(lead._id)}
+                              style={{
+                                padding: "9px 20px",
+                                borderRadius: 10,
+                                border: "none",
+                                background: "#ef4444",
+                                color: "#fff",
+                                fontWeight: 800,
+                                fontSize: "0.85rem",
+                                cursor: "pointer",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 8,
+                              }}
+                            >
+                              <Send size={14} />
+                              Notify Client
+                            </button>
+                            <span style={{ fontSize: "0.78rem", color: "#9ca3af", fontStyle: "italic" }}>
+                              Clicking this makes the rejection visible to the client and all dashboards.
+                            </span>
+                          </div>
                         </div>
-                        <div style={{ color: "#111111", fontSize: "0.95rem" }}>{lead.userMessage}</div>
-                      </div>
-                    )}
+                      );
+                    })()}
+
+                    {/* Executor Document Rejection Summary — only visible in PR dashboard */}
+                    {(() => {
+                      const flaggedDocs = Array.isArray(lead.documents)
+                        ? lead.documents.filter(d => d?.executorRejected && !d?.prNotifiedClient && d?.url)
+                        : [];
+                      if (flaggedDocs.length === 0) return null;
+                      if (dismissedExecutorBannerLeads.has(lead._id)) return null;
+                      return (
+                        <div className="inner-card" style={{ padding: 18, borderRadius: 18, border: "1px solid rgba(239,68,68,0.25)", background: "rgba(239,68,68,0.04)", position: "relative" }}>
+                          {/* Close button */}
+                          <button
+                            type="button"
+                            onClick={() => setDismissedExecutorBannerLeads(prev => new Set([...prev, lead._id]))}
+                            aria-label="Dismiss"
+                            style={{
+                              position: "absolute", top: 12, right: 12,
+                              width: 26, height: 26, borderRadius: 999,
+                              border: "1px solid rgba(239,68,68,0.2)",
+                              background: "rgba(239,68,68,0.08)",
+                              color: "#ef4444", cursor: "pointer",
+                              display: "inline-flex", alignItems: "center", justifyContent: "center",
+                              fontSize: "0.9rem", fontWeight: 800, lineHeight: 1,
+                            }}
+                          >
+                            <X size={14} />
+                          </button>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, color: "#dc2626", paddingRight: 32 }}>
+                            <AlertCircle size={18} />
+                            <strong style={{ fontSize: "0.95rem", fontWeight: 800 }}>
+                              Executor Rejected {flaggedDocs.length} Document{flaggedDocs.length > 1 ? "s" : ""} — Action Required
+                            </strong>
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                            {flaggedDocs.map((doc) => (
+                              <div
+                                key={doc._id}
+                                style={{
+                                  padding: "12px 14px",
+                                  borderRadius: 12,
+                                  background: "#ffffff",
+                                  border: "1px solid rgba(239,68,68,0.18)",
+                                  display: "flex",
+                                  alignItems: "flex-start",
+                                  justifyContent: "space-between",
+                                  gap: 12,
+                                  flexWrap: "wrap",
+                                }}
+                              >
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#111111", marginBottom: 2 }}>{doc.name}</div>
+                                  {doc.rejectionMessage && (
+                                    <div style={{ color: "#6b7280", fontSize: "0.82rem" }}>
+                                      <span style={{ fontWeight: 600, color: "#dc2626" }}>Reason: </span>{doc.rejectionMessage}
+                                    </div>
+                                  )}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleNotifyClientDocRejection(lead._id, doc._id)}
+                                  style={{
+                                    padding: "8px 16px",
+                                    borderRadius: 10,
+                                    border: "none",
+                                    background: "#ef4444",
+                                    color: "#fff",
+                                    fontWeight: 800,
+                                    fontSize: "0.8rem",
+                                    cursor: "pointer",
+                                    flexShrink: 0,
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 6,
+                                  }}
+                                >
+                                  Notify Client
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                          <div style={{ marginTop: 12, fontSize: "0.78rem", color: "#9ca3af", fontStyle: "italic" }}>
+                            Clicking "Notify Client" marks the document as rejected and sends it to the client for reupload.
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {(() => {
+                      const rawUserMsg = String(lead.userMessage || "").trim();
+                      if (!rawUserMsg) return null;
+                      // For DraftRejected, always surface the user's feedback — strip the
+                      // auto-prepended "Draft rejected by user: " prefix before displaying.
+                      const isDraftRejectedLead = effectiveServiceStatus === "DraftRejected";
+                      const draftRejectionReason = rawUserMsg
+                        .replace(/^Draft rejected by user:\s*/i, "")
+                        .trim();
+                      if (isDraftRejectedLead && draftRejectionReason) {
+                        return (
+                          <div className="inner-card" style={{ padding: 16, borderRadius: 18, border: "1px solid rgba(239,68,68,0.22)", background: "rgba(239,68,68,0.05)" }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 8, color: "#ef4444" }}>
+                              <strong style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><AlertCircle size={16} /> Draft Rejected by User</strong>
+                              <button type="button" onClick={(e) => handleClearUserRejectedMessage(lead._id, e)} style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid rgba(0,0,0,0.1)", background: "transparent", color: "inherit", cursor: "pointer" }}>×</button>
+                            </div>
+                            <div style={{ color: "#111111", fontSize: "0.95rem" }}>{draftRejectionReason}</div>
+                          </div>
+                        );
+                      }
+                      if (!isSystemMessage(rawUserMsg)) {
+                        return (
+                          <div className="inner-card" style={{ padding: 16, borderRadius: 18, border: "1px solid rgba(239,68,68,0.22)", background: "rgba(239,68,68,0.05)" }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 8, color: "#ef4444" }}>
+                              <strong style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><AlertCircle size={16} /> Message from User</strong>
+                              <button type="button" onClick={(e) => handleClearUserRejectedMessage(lead._id, e)} style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid rgba(0,0,0,0.1)", background: "transparent", color: "inherit", cursor: "pointer" }}>×</button>
+                            </div>
+                            <div style={{ color: "#111111", fontSize: "0.95rem" }}>{rawUserMsg}</div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
 
                     <div style={{ display: "grid", gap: isCompactMobile ? 14 : 18 }}>
                       <PremiumCard className="inner-card" style={{ padding: 0, overflow: "hidden", background: "#ffffff", border: "1px solid rgba(17,24,39,0.14)", boxShadow: "none" }}>
@@ -1127,11 +1426,20 @@ const PRDashboardModern = ({
                                             String(lead?.adminMessage || "").toLowerCase().includes("assignment")
                                           );
                                         const showReuploadRequired = rejectedByExecutor && docStatusLower.includes("rejected");
+
+                                      // Executor flagged this doc but PR hasn't told the client yet
+                                      const isPendingPrNotification = !!doc.executorRejected && !doc.prNotifiedClient;
+
+                                      // In InformationRequired (reupload flow): only show ACCEPT/REJECT on
+                                      // reuploaded docs. Docs that were already accepted should not re-show buttons.
+                                      // In Open/PendingReview: show on any pending doc (normal first review).
                                       const showReviewActions =
-                                        ["Open", "PendingReview", "InformationRequired", "Rejected"].includes(lead.status) &&
-                                        !serviceRejected &&
+                                        !serviceDecisionFinalized &&
+                                        !isPendingPrNotification &&
+                                        ["Open", "PendingReview", "InformationRequired"].includes(lead.status) &&
                                         actualStatus !== "accepted" &&
-                                        actualStatus !== "rejected";
+                                        actualStatus !== "rejected" &&
+                                        (lead.status === "InformationRequired" ? (isReuploaded || actualStatus === "pending") : true);
                                       
                                       const isDone = docStatus === "Accepted";
                                       const isDraftRejectedDoc = draftRejected && isDraftDocument;
@@ -1142,12 +1450,14 @@ const PRDashboardModern = ({
                                           <tr>
                                             <td>
                                               <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0, flexWrap: isCompactMobile ? "wrap" : "nowrap" }}>
-                                                  <div style={{ padding: 8, background: isDone ? "rgba(22,163,74,0.06)" : isError ? "rgba(239,68,68,0.06)" : "rgba(17,24,39,0.04)", borderRadius: 10 }}>
-                                                    <FileText size={18} color={isDone ? "#16a34a" : isError ? "#ef4444" : "#6b7280"} style={{ flexShrink: 0 }} />
+                                                  <div style={{ padding: 8, background: isDone ? "rgba(22,163,74,0.06)" : (isError || isPendingPrNotification) ? "rgba(239,68,68,0.06)" : "rgba(17,24,39,0.04)", borderRadius: 10 }}>
+                                                    <FileText size={18} color={isDone ? "#16a34a" : (isError || isPendingPrNotification) ? "#ef4444" : "#6b7280"} style={{ flexShrink: 0 }} />
                                                   </div>
                                                 <div style={{ minWidth: 0 }}>
                                                     <div style={{ fontSize: isCompactMobile ? "0.84rem" : "0.9rem", fontWeight: 700, color: "#111111", whiteSpace: isCompactMobile ? "normal" : "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.name}</div>
-                                                    {showReuploadRequired ? (
+                                                    {isPendingPrNotification ? (
+                                                      <div style={{ marginTop: 2, color: "#ef4444", fontSize: "0.74rem", fontWeight: 700 }}>⚠ Flagged by Executor — Notify Client</div>
+                                                    ) : showReuploadRequired ? (
                                                       <div style={{ marginTop: 2, color: "#ef4444", fontSize: "0.74rem", fontWeight: 700 }}>Reupload Required</div>
                                                     ) : isReuploaded ? (
                                                       <div style={{ marginTop: 2, color: "#16a34a", fontSize: "0.74rem", fontWeight: 700 }}>{isDraftDocument ? "Draft Reuploaded" : "Reuploaded"}</div>
@@ -1156,12 +1466,12 @@ const PRDashboardModern = ({
                                                 </div>
                                               </td>
                                               <td>
-                                                <span style={{ display: "flex", alignItems: "center", color: isDone || isDraftSentState ? "#16a34a" : isError ? "#ef4444" : "#f59e0b", fontSize: isCompactMobile ? "0.74rem" : "0.84rem", fontWeight: 700 }}>
-                                                  {docStatus}
+                                                <span style={{ display: "flex", alignItems: "center", color: isDone || isDraftSentState ? "#16a34a" : (isError || isPendingPrNotification) ? "#ef4444" : "#f59e0b", fontSize: isCompactMobile ? "0.74rem" : "0.84rem", fontWeight: 700 }}>
+                                                  {isPendingPrNotification ? "Flagged by Executor" : docStatus}
                                                 </span>
                                               </td>
                                               <td style={{ textAlign: "right" }}>
-                                                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, alignItems: "center" }}>
+                                                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                                                     <button 
                                                       type="button" 
                                                       onClick={() => viewDocument(doc.publicId, doc.url || doc.secure_url || doc.uploadedUrl || doc.viewUrl, lead._id)}
@@ -1187,8 +1497,30 @@ const PRDashboardModern = ({
                                                       >
                                                         VIEW <Eye size={14} />
                                                       </button>
+
+                                                    {/* Notify Client btn — only shown in PR dashboard when executor flagged the doc */}
+                                                    {isPendingPrNotification && (
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => handleNotifyClientDocRejection(lead._id, doc._id)}
+                                                        style={{
+                                                          height: isCompactMobile ? 30 : 32,
+                                                          padding: isCompactMobile ? "0 10px" : "0 14px",
+                                                          borderRadius: 10,
+                                                          border: "none",
+                                                          background: "#ef4444",
+                                                          color: "#fff",
+                                                          fontWeight: 800,
+                                                          cursor: "pointer",
+                                                          fontSize: isCompactMobile ? "0.68rem" : "0.72rem",
+                                                          display: "inline-flex", alignItems: "center", gap: 6,
+                                                        }}
+                                                      >
+                                                        Notify Client
+                                                      </button>
+                                                    )}
                                                     
-                                                    {showReviewActions && (
+                                                    {showReviewActions && !isPendingPrNotification && (
                                                       <>
                                                         <button 
                                                           type="button" 
@@ -1263,93 +1595,104 @@ const PRDashboardModern = ({
                       {/* Draft & Final Fulfillment Control */}
                       {draftWorkflowStarted && (
                         <PremiumCard className="inner-card" style={{ padding: isCompactMobile ? "14px" : "18px 22px", background: "#ffffff", border: "1px solid rgba(17,24,39,0.12)", borderRadius: 20 }}>
-                          <div style={{ marginBottom: 18 }}>
-                            <h3 style={{ fontSize: "1.1rem", fontWeight: 800, marginBottom: 2, color: "#111111" }}>Draft & Final Documents</h3>
-                            <p style={{ color: "#6b7280", fontSize: "0.82rem" }}>Upload and manage draft/final return documents.</p>
-                          </div>
-                          <div className="fulfillment-upload-grid" style={{ display: "grid", gridTemplateColumns: isCompactMobile ? "1fr" : "1fr 1fr", gap: isCompactMobile ? 12 : 16, marginBottom: 20 }}>
-                            {/* Draft Section */}
-                            <div style={{ padding: isCompactMobile ? 12 : 16, borderRadius: 16, border: "1px solid rgba(17,24,39,0.08)", background: "rgba(17,24,39,0.02)" }}>
-                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                                <span style={{ fontSize: "0.85rem", fontWeight: 800, color: "#111111" }}>DRAFT RETURN</span>
-                              </div>
-                              <input type="file" ref={draftInputRef} style={{ display: "none" }} onChange={(e) => handleDraftUpload("Draft", e.target.files[0])} />
-                              <div className="draft-actions-flex" style={{ display: "flex", gap: 8, alignItems: "stretch", flexDirection: isCompactMobile ? "column" : "row" }}>
-                                <button
-                                  className="fulfillment-btn"
-                                  onClick={() => draftInputRef.current.click()}
-                                  disabled={isDraftUploading || !canUploadDraft}
-                                  style={{ flex: isCompactMobile ? "none" : "1 1 0", width: isCompactMobile ? "100%" : "auto", minWidth: 0, padding: "12px 10px", borderRadius: 12, border: "1px dashed rgba(22, 163, 74, 0.4)", background: canUploadDraft ? "white" : "rgba(17,24,39,0.04)", color: canUploadDraft ? "#16a34a" : "#9ca3af", fontWeight: 700, fontSize: "0.82rem", cursor: canUploadDraft ? "pointer" : "not-allowed", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, whiteSpace: "nowrap" }}
-                                >
-                                  {isDraftUploading ? <Loader2 className="animate-spin" size={18} /> : <Upload size={18} />}
-                                    {isDraftUploading ? "Uploading..." : canUploadDraft ? "Upload Draft" : "Draft Disabled"}
-                                </button>
-                                <button
-                                  className="fulfillment-btn"
-                                  onClick={() => handleSendDraftToClient(lead._id)}
-                                  disabled={!canSendDraftNow}
-                                  style={{ flex: isCompactMobile ? "none" : "1 1 0", width: isCompactMobile ? "100%" : "auto", minWidth: 0, padding: "12px 10px", borderRadius: 12, border: canSendDraftNow ? "none" : "1px solid rgba(17,24,39,0.08)", background: canSendDraftNow ? "#16a34a" : "rgba(17,24,39,0.04)", color: canSendDraftNow ? "#fff" : "#9ca3af", fontWeight: 700, fontSize: "0.82rem", cursor: canSendDraftNow ? "pointer" : "not-allowed", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, whiteSpace: "nowrap" }}
-                                >
-                                  <Send size={18} />
-                                  Send Draft to Client
-                                </button>
-                              </div>
+                          <div style={{ marginBottom: 18, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                            <div>
+                              <h3 style={{ fontSize: "1.1rem", fontWeight: 800, marginBottom: 2, color: "#111111" }}>Final Document Upload</h3>
+                              <p style={{ color: "#6b7280", fontSize: "0.82rem" }}>Upload the final return document once the user accepts the draft.</p>
                             </div>
-
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 20, background: "rgba(59,130,246,0.07)", border: "1px solid rgba(59,130,246,0.18)", whiteSpace: "nowrap", flexShrink: 0 }}>
+                              <span style={{ fontSize: "0.75rem" }}>ℹ️</span>
+                              <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#2563eb" }}>
+                                Draft upload handled by {getExecutorLabel(lead?.assignedExecutor)}
+                              </span>
+                            </div>
+                          </div>
+                          <div style={{ marginBottom: 20 }}>
                             {/* Final Section */}
-                            {showFinalUploadSection ? (
-                            <div style={{ padding: isCompactMobile ? 12 : 16, borderRadius: 16, border: "1px solid rgba(17,24,39,0.08)", background: "rgba(17,24,39,0.02)" }}>
+                            <div style={{ padding: isCompactMobile ? 12 : 16, borderRadius: 16, border: showFinalUploadSection ? "1px solid rgba(17,24,39,0.08)" : "1px dashed rgba(17,24,39,0.1)", background: showFinalUploadSection ? "rgba(17,24,39,0.02)" : "rgba(17,24,39,0.015)" }}>
                               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
                                 <span style={{ fontSize: "0.85rem", fontWeight: 800, color: "#111111" }}>FINAL RETURN</span>
+                                {!showFinalUploadSection && (
+                                  <span style={{ fontSize: "0.72rem", fontWeight: 600, color: "#9ca3af" }}>Waiting for user to accept draft</span>
+                                )}
                               </div>
                               <input type="file" ref={finalInputRef} style={{ display: "none" }} onChange={(e) => handleDraftUpload("Final", e.target.files[0])} />
                               <button
                                 className="fulfillment-btn"
-                                onClick={() => finalInputRef.current.click()}
-                                disabled={isFinalUploading}
-                                style={{ width: "100%", padding: "12px", borderRadius: 12, border: "1px dashed rgba(22, 163, 74, 0.4)", background: "white", color: "#16a34a", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}
+                                onClick={() => showFinalUploadSection && finalInputRef.current.click()}
+                                disabled={isFinalUploading || !showFinalUploadSection}
+                                style={{ width: "100%", padding: "12px", borderRadius: 12, border: showFinalUploadSection ? "1px dashed rgba(22, 163, 74, 0.4)" : "1px dashed rgba(17,24,39,0.15)", background: showFinalUploadSection ? "white" : "rgba(17,24,39,0.03)", color: showFinalUploadSection ? "#16a34a" : "#9ca3af", fontWeight: 700, fontSize: "0.85rem", cursor: showFinalUploadSection ? "pointer" : "not-allowed", display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}
                               >
                                 {isFinalUploading ? <Loader2 className="animate-spin" size={18} /> : <Upload size={18} />}
-                                {isFinalUploading ? "Uploading..." : "Upload Final"}
+                                {isFinalUploading ? "Uploading..." : showFinalUploadSection ? "Upload Final" : "Upload Final"}
                               </button>
                             </div>
-                            ) : (
-                              <div style={{ padding: isCompactMobile ? 12 : 16, borderRadius: 16, border: "1px dashed rgba(17,24,39,0.1)", background: "rgba(17,24,39,0.015)", display: "flex", alignItems: "center", justifyContent: "center", color: "#6b7280", fontSize: "0.8rem", fontWeight: 700, textAlign: "center" }}>
-                                Final upload becomes available after the user accepts the draft.
-                              </div>
-                            )}
                           </div>
                           
                           {draftFinalDocs.length > 0 && (
                             <div style={{ marginBottom: 20, padding: 16, borderRadius: 16, background: "rgba(17,24,39,0.02)", border: "1px solid rgba(17,24,39,0.05)" }}>
-                              <div style={{ fontSize: "0.75rem", fontWeight: 800, color: "#6b7280", textTransform: "uppercase", marginBottom: 12, letterSpacing: "0.05em" }}>Uploaded Draft and Return Documents</div>
+                              <div style={{ fontSize: "0.75rem", fontWeight: 800, color: "#6b7280", textTransform: "uppercase", marginBottom: 12, letterSpacing: "0.05em" }}>Draft & Final Documents</div>
                               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                                {draftFinalDocs.map((doc) => (
-                                  <div key={doc._id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", borderRadius: 12, background: "#ffffff", border: "1px solid rgba(17,24,39,0.08)" }}>
-                                    <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                                      <FileText size={16} color="#6b7280" />
-                                      <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-                                        <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "#111111", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.name}</span>
-                                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
-                                          <span style={{ fontSize: "0.65rem", fontWeight: 800, color: doc.type === "Draft" ? "#8b5cf6" : "#10b981" }}>{doc.type.toUpperCase()}</span>
+                                {draftFinalDocs.map((doc) => {
+                                  const info = getDraftFinalStatusInfo(doc);
+                                  const leadSt = String(lead?.status || "").trim().toLowerCase();
+                                  const isSentOrBeyond = ["draftsent","draftaccepted","draftrejected","useraccepted","completed"].includes(leadSt);
+                                  const isAccepted = ["draftaccepted","useraccepted","completed"].includes(leadSt) && String(doc?.type||"").trim().toLowerCase() === "draft";
+                                  const isDraftDoc = String(doc?.type||"").trim().toLowerCase() === "draft";
+                                  // Rejected by user only when executor hasn't re-sent to PR yet
+                                  const isRejectedStatus = leadSt === "draftrejected" && isDraftDoc && !draftSentToPRFlag;
+                                  // Re-sent to PR after rejection
+                                  const isReSentToPR = isDraftDoc && draftSentToPRFlag && leadSt === "draftrejected";
+                                  // Can send to client: executor sent to PR and status is not yet forwarded in this cycle
+                                  const canSendToClient = isDraftDoc && draftSentToPRFlag && (leadSt === "executionfinished" || leadSt === "draftrejected");
+                                  const statusLabel = isAccepted ? "Accepted"
+                                    : isRejectedStatus ? "Rejected by User"
+                                    : isReSentToPR ? "Sent to PR"
+                                    : isSentOrBeyond && isDraftDoc ? "Draft Shared"
+                                    : isDraftDoc && draftSentToPRFlag ? "Sent to PR"
+                                    : isDraftDoc ? "Draft Uploaded"
+                                    : "Uploaded";
+                                  const statusColor = isAccepted ? "#16a34a" : isRejectedStatus ? "#ef4444" : (isReSentToPR || (isDraftDoc && draftSentToPRFlag)) ? "#7c3aed" : isSentOrBeyond && isDraftDoc ? "#2563eb" : "#16a34a";
+                                  const statusBg = isAccepted ? "rgba(22,163,74,0.08)" : isRejectedStatus ? "rgba(239,68,68,0.08)" : (isReSentToPR || (isDraftDoc && draftSentToPRFlag)) ? "rgba(124,58,237,0.08)" : isSentOrBeyond && isDraftDoc ? "rgba(37,99,235,0.08)" : "rgba(22,163,74,0.08)";
+                                  const statusBorder = isAccepted ? "rgba(22,163,74,0.2)" : isRejectedStatus ? "rgba(239,68,68,0.18)" : (isReSentToPR || (isDraftDoc && draftSentToPRFlag)) ? "rgba(124,58,237,0.18)" : isSentOrBeyond && isDraftDoc ? "rgba(37,99,235,0.18)" : "rgba(22,163,74,0.2)";
+                                  return (
+                                    <div key={doc._id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderRadius: 12, background: "#ffffff", border: "1px solid rgba(17,24,39,0.08)", gap: 10, flexWrap: "wrap" }}>
+                                      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flex: 1 }}>
+                                        <FileText size={16} color="#8b5cf6" style={{ flexShrink: 0 }} />
+                                        <div style={{ minWidth: 0 }}>
+                                          <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "#111111", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block" }}>{doc.name}</span>
+                                          <span style={{ fontSize: "0.65rem", fontWeight: 800, color: String(doc?.type||"").trim().toLowerCase() === "draft" ? "#8b5cf6" : "#10b981" }}>{String(doc?.type||"").trim().toUpperCase()}</span>
                                         </div>
                                       </div>
+                                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                                        <span style={{ fontSize: "0.74rem", fontWeight: 700, color: statusColor, background: statusBg, border: `1px solid ${statusBorder}`, borderRadius: 8, padding: "3px 10px", whiteSpace: "nowrap" }}>{statusLabel}</span>
+                                        <button
+                                          onClick={() => viewDocument(doc.publicId, doc.url || doc.secure_url || doc.uploadedUrl || doc.viewUrl, lead._id)}
+                                          style={{ padding: "0 12px", height: 30, borderRadius: 8, border: "1px solid rgba(17,24,39,0.1)", background: "#ffffff", color: "#111111", fontSize: "0.72rem", fontWeight: 800, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}
+                                          onMouseEnter={(e) => e.currentTarget.style.background = "#f9fafb"}
+                                          onMouseLeave={(e) => e.currentTarget.style.background = "#ffffff"}
+                                        >
+                                          VIEW
+                                        </button>
+                                        {canSendToClient && (
+                                          <button
+                                            onClick={() => handleUpdateLeadStatus(lead._id, "DraftSent")}
+                                            style={{ padding: "0 12px", height: 30, borderRadius: 8, border: "none", background: "#2563eb", color: "#fff", fontSize: "0.72rem", fontWeight: 800, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}
+                                            onMouseEnter={(e) => e.currentTarget.style.background = "#1d4ed8"}
+                                            onMouseLeave={(e) => e.currentTarget.style.background = "#2563eb"}
+                                          >
+                                            <Send size={13} /> Send to Client
+                                          </button>
+                                        )}
+                                      </div>
                                     </div>
-                                    <button 
-                                      onClick={() => viewDocument(doc.publicId, doc.url || doc.secure_url || doc.uploadedUrl || doc.viewUrl, lead._id)}
-                                      style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(17,24,39,0.1)", background: "#ffffff", color: "#111111", fontSize: "0.7rem", fontWeight: 800, cursor: "pointer", transition: "all 0.2s ease" }}
-                                      onMouseEnter={(e) => e.currentTarget.style.background = "#f9fafb"}
-                                      onMouseLeave={(e) => e.currentTarget.style.background = "#ffffff"}
-                                    >
-                                      VIEW
-                                    </button>
-                                  </div>
-                                ))}
+                                  );
+                                })}
                               </div>
                             </div>
                           )}
 
-                           <div style={{ display: "flex", gap: 12, justifyContent: isCompactMobile ? "stretch" : "flex-end", width: "100%" }}>
+                           <div style={{ display: "flex", gap: 12, justifyContent: isCompactMobile ? "stretch" : "flex-end", width: "100%", flexWrap: "wrap" }}>
                             {canMarkCompleted && (
                               <button onClick={() => handleUpdateLeadStatus(lead._id, "Completed")} style={{ width: isCompactMobile ? "100%" : "auto", padding: "12px 20px", borderRadius: 12, background: "#16a34a", color: "#fff", border: "none", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><CheckCircle size={16} /> Mark Completed</button>
                             )}
@@ -1358,65 +1701,191 @@ const PRDashboardModern = ({
                       )}
 
                       {/* Service Management Control */}
-                      <PremiumCard style={{ padding: "18px 22px", background: "#ffffff", border: "1px solid rgba(17,24,39,0.12)", borderRadius: 20 }}>
+                      <PremiumCard style={{
+                        padding: "18px 22px",
+                        background: serviceDecisionFinalized
+                          ? serviceRejected
+                            ? "rgba(239,68,68,0.04)"
+                            : "rgba(22,163,74,0.04)"
+                          : "#ffffff",
+                        border: serviceDecisionFinalized
+                          ? serviceRejected
+                            ? "1px solid rgba(239,68,68,0.2)"
+                            : "1px solid rgba(22,163,74,0.2)"
+                          : "1px solid rgba(17,24,39,0.12)",
+                        borderRadius: 20
+                      }}>
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                             <div>
                               <h3 style={{ fontSize: "1.1rem", fontWeight: 800, marginBottom: 2, color: "#111111" }}>Service Status Control</h3>
-                              <p style={{ color: "#6b7280", fontSize: "0.82rem" }}>Accept or Reject the service request.</p>
+                              <p style={{ color: "#6b7280", fontSize: "0.82rem" }}>
+                                {serviceDecisionFinalized
+                                  ? serviceRejected
+                                    ? "This service has been rejected."
+                                    : isPrAcceptedPendingExecutor
+                                      ? "Service accepted. Please assign an executor to proceed."
+                                      : "This service has been accepted and is in progress."
+                                  : "Accept or Reject the service request."}
+                              </p>
                             </div>
                           </div>
                           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                            {/* Service Status Control - Accept/Reject */}
-                            {(leadStatus === "Open" || leadStatus === "PendingReview" || leadStatus === "InformationRequired") && (
-                              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                                <button 
-                                  onClick={() => handleUpdateLeadStatus(lead._id, "PR_Accepted")} 
-                                  disabled={!canAcceptService}
-                                  style={{ 
-                                    padding: "10px 20px", 
-                                    borderRadius: 12, 
-                                    background: canAcceptService ? "#16a34a" : "rgba(17,24,39,0.05)", 
-                                    color: canAcceptService ? "#ffffff" : "#9ca3af", 
-                                    border: canAcceptService ? "none" : "1px solid rgba(17,24,39,0.08)", 
-                                    fontWeight: 700, 
-                                    fontSize: "0.85rem", 
-                                    cursor: canAcceptService ? "pointer" : "not-allowed", 
-                                    display: "flex", 
-                                    alignItems: "center", 
-                                    gap: 8,
-                                    transition: "all 0.2s ease"
-                                  }}
-                                >
-                                  <CheckCircle size={16} /> Accept Service
-                                </button>
 
-                                {!serviceRejected && (
-                                  <button 
-                                    onClick={() => openRejectForm(lead._id)} 
-                                    style={{ 
-                                      padding: "10px 20px", 
-                                      borderRadius: 12, 
-                                      background: "rgba(239, 68, 68, 0.08)", 
-                                      color: "#ef4444", 
-                                      border: "1px solid rgba(239, 68, 68, 0.15)", 
-                                      fontWeight: 700, 
-                                      fontSize: "0.85rem", 
-                                      cursor: "pointer", 
-                                      display: "flex", 
-                                      alignItems: "center", 
-                                      gap: 8 
+                            {/* Finalized state — show badge only, no action buttons */}
+                            {serviceDecisionFinalized ? (
+                              isPrAcceptedPendingExecutor ? (
+                                /* Accepted but executor not yet assigned — show selector only */
+                                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                                  <span style={{
+                                    display: "inline-flex", alignItems: "center", gap: 6,
+                                    padding: "6px 14px", borderRadius: 10, fontWeight: 700, fontSize: "0.82rem",
+                                    background: "rgba(22,163,74,0.08)", color: "#16a34a",
+                                    border: "1px solid rgba(22,163,74,0.2)",
+                                  }}>
+                                    <CheckCircle size={14} /> Accepted — Assign Executor
+                                  </span>
+                                  <select
+                                    value={selectedExecutorRole}
+                                    onChange={(e) => setSelectedExecutorRole(e.target.value)}
+                                    style={{
+                                      padding: "8px 12px", borderRadius: 10, border: "1px solid #d1d5db",
+                                      fontSize: "0.85rem", fontWeight: 600, color: "#111",
+                                      background: "#fff", cursor: "pointer",
                                     }}
                                   >
-                                    <X size={16} /> Reject Service
+                                    <option value="">Select executor...</option>
+                                    {Array.isArray(executors) && executors.length > 0
+                                      ? executors.map((ex) => (
+                                          <option key={ex._id} value={String(ex.role).trim().toLowerCase()}>
+                                            {ex.name} ({String(ex.role).trim().toLowerCase()})
+                                          </option>
+                                        ))
+                                      : null}
+                                  </select>
+                                  <button
+                                    onClick={async () => {
+                                      const executorRole = selectedExecutorRole;
+                                      setAssigningExecutorLead(null);
+                                      setSelectedExecutorRole("");
+                                      await handleUpdateLeadStatus(lead._id, "AssignedToExecutor", "", {
+                                        assignedExecutor: executorRole,
+                                      });
+                                    }}
+                                    disabled={!selectedExecutorRole}
+                                    style={{
+                                      padding: "8px 16px", borderRadius: 10,
+                                      background: selectedExecutorRole ? "#16a34a" : "rgba(17,24,39,0.05)",
+                                      color: selectedExecutorRole ? "#fff" : "#9ca3af", border: "none",
+                                      fontWeight: 700, fontSize: "0.85rem",
+                                      cursor: selectedExecutorRole ? "pointer" : "not-allowed",
+                                      display: "flex", alignItems: "center", gap: 6,
+                                    }}
+                                  >
+                                    <CheckCircle size={16} /> Assign
                                   </button>
+                                </div>
+                              ) : (
+                                /* Fully decided — show rejected badge only */
+                                serviceRejected ? (
+                                  <span style={{
+                                    display: "inline-flex", alignItems: "center", gap: 8,
+                                    padding: "8px 18px", borderRadius: 12, fontWeight: 700, fontSize: "0.9rem",
+                                    background: "rgba(239,68,68,0.1)", color: "#dc2626",
+                                    border: "1px solid rgba(239,68,68,0.25)",
+                                  }}>
+                                    <XCircle size={16} /> Service Rejected
+                                  </span>
+                                ) : null
+                              )
+                            ) : (
+                              <>
+                                {/* Service Status Control - Accept/Reject (only shown when not yet decided) */}
+                                {canShowServiceDecisionButtons && (
+                                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                                    {assigningExecutorLead === lead._id ? (
+                                      <>
+                                        <select
+                                          value={selectedExecutorRole}
+                                          onChange={(e) => setSelectedExecutorRole(e.target.value)}
+                                          style={{
+                                            padding: "8px 12px", borderRadius: 10, border: "1px solid #d1d5db",
+                                            fontSize: "0.85rem", fontWeight: 600, color: "#111",
+                                            background: "#fff", cursor: "pointer",
+                                          }}
+                                        >
+                                          <option value="">Select executor...</option>
+                                          {Array.isArray(executors) && executors.length > 0
+                                            ? executors.map((ex) => (
+                                                <option key={ex._id} value={String(ex.role).trim().toLowerCase()}>
+                                                  {ex.name} ({String(ex.role).trim().toLowerCase()})
+                                                </option>
+                                              ))
+                                            : null}
+                                        </select>
+                                        <button
+                                          onClick={async () => {
+                                            const executorRole = selectedExecutorRole;
+                                            setAssigningExecutorLead(null);
+                                            setSelectedExecutorRole("");
+                                            await handleUpdateLeadStatus(lead._id, "AssignedToExecutor", "", {
+                                              assignedExecutor: executorRole,
+                                            });
+                                          }}
+                                          disabled={!selectedExecutorRole}
+                                          style={{
+                                            padding: "8px 16px", borderRadius: 10, background: selectedExecutorRole ? "#16a34a" : "rgba(17,24,39,0.05)",
+                                            color: selectedExecutorRole ? "#fff" : "#9ca3af", border: "none",
+                                            fontWeight: 700, fontSize: "0.85rem", cursor: selectedExecutorRole ? "pointer" : "not-allowed",
+                                            display: "flex", alignItems: "center", gap: 6,
+                                          }}
+                                        >
+                                          <CheckCircle size={16} /> Assign
+                                        </button>
+                                        <button
+                                          onClick={() => { setAssigningExecutorLead(null); setSelectedExecutorRole(""); }}
+                                          style={{
+                                            padding: "8px 16px", borderRadius: 10, background: "rgba(239,68,68,0.08)",
+                                            color: "#ef4444", border: "1px solid rgba(239,68,68,0.15)",
+                                            fontWeight: 700, fontSize: "0.85rem", cursor: "pointer",
+                                          }}
+                                        >
+                                          Cancel
+                                        </button>
+                                      </>
+                                    ) : (
+                                      <button
+                                        onClick={async () => {
+                                          // Immediately persist PR_Accepted to DB so status survives refresh.
+                                          // Backend auto-advances to AssignedToExecutor if executor already set.
+                                          await handleUpdateLeadStatus(lead._id, "PR_Accepted");
+                                          setAssigningExecutorLead(lead._id);
+                                        }}
+                                        disabled={!canAcceptService}
+                                        style={{
+                                          padding: "10px 20px",
+                                          borderRadius: 12,
+                                          background: canAcceptService ? "#16a34a" : "rgba(17,24,39,0.05)",
+                                          color: canAcceptService ? "#ffffff" : "#9ca3af",
+                                          border: canAcceptService ? "none" : "1px solid rgba(17,24,39,0.08)",
+                                          fontWeight: 700,
+                                          fontSize: "0.85rem",
+                                          cursor: canAcceptService ? "pointer" : "not-allowed",
+                                          display: "flex",
+                                          alignItems: "center",
+                                          gap: 8,
+                                          transition: "all 0.2s ease"
+                                        }}
+                                      >
+                                        <CheckCircle size={16} /> Accept Service
+                                      </button>
+                                    )}
+                                  </div>
                                 )}
-                              </div>
-                            )}
-
-                            {/* Show Reject for other statuses except Rejected/Completed/PR_Accepted/Open/PendingReview/InformationRequired (which are handled above) */}
-                            {!["Open", "PendingReview", "InformationRequired", "PR_Accepted", "Completed", "Rejected"].includes(leadStatus) && !serviceRejected && !serviceAccepted && (
-                              <button onClick={() => openRejectForm(lead._id)} style={{ padding: "10px 20px", borderRadius: 12, background: "rgba(239, 68, 68, 0.08)", color: "#ef4444", border: "1px solid rgba(239, 68, 68, 0.15)", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}><X size={16} /> Reject Service</button>
+                                {assigningExecutorLead !== lead._id && canShowServiceDecisionButtons && (
+                                  <button onClick={() => openRejectForm(lead._id)} style={{ padding: "10px 20px", borderRadius: 12, background: "rgba(239, 68, 68, 0.08)", color: "#ef4444", border: "1px solid rgba(239, 68, 68, 0.15)", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}><X size={16} /> Reject Service</button>
+                                )}
+                              </>
                             )}
 
                             <div style={{ height: 24, width: 1, background: "rgba(17,24,39,0.08)", margin: "0 4px" }} />
@@ -1427,7 +1896,8 @@ const PRDashboardModern = ({
                           </div>
                         </div>
 
-                        {rejectingLeadId === lead._id && (
+                        {/* Rejection form — only shown when not yet finalized */}
+                        {rejectingLeadId === lead._id && canShowServiceDecisionButtons && (
                           <div style={{ marginTop: 20, padding: 20, borderRadius: 18, background: "rgba(239,68,68,0.05)", border: "1px solid rgba(239,68,68,0.15)" }}>
                             <h4 style={{ fontSize: "0.85rem", fontWeight: 800, color: "#ef4444", marginBottom: 12, textTransform: "uppercase" }}>Confirm Service Rejection</h4>
                             <textarea value={rejectDrafts[lead._id] || ""} onChange={(e) => setRejectDrafts((prev) => ({ ...prev, [lead._id]: e.target.value }))} rows={4} placeholder="Explain the reason for rejection to the user..." style={{ width: "100%", padding: 14, borderRadius: 14, border: "1px solid rgba(17,24,39,0.08)", background: "white", color: "#111111", fontSize: "0.9rem", outline: "none", marginBottom: 14 }} />
@@ -1442,30 +1912,7 @@ const PRDashboardModern = ({
                       {/* Communication Hub */}
                       {showCommunicationBox && (
                         <PremiumCard style={{ padding: "18px 22px", background: "#ffffff", border: "1px solid rgba(17,24,39,0.12)", borderRadius: 20, overflow: "visible", position: "relative" }}>
-                          <button
-                            type="button"
-                            onClick={() => setShowCommunicationBox(false)}
-                            aria-label="Close message box"
-                            style={{
-                              position: "absolute",
-                              top: 14,
-                              right: 14,
-                              width: 28,
-                              height: 28,
-                              borderRadius: 999,
-                              border: "1px solid rgba(17,24,39,0.1)",
-                              background: "#ffffff",
-                              color: "#6b7280",
-                              display: "inline-flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              cursor: "pointer",
-                            }}
-                            title="Close message box"
-                          >
-                            <X size={16} />
-                          </button>
-                          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20, paddingRight: 40 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
                             <div>
                               <h3 style={{ fontSize: "1.1rem", fontWeight: 800, marginBottom: 2, color: "#111111" }}>Communication with the Client, Team</h3>
                               <p style={{ color: "#6b7280", fontSize: "0.82rem" }}>Direct coordination with clients and team members.</p>
@@ -1615,14 +2062,93 @@ const PRDashboardModern = ({
           </div>
         </div>
 
-        <ConfirmationModal
-          isOpen={deleteConfirm.isOpen}
-          title="Remove Service"
-          message={`Are you sure you want to remove ${deleteConfirm.lead?.serviceName || "this service"}? It will be hidden from the dashboard.`}
-          onConfirm={handleConfirmDelete}
-          onCancel={() => setDeleteConfirm({ isOpen: false, lead: null, isLoading: false })}
-          isLoading={deleteConfirm.isLoading}
-        />
+        {createPortal(
+          <ConfirmationModal
+            isOpen={deleteConfirm.isOpen}
+            title="Remove Service"
+            message={`Are you sure you want to remove ${deleteConfirm.lead?.serviceName || "this service"}? It will be hidden from the dashboard.`}
+            onConfirm={handleConfirmDelete}
+            onCancel={() => setDeleteConfirm({ isOpen: false, lead: null, isLoading: false })}
+            isLoading={deleteConfirm.isLoading}
+          />,
+          document.body
+        )}
+
+        {serviceListModal && createPortal(
+          <div style={modalOverlayStyle} onClick={() => setServiceListModal(null)}>
+            <div style={modalBoxStyle} onClick={(e) => e.stopPropagation()}>
+              <div style={{ padding: "28px 24px 0", flexShrink: 0 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <h3 style={{ margin: 0, fontSize: "1.2rem", fontWeight: 700, color: "#111" }}>
+                      {serviceListModal.status === "pending" ? "Services Pending" : serviceListModal.status === "inProgress" ? "Services In Progress" : "Completed Services"}
+                    </h3>
+                    <span style={{ background: serviceListModal.status === "pending" ? "#dbeafe" : serviceListModal.status === "inProgress" ? "#fef3c7" : "#dcfce7", color: serviceListModal.status === "pending" ? "#1e40af" : serviceListModal.status === "inProgress" ? "#92400e" : "#166534", fontSize: "0.75rem", fontWeight: 700, padding: "2px 10px", borderRadius: 999 }}>
+                      {serviceListModal.services.length}
+                    </span>
+                  </div>
+                  <button onClick={() => setServiceListModal(null)} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#6b7280", lineHeight: 1, padding: "0 4px" }}>&times;</button>
+                </div>
+              </div>
+              <div style={{ overflowY: "auto", flex: "1 1 0", minHeight: 0, padding: "0 24px 24px", scrollbarWidth: "thin", scrollbarColor: "#d1d5db transparent" }}>
+                {serviceListModal.services.length === 0 ? (
+                  <p style={{ color: "#6b7280", textAlign: "center", padding: "20px 0" }}>No services in this category.</p>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {serviceListModal.services.map((lead, idx) => (
+                      <div key={lead._id || idx} style={{ padding: "12px 14px", borderRadius: 10, background: "#f9fafb", border: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, color: "#111", fontSize: "0.95rem" }}>{lead.serviceName}</div>
+                          <div style={{ marginTop: 6 }}>
+                            <span style={{ fontSize: "0.75rem", fontWeight: 600, padding: "2px 8px", borderRadius: 6, background: "#f3f4f6", color: "#374151", display: "inline-block" }}>
+                              {getDisplayStatus ? getDisplayStatus(lead.status, lead) : lead.status}
+                            </span>
+                          </div>
+                        </div>
+                        <div style={{ color: "#16a34a", fontWeight: 600, fontSize: "0.85rem", marginLeft: 12, whiteSpace: "nowrap" }}>
+                          {formatInr(getLeadRevenueAmount(lead) || 0)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+        {revenuePopup && createPortal(
+          <div style={modalOverlayStyle} onClick={() => setRevenuePopup(null)}>
+            <div style={modalBoxStyle} onClick={(e) => e.stopPropagation()}>
+              <div style={{ padding: "28px 24px 0", flexShrink: 0 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+                  <h3 style={{ margin: 0, fontSize: "1.2rem", fontWeight: 700, color: "#111" }}>Total Commitment</h3>
+                  <button onClick={() => setRevenuePopup(null)} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#6b7280", lineHeight: 1, padding: "0 4px" }}>&times;</button>
+                </div>
+              </div>
+              <div style={{ overflowY: "auto", flex: "1 1 0", minHeight: 0, padding: "0 24px 24px", scrollbarWidth: "thin", scrollbarColor: "#d1d5db transparent" }}>
+                {(!revenuePopup.breakdown || revenuePopup.breakdown.length === 0) ? (
+                  <p style={{ color: "#6b7280", textAlign: "center", padding: "20px 0" }}>No revenue data available.</p>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {(revenuePopup.breakdown || []).map((item, idx) => (
+                      <div key={idx} style={{ padding: "12px 14px", borderRadius: 10, background: "#f9fafb", border: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{ fontWeight: 600, color: "#111", fontSize: "0.95rem" }}>{item.serviceName}</span>
+                        <span style={{ color: "#16a34a", fontWeight: 700, fontSize: "0.95rem" }}>{formatInr(item.amount)}</span>
+                      </div>
+                    ))}
+                    <div style={{ padding: "12px 14px", borderRadius: 10, background: "#f0fdf4", border: "1px solid #bbf7d0", display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
+                      <span style={{ fontWeight: 700, color: "#111", fontSize: "1rem" }}>Total</span>
+                      <span style={{ color: "#16a34a", fontWeight: 800, fontSize: "1rem" }}>{formatInr(revenuePopup.total)}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
       </div>
     </div>
   );

@@ -85,11 +85,15 @@ const PRDashboard = () => {
 
     window.addEventListener("pr-dashboard-refresh", handleRefreshSignal);
     window.addEventListener("storage", handleStorage);
+    window.addEventListener("service-deleted", handleRefreshSignal);
+    window.addEventListener("service-document-added", handleRefreshSignal);
 
     return () => {
       clearInterval(interval);
       window.removeEventListener("pr-dashboard-refresh", handleRefreshSignal);
       window.removeEventListener("storage", handleStorage);
+      window.removeEventListener("service-deleted", handleRefreshSignal);
+      window.removeEventListener("service-document-added", handleRefreshSignal);
     };
   }, []);
 
@@ -113,7 +117,7 @@ const PRDashboard = () => {
 
         const [leadsRes, usersRes, servicesRes] = await Promise.allSettled([
           axios.get(`${apiUrl}/leads`, { headers }),
-          axios.get(`${apiUrl}/auth/users`, { headers }),
+          axios.get(`${apiUrl}/auth/pr-executors`, { headers }),
           axios.get(`${apiUrl}/services`),
         ]);
 
@@ -136,14 +140,15 @@ const PRDashboard = () => {
       const servicesList = (servicesRes?.status === "fulfilled" && Array.isArray(servicesRes.value.data)) ? servicesRes.value.data : [];
 
       if (leadsRes.status === "fulfilled") {
-        setLeads(hydrateLeadsWithDocuments(Array.isArray(leadsRes.value.data) ? leadsRes.value.data : [], servicesList));
+        const leadsData = Array.isArray(leadsRes.value.data) ? leadsRes.value.data : [];
+        setLeads(hydrateLeadsWithDocuments(leadsData, servicesList));
       } else {
         throw leadsRes.reason;
       }
 
-      // This endpoint may be restricted to admin in some deployments; don't block leads.
+      // pr-executors endpoint returns only PR/executor roles; filter to executors only for assignment dropdown.
       if (usersRes.status === "fulfilled" && Array.isArray(usersRes.value.data)) {
-        setExecutors(usersRes.value.data.filter((u) => u.role === "executor"));
+        setExecutors(usersRes.value.data.filter((u) => /^executor\d+$/i.test(String(u.role || "").trim())));
       } else {
         setExecutors([]);
       }
@@ -217,6 +222,17 @@ const PRDashboard = () => {
       .replace(/[^a-z0-9]+/g, " ")
       .replace(/\s+/g, " ")
       .trim();
+
+  const getCatalogServiceForLead = (lead) => {
+    const target = normalizeServiceKey(lead?.serviceName);
+    if (!target) return null;
+    return services.find((s) => normalizeServiceKey(s?.title) === target) || null;
+  };
+
+  const getLeadRevenueWithCatalog = (lead) => {
+    const catalog = getCatalogServiceForLead(lead);
+    return getLeadRevenueAmount(lead, catalog);
+  };
 
   const getPendingUploadsForService = (serviceName) => {
     const target = normalizeServiceKey(serviceName);
@@ -368,21 +384,36 @@ const PRDashboard = () => {
 
       let requiredDocs = [];
       if (matchedService && Array.isArray(matchedService.documentsRequired)) {
+        // Identify which document names have admin-added placeholders (to preserve the flag after dedupe)
+        const adminAddedDocNames = new Set(
+          (Array.isArray(lead?.documents) ? lead.documents : [])
+            .filter(d => d?.adminAdded === true && !d?.url && !d?.publicId && !d?.secure_url && !d?.uploadedUrl)
+            .map(d => String(d?.name || "").trim().toLowerCase())
+        );
         requiredDocs = matchedService.documentsRequired.map((docName) => ({
           name: docName,
           status: "Pending",
           type: "Client",
+          adminAdded: adminAddedDocNames.has(String(docName || "").trim().toLowerCase())
         }));
       }
 
       const pendingDocs = getPendingUploadsForService(lead?.serviceName);
       const currentDocs = Array.isArray(lead?.documents) ? lead.documents : [];
-      const mergedDocs = dedupeDocumentsByName([...currentDocs, ...pendingDocs, ...requiredDocs], {
+      // Filter out admin-added placeholder entries (adminAdded: true with no URL) so the document
+      // only appears in the dashboard once the user has actually uploaded a file.
+      const realCurrentDocs = currentDocs.filter(
+        (d) => !(d?.adminAdded === true && !d?.url && !d?.publicId && !d?.secure_url && !d?.uploadedUrl)
+      );
+      const mergedDocs = dedupeDocumentsByName([...realCurrentDocs, ...pendingDocs, ...requiredDocs], {
         reuploadedDocumentNames: lead?.reuploadedDocumentNames,
       });
 
       const executorRejected = (lead) => {
         if (!lead || lead?.status !== "Rejected") return false;
+        // In PR dashboard we show service-level executor rejections even before notifying the client —
+        // this is intentional so PR sees the staging state and can act on it.
+        // The gate (prNotifiedClientServiceRejection) only affects other dashboards.
         const execMsg = String(lead?.executorMessage || "").trim();
         const prMsg = String(lead?.prFeedback || "").toLowerCase();
         const adminMsg = String(lead?.adminMessage || "").toLowerCase();
@@ -409,7 +440,10 @@ const PRDashboard = () => {
         return {
           ...doc,
           status: resolvedStatus,
-          executorRejected: executorRejectedFlag && serviceRejected,
+          // Preserve the per-document executorRejected flag from the DB.
+          // Only fall back to the lead-level check when the lead itself is Rejected by executor.
+          executorRejected: doc?.executorRejected ?? (executorRejectedFlag && serviceRejected),
+          prNotifiedClient: doc?.prNotifiedClient ?? false,
           displayReuploaded:
             serviceRejected || draftRejected
               ? false
@@ -437,17 +471,50 @@ const PRDashboard = () => {
     );
   };
 
-  const handleUpdateLeadStatus = async (leadId, status, feedback = "") => {
+  const PR_SERVICE_POST_DECISION_STATUSES = new Set([
+    "pr_accepted",
+    "assignedtoexecutor",
+    "inprogress",
+    "executionfinished",
+    "draftsent",
+    "draftrejected",
+    "draftaccepted",
+    "completed",
+    "closed",
+  ]);
+
+  const isPrServiceDecisionFinalized = (lead) => {
+    if (!lead) return false;
+    const statusLower = String(lead.status || "").trim().toLowerCase();
+    if (!statusLower) return false;
+    if (statusLower === "rejected") return true;
+    return PR_SERVICE_POST_DECISION_STATUSES.has(statusLower);
+  };
+
+  const mergeUpdatedLead = (leadId, updatedLead) => {
+    if (!updatedLead) return;
+    setLeads((prev) =>
+      hydrateLeadsWithDocuments(
+        prev.map((item) =>
+          String(item._id) === String(leadId) ? { ...item, ...updatedLead } : item
+        ),
+        services
+      )
+    );
+  };
+
+  const handleUpdateLeadStatus = async (leadId, status, feedback = "", extraFields = {}) => {
     try {
       const apiUrl = import.meta.env.VITE_API_URL;
-      const payload = { status };
+      const payload = { status, ...extraFields };
       if (feedback) payload.prFeedback = feedback;
 
-      await axios.patch(
+      const response = await axios.patch(
         `${apiUrl}/leads/${leadId}`,
         payload,
         { headers: { Authorization: `Bearer ${storedUser.token}` } }
       );
+      mergeUpdatedLead(leadId, response.data?.lead);
       toast.success(`Status updated to ${status}`);
       fetchData();
     } catch (error) {
@@ -458,15 +525,52 @@ const PRDashboard = () => {
   const handleDocumentStatus = async (leadId, docId, status) => {
     try {
       const apiUrl = import.meta.env.VITE_API_URL;
-      await axios.patch(
+      const response = await axios.patch(
         `${apiUrl}/leads/${leadId}/documents/${docId}/status`,
         { status },
         { headers: { Authorization: `Bearer ${storedUser.token}` } }
       );
+      mergeUpdatedLead(leadId, response.data?.lead);
       toast.success(`Document ${status}`);
       fetchData();
     } catch (error) {
       toast.error("Failed to update document status");
+    }
+  };
+
+  // PR clicks "Notify Client" on an executor-rejected document —
+  // sets doc.status = "Rejected" + lead.status = "InformationRequired" so the user sees it
+  const handleNotifyClientDocRejection = async (leadId, docId) => {
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL;
+      const response = await axios.patch(
+        `${apiUrl}/leads/${leadId}/documents/${docId}/notify-client`,
+        {},
+        { headers: { Authorization: `Bearer ${storedUser.token}` } }
+      );
+      mergeUpdatedLead(leadId, response.data?.lead);
+      toast.success("Client notified — document marked as rejected");
+      fetchData();
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to notify client");
+    }
+  };
+
+  // PR clicks "Notify Client" for a service-level executor rejection —
+  // opens the gate so the rejection becomes visible to the user/admin/executor dashboards
+  const handleNotifyClientServiceRejection = async (leadId) => {
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL;
+      const response = await axios.patch(
+        `${apiUrl}/leads/${leadId}/notify-client-service-rejection`,
+        {},
+        { headers: { Authorization: `Bearer ${storedUser.token}` } }
+      );
+      mergeUpdatedLead(leadId, response.data?.lead);
+      toast.success("Client notified — service rejection is now visible to the user");
+      fetchData();
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to notify client");
     }
   };
 
@@ -696,9 +800,21 @@ const PRDashboard = () => {
       return;
     }
 
-    await handleUpdateLeadStatus(leadId, "Rejected", reason);
-    setRejectDrafts((prev) => ({ ...prev, [leadId]: "" }));
-    setRejectingLeadId(null);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL;
+      const response = await axios.patch(
+        `${apiUrl}/leads/${leadId}`,
+        { status: "Rejected", prFeedback: reason },
+        { headers: { Authorization: `Bearer ${storedUser.token}` } }
+      );
+      mergeUpdatedLead(leadId, response.data?.lead);
+      setRejectDrafts((prev) => ({ ...prev, [leadId]: "" }));
+      setRejectingLeadId(null);
+      toast.success("Service rejected");
+      fetchData();
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to reject service");
+    }
   };
 
   const getEffectiveLeadStatus = (lead) => {
@@ -714,7 +830,7 @@ const PRDashboard = () => {
 
     if (
       rawStatus === "DraftRejected" ||
-      ((rawStatus === "InProgress" || rawStatus === "DraftSent" || rawStatus === "ExecutionFinished") &&
+      ((rawStatus === "InProgress" || rawStatus === "ExecutionFinished") &&
         looksLikeUserDraftRejection)
     ) {
       return "DraftRejected";
@@ -727,10 +843,53 @@ const PRDashboard = () => {
     return rawStatus;
   };
 
+  const isPrReuploadReviewState = (lead) => {
+    if (!lead) return false;
+    const statusLower = String(lead?.status || "").trim().toLowerCase();
+    if (!["rejected", "informationrequired"].includes(statusLower)) return false;
+
+    // Use the raw backend documents to check for reuploads, because getVisibleDocuments
+    // forces all document statuses to "Rejected" for a rejected lead — which would always
+    // make hasRejected true and prevent this function from returning true.
+    const rawDocs = Array.isArray(lead?.documents) ? lead.documents : [];
+
+    // A lead has reuploaded docs if any document is flagged reuploaded,
+    // OR if the backend reuploadedDocumentNames list is non-empty.
+    const hasReuploaded =
+      rawDocs.some((d) => !!d?.reuploaded || String(d?.status || "").toLowerCase() === "reuploaded") ||
+      (Array.isArray(lead?.reuploadedDocumentNames) && lead.reuploadedDocumentNames.length > 0);
+
+    // Check if any raw (non-reuploaded) document still has an explicit Rejected status
+    // indicating there are still unresolved rejections from the backend
+    const hasStillRejectedDoc = rawDocs.some(
+      (d) =>
+        String(d?.status || "").toLowerCase() === "rejected" &&
+        !d?.reuploaded
+    );
+
+    const execMsg = String(lead?.executorMessage || "").toLowerCase();
+    const prMsg = String(lead?.prFeedback || "").toLowerCase();
+    const adminMsg = String(lead?.adminMessage || "").toLowerCase();
+    const executorIndicators = ["executor", "assignment rejected", "rejected by executor"];
+    const isExecutorOrigin = execMsg.length > 0 || executorIndicators.some(ind => prMsg.includes(ind) || adminMsg.includes(ind));
+
+    return hasReuploaded && !isExecutorOrigin && !hasStillRejectedDoc;
+  };
+
   const getDisplayStatus = (status, lead) => {
     const s = String(status || "").trim().toLowerCase();
     
     if (s === "rejected") {
+      // Service-level executor rejection waiting for PR to notify client
+      if (lead?.executorServiceRejected === true && lead?.prNotifiedClientServiceRejection !== true) {
+        return "Rejected by Executor (Notify Client)";
+      }
+
+      // If the user has already resubmitted their documents, show "PR Reviewing" instead
+      if (isPrReuploadReviewState(lead)) {
+        return "PR Reviewing";
+      }
+
       const execMsg = String(lead?.executorMessage || "").toLowerCase();
       const prMsg = String(lead?.prFeedback || "").toLowerCase();
       const adminMsg = String(lead?.adminMessage || "").toLowerCase();
@@ -748,40 +907,42 @@ const PRDashboard = () => {
       return "Rejected by PR";
     }
 
+    // Build executor label dynamically from the lead's assignedExecutor field
+    const executorLabel = (() => {
+      const raw = String(lead?.assignedExecutor || "").trim().toLowerCase();
+      const m = raw.match(/^executor(\d+)$/);
+      if (m) return `Executor ${m[1]}`;
+      if (raw) return raw.charAt(0).toUpperCase() + raw.slice(1);
+      return "Executor";
+    })();
+
     const map = {
       'open': 'New Request',
       'pendingreview': 'PR Reviewing',
       'informationrequired': isPrReuploadReviewState(lead) ? 'PR Reviewing' : 'Rejected by PR',
-      'pr_accepted': 'Pending Executor Approval',
-      'assignedtoexecutor': 'Coordination',
-      'inprogress': 'Accepted by Executor',
-      'executionfinished': 'Review',
+      'pr_accepted': 'Pending Executor Assignment',
+      'assignedtoexecutor': `Assigned to ${executorLabel}`,
+      'inprogress': `Accepted by ${executorLabel}`,
+      'executionfinished': lead?.draftSentToPR ? 'Review the Draft' : 'Draft Uploaded',
       'draftsent': 'Waiting for User Draft Approval',
-      'draftrejected': 'Draft Rejected by User',
+      'draftrejected': (() => {
+        if (!lead?.draftSentToPR) return 'Draft Rejected by User';
+        // draftSentToPR persists from previous cycle — only treat as a new draft if the
+        // latest draft doc is NOT in "Rejected" state (i.e. executor actually re-sent one).
+        const latestDraft = Array.isArray(lead?.documents)
+          ? [...lead.documents]
+              .sort((a, b) => new Date(b?.uploadedAt || b?.createdAt || 0) - new Date(a?.uploadedAt || a?.createdAt || 0))
+              .find((d) => String(d?.type || "").trim().toLowerCase() === "draft")
+          : null;
+        const latestDraftRejected = String(latestDraft?.status || "").trim().toLowerCase() === "rejected";
+        return latestDraftRejected ? 'Draft Rejected by User' : 'Review the Draft';
+      })(),
       'draftaccepted': 'Draft Accepted',
       'useraccepted': 'Draft Accepted',
       'completed': 'Service Completed',
     };
     
     return map[s] || status;
-  };
-
-  const isPrReuploadReviewState = (lead) => {
-    if (!lead) return false;
-    const statusLower = String(lead?.status || "").trim().toLowerCase();
-    if (!["rejected", "informationrequired"].includes(statusLower)) return false;
-
-    const docs = getVisibleDocuments(lead) || [];
-    const hasReuploaded = docs.some((d) => !!d?.displayReuploaded || !!d?.reuploaded || String(d?.status || "").toLowerCase() === "reuploaded");
-    const hasRejected = docs.some((d) => String(d?.status || "").toLowerCase() === "rejected");
-
-    const execMsg = String(lead?.executorMessage || "").toLowerCase();
-    const prMsg = String(lead?.prFeedback || "").toLowerCase();
-    const adminMsg = String(lead?.adminMessage || "").toLowerCase();
-    const executorIndicators = ["executor", "assignment rejected", "rejected by executor"];
-    const isExecutorOrigin = execMsg.length > 0 || executorIndicators.some(ind => prMsg.includes(ind) || adminMsg.includes(ind));
-
-    return hasReuploaded && !isExecutorOrigin && !hasRejected;
   };
 
   const isAutomatedExecutorMessage = (msg) => {
@@ -798,8 +959,12 @@ const PRDashboard = () => {
   const canManageDraftForLead = (lead) =>
     ['InProgress', 'ExecutionFinished', 'DraftSent', 'DraftRejected', 'DraftAccepted', 'UserAccepted', 'Completed'].includes(lead?.status);
 
-  const canUploadDraftForLead = (lead) =>
-    ['InProgress', 'ExecutionFinished', 'DraftSent', 'DraftRejected', 'DraftAccepted', 'UserAccepted'].includes(lead?.status);
+  // Draft upload belongs to the assigned executor — PR only handles unassigned services.
+  const canUploadDraftForLead = (lead) => {
+    const hasExecutor = !!(lead?.assignedExecutor || lead?.executorId);
+    if (hasExecutor) return false;
+    return ['InProgress', 'ExecutionFinished', 'DraftSent', 'DraftRejected', 'DraftAccepted', 'UserAccepted'].includes(lead?.status);
+  };
 
   const hasDraftDocument = (lead) =>
     Array.isArray(lead?.documents) && lead.documents.some((d) => d.type === 'Draft');
@@ -810,7 +975,12 @@ const PRDashboard = () => {
   };
 
   function getVisibleDocuments(lead) {
-    const documents = Array.isArray(lead?.documents) ? lead.documents : [];
+    // Filter out admin-added placeholder entries (adminAdded: true with no URL) so the document
+    // only appears in the dashboard once the user has actually uploaded a file.
+    const allDocuments = Array.isArray(lead?.documents) ? lead.documents : [];
+    const documents = allDocuments.filter(
+      (d) => !(d?.adminAdded === true && !d?.url && !d?.publicId && !d?.secure_url && !d?.uploadedUrl)
+    );
     const serviceRejected = String(lead?.status || "").trim().toLowerCase() === "rejected";
     const isExecutorRejectedLead = (item) => {
       if (!item || String(item?.status || "").trim().toLowerCase() !== "rejected") return false;
@@ -926,18 +1096,29 @@ const PRDashboard = () => {
     return [...collapsed, ...appendedDocs];
   }
 
-  const visibleLeads = leads.filter((lead) => !hiddenLeads.includes(lead._id));
+  const visibleLeads = leads.filter((lead) => {
+    if (hiddenLeads.includes(lead._id)) return false;
+    const serviceKey = normalizeServiceKey(lead?.serviceName);
+    if (!serviceKey) return false;
+    const serviceExists = services.some(
+      (s) => normalizeServiceKey(s?.title) === serviceKey
+    );
+    return serviceExists;
+  });
 
   const stats = {
     total: visibleLeads.length,
     pending: visibleLeads.filter((lead) => ["Open", "PendingReview"].includes(getEffectiveLeadStatus(lead)))
       .length,
+    inProgress: visibleLeads.filter((lead) =>
+      !["Open", "PendingReview"].includes(getEffectiveLeadStatus(lead)) && getEffectiveLeadStatus(lead) !== "Completed"
+    ).length,
     completed: visibleLeads.filter((lead) => getEffectiveLeadStatus(lead) === "Completed").length,
     revenueValue: visibleLeads.reduce(
       (sum, lead) =>
         sum +
         (shouldCountLeadRevenue(lead)
-          ? getLeadRevenueAmount(lead)
+          ? getLeadRevenueWithCatalog(lead)
           : 0),
       0,
     ),
@@ -951,6 +1132,38 @@ const PRDashboard = () => {
         0,
       ),
     ),
+  };
+
+  const getServicesByStatus = (status) => {
+    if (status === "pending") {
+      return visibleLeads.filter((lead) => ["Open", "PendingReview"].includes(getEffectiveLeadStatus(lead)));
+    }
+    if (status === "inProgress") {
+      return visibleLeads.filter((lead) =>
+        !["Open", "PendingReview"].includes(getEffectiveLeadStatus(lead)) && getEffectiveLeadStatus(lead) !== "Completed"
+      );
+    }
+    if (status === "completed") {
+      return visibleLeads.filter((lead) => getEffectiveLeadStatus(lead) === "Completed");
+    }
+    return [];
+  };
+
+  const getTotalRevenueBreakdown = () => {
+    const pendingLeads = visibleLeads.filter((lead) => ["Open", "PendingReview"].includes(getEffectiveLeadStatus(lead)));
+    const inProgressLeads = visibleLeads.filter((lead) =>
+      !["Open", "PendingReview"].includes(getEffectiveLeadStatus(lead)) && getEffectiveLeadStatus(lead) !== "Completed"
+    );
+    const completedLeads = visibleLeads.filter((lead) => getEffectiveLeadStatus(lead) === "Completed");
+
+    return {
+      pending: pendingLeads.reduce((sum, lead) => sum + (shouldCountLeadRevenue(lead) ? getLeadRevenueWithCatalog(lead) : 0), 0),
+      inProgress: inProgressLeads.reduce((sum, lead) => sum + (shouldCountLeadRevenue(lead) ? getLeadRevenueWithCatalog(lead) : 0), 0),
+      completed: completedLeads.reduce((sum, lead) => sum + (shouldCountLeadRevenue(lead) ? getLeadRevenueWithCatalog(lead) : 0), 0),
+      total: stats.revenueValue,
+      high: stats.revenueValue,
+      small: stats.revenueValue,
+    };
   };
 
   const searchTerm = searchQuery.trim().toLowerCase();
@@ -973,8 +1186,8 @@ const PRDashboard = () => {
       lead?.userMessage,
       lead?._id,
       lead?.createdAt ? new Date(lead.createdAt).toLocaleDateString("en-IN") : "",
-      String(getLeadRevenueAmount(lead) || ""),
-      formatInr(getLeadRevenueAmount(lead) || 0),
+      String(getLeadRevenueWithCatalog(lead) || ""),
+      formatInr(getLeadRevenueWithCatalog(lead) || 0),
       docText,
     ]
       .filter(Boolean)
@@ -1007,14 +1220,19 @@ const PRDashboard = () => {
       searchQuery={searchQuery}
       setSearchQuery={setSearchQuery}
       stats={stats}
+      getServicesByStatus={getServicesByStatus}
+      getTotalRevenueBreakdown={getTotalRevenueBreakdown}
       formatInr={formatInr}
       getServicePricing={getServicePricing}
       getEffectiveLeadStatus={getEffectiveLeadStatus}
+      isPrServiceDecisionFinalized={isPrServiceDecisionFinalized}
       getDisplayStatus={getDisplayStatus}
       getVisibleDocuments={getVisibleDocuments}
-      getLeadRevenueAmount={getLeadRevenueAmount}
+      getLeadRevenueAmount={getLeadRevenueWithCatalog}
       handleUpdateLeadStatus={handleUpdateLeadStatus}
       handleDocumentStatus={handleDocumentStatus}
+      handleNotifyClientDocRejection={handleNotifyClientDocRejection}
+      handleNotifyClientServiceRejection={handleNotifyClientServiceRejection}
       handleClearExecutorMessage={handleClearExecutorMessage}
       handleClearUserRejectedMessage={handleClearUserRejectedMessage}
       handleClearAdminPrMessage={handleClearAdminPrMessage}
@@ -1043,6 +1261,7 @@ const PRDashboard = () => {
       deleteConfirm={deleteConfirm}
       handleConfirmDelete={handleConfirmDelete}
       setDeleteConfirm={setDeleteConfirm}
+      executors={executors}
     />
   );
 
@@ -1311,7 +1530,7 @@ const PRDashboard = () => {
                       </div>
 
                       <div className="pr-header-actions" style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                        {(lead.status === 'PendingReview' || lead.status === 'Open') && (
+                        {!isPrServiceDecisionFinalized(lead) && (
                           <div className="pr-action-btns" style={{ display: "flex", gap: "8px" }} onClick={(e) => e.stopPropagation()}>
                             <button
                               onClick={() => handleUpdateLeadStatus(lead._id, 'PR_Accepted')}
@@ -1399,7 +1618,7 @@ const PRDashboard = () => {
                                           const docStatus = serviceRejected || (draftRejected && isDraftDocument)
                                             ? "Rejected"
                                             : String(doc.status || "Waiting Review");
-                                          const showReviewActions = !serviceRejected && ['Open', 'PendingReview', 'InformationRequired'].includes(lead.status);
+                                          const showReviewActions = !serviceRejected && !isPrServiceDecisionFinalized(lead);
                                           return (
                                             <React.Fragment key={doc._id}>
                                               <div className="pr-doc-row" style={{ padding: "16px 24px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "14px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -1605,7 +1824,7 @@ const PRDashboard = () => {
                                     );
                                   }
 
-                                  if (!(lead.status === 'PendingReview' || lead.status === 'Open' || lead.status === 'InformationRequired')) {
+                                  if (isPrServiceDecisionFinalized(lead)) {
                                     return null;
                                   }
 
@@ -1643,7 +1862,7 @@ const PRDashboard = () => {
                                   );
                                 })()}
 
-                                {rejectingLeadId === lead._id && (
+                                {rejectingLeadId === lead._id && !isPrServiceDecisionFinalized(lead) && (
                                   <div
                                     style={{
                                       marginTop: "1rem",

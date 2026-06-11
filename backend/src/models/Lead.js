@@ -8,6 +8,9 @@ const leadSchema = new mongoose.Schema({
   cost: { type: Number, default: 0 },
   recommendedFeeAmount: { type: Number, default: 0 },
   recommendedFees: { type: String, default: "" },
+  ourFee: { type: String, default: "" },
+  marketFees: { type: String, default: "" },
+  workingDays: { type: Number, default: 2 },
   status: {
     type: String,
     enum: [
@@ -27,6 +30,7 @@ const leadSchema = new mongoose.Schema({
     ],
     default: "Open",
   },
+  assignedExecutor: { type: String, default: "" },
   prId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   executorId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   prFeedback: { type: String, default: "" },
@@ -38,6 +42,9 @@ const leadSchema = new mongoose.Schema({
       publicId: String,
       reuploaded: { type: Boolean, default: false },
       rejectionMessage: { type: String, default: "" },
+      executorRejected: { type: Boolean, default: false },  // executor flagged; PR hasn't notified client yet
+      prNotifiedClient: { type: Boolean, default: false },  // PR clicked "Notify Client" — now visible to user
+      executorAccepted: { type: Boolean, default: false },  // executor explicitly accepted this doc
       type: {
         type: String,
         enum: ["UserUpload", "Client", "Draft", "Final", "ExecutionResult"],
@@ -48,6 +55,7 @@ const leadSchema = new mongoose.Schema({
         enum: ["Pending", "Accepted", "Rejected"],
         default: "Pending",
       },
+      adminAdded: { type: Boolean, default: false },
       uploadedAt: { type: Date, default: Date.now },
     },
   ],
@@ -59,6 +67,11 @@ const leadSchema = new mongoose.Schema({
   prToExecutorMessage: { type: String, default: "" },
   adminToExecutorMessage: { type: String, default: "" },
   draftReadyToSend: { type: Boolean, default: false },
+  draftSentToPR: { type: Boolean, default: false },
+  // When executor rejects the entire service, PR must click "Notify Client" before
+  // the rejection becomes visible to the user/admin. Until then only PR can see it.
+  executorServiceRejected: { type: Boolean, default: false },
+  prNotifiedClientServiceRejection: { type: Boolean, default: false },
   reuploadedDocumentNames: [String],
   isDeleted: { type: Boolean, default: false },
   updatedAt: { type: Date, default: Date.now },

@@ -169,7 +169,7 @@ function App() {
             <Route
               path="/executor-dashboard"
               element={
-                <ProtectedRoute allowedRoles={["executor", "admin"]}>
+                <ProtectedRoute allowedRoles={["executor", "executorN", "admin"]}>
                   <ExecutorDashboard />
                 </ProtectedRoute>
               }

@@ -131,21 +131,25 @@ const Profile = () => {
   };
 
   const roleKey = normalizeRole(user?.role);
+  const isExecutorRole = roleKey === "executor" || /^executor\d+$/.test(roleKey);
+  const executorNumMatch = roleKey.match(/^executor(\d+)$/);
   const roleLabel =
     roleKey === "admin"
       ? "Admin"
       : roleKey === "pr"
         ? "PR"
-        : roleKey === "executor"
-          ? "Service Executor"
-          : "Client";
+        : executorNumMatch
+          ? `Executor ${executorNumMatch[1]}`
+          : roleKey === "executor"
+            ? "Service Executor"
+            : "Client";
 
   const roleAccent =
     roleKey === "admin"
       ? "#22c55e"
       : roleKey === "pr"
         ? "#3b82f6"
-        : roleKey === "executor"
+        : isExecutorRole
           ? "#f59e0b"
           : isLightMode
             ? "rgba(0, 0, 0, 0.72)"
@@ -431,7 +435,7 @@ const Profile = () => {
                 color={isLightMode ? "#3b82f6" : "#3b82f6"}
                 strokeWidth={2.5}
               />
-            ) : roleKey === "executor" ? (
+            ) : isExecutorRole ? (
               <User
                 size={36}
                 color={isLightMode ? "#f59e0b" : "#f59e0b"}
@@ -480,12 +484,12 @@ const Profile = () => {
               {user.name}
               <span
                 style={{
-                  fontSize: roleKey === "pr" || roleKey === "executor" ? "0.85rem" : "0.7rem",
-                  padding: roleKey === "pr" || roleKey === "executor" ? "0" : "4px 10px",
+                  fontSize: roleKey === "pr" || isExecutorRole ? "0.85rem" : "0.7rem",
+                  padding: roleKey === "pr" || isExecutorRole ? "0" : "4px 10px",
                   background:
                     roleKey === "admin"
                       ? "rgba(34, 197, 94, 0.15)"
-                      : roleKey === "pr" || roleKey === "executor"
+                      : roleKey === "pr" || isExecutorRole
                         ? "transparent"
                         : "rgba(0, 0, 0, 0.05)",
                   color: roleAccent,
@@ -656,7 +660,7 @@ const Profile = () => {
                     letterSpacing: "0.1em",
                   }}
                 >
-                  {roleKey === "pr" || roleKey === "executor"
+                  {roleKey === "pr" || isExecutorRole
                     ? "Professional"
                     : "Business"}
                 </span>
@@ -664,7 +668,7 @@ const Profile = () => {
 
               <div>
                 <label style={labelStyle}>
-                  {roleKey === "pr" || roleKey === "executor"
+                  {roleKey === "pr" || isExecutorRole
                     ? "Organization / Firm"
                     : "Company Name"}
                 </label>
@@ -698,7 +702,7 @@ const Profile = () => {
               >
                 <div>
                   <label style={labelStyle}>
-                    {roleKey === "pr" || roleKey === "executor"
+                    {roleKey === "pr" || isExecutorRole
                       ? "Specialization"
                       : "Industry"}
                   </label>
@@ -723,7 +727,7 @@ const Profile = () => {
                 </div>
                 <div>
                   <label style={labelStyle}>
-                    {roleKey === "pr" || roleKey === "executor"
+                    {roleKey === "pr" || isExecutorRole
                       ? "Expertise Level"
                       : "Stage"}
                   </label>

@@ -6,7 +6,14 @@ const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
   password: { type: String, required: function() { return !this.googleId; } },
   googleId: { type: String, unique: true, sparse: true },
-  role: { type: String, enum: ["user", "admin", "PR", "executor"], default: "user" },
+  role: {
+    type: String,
+    default: "user",
+    validate: {
+      validator: (v) => /^(user|admin|pr\d*|executor\d*)$/i.test(v),
+      message: (p) => `"${p.value}" is not a valid role`,
+    },
+  },
   profile: {
     companyName: String,
     phone: String,

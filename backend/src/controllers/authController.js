@@ -573,6 +573,51 @@ export const getAllUsers = async (req, res) => {
   }
 };
 
+export const assignUserRole = async (req, res) => {
+  try {
+    const { email, role } = req.body;
+    if (!email || !role) return res.status(400).json({ message: "Email and role are required" });
+    const normalizedRoleInput = String(role).trim().toLowerCase();
+    const isPR = normalizedRoleInput === "pr";
+    const isExecutorWithNum = /^executor\d+$/.test(normalizedRoleInput);
+    if (!isPR && !isExecutorWithNum) {
+      let message;
+      if (normalizedRoleInput === "executor") {
+        message = "Executor role must include a number, e.g. executor1, executor2 …";
+      } else if (/^pr\d+$/.test(normalizedRoleInput)) {
+        message = "PR role must be exactly \"pr\" with no number.";
+      } else {
+        message = "Invalid role. Use \"pr\" for PR role or \"executor1\", \"executor2\" … for Executor role.";
+      }
+      return res.status(400).json({ message });
+    }
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = await User.findOne({ email: { $regex: new RegExp(`^${normalizedEmail.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") } });
+    if (!user) return res.status(404).json({ message: "No user found with that email address" });
+    user.role = normalizedRoleInput;
+    user.markModified("role");
+    await user.save();
+    res.json({
+      message: `Role updated to ${normalizedRoleInput} for ${user.name}`,
+      user: { _id: user._id, name: user.name, email: user.email, role: user.role }
+    });
+  } catch (error) {
+    console.error("assignUserRole error:", error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const getPRAndExecutors = async (req, res) => {
+  try {
+    const users = await User.find({
+      role: { $regex: /^(pr\d*|executor\d*)$/i }
+    }).select("-password").sort({ role: 1, name: 1 });
+    res.json(users);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 export const logoutUser = async (req, res) => {
   try {
     // Keep session records in Atlas for manual review/deletion.

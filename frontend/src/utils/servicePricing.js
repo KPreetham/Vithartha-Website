@@ -1,135 +1,135 @@
-const DEFAULT_SERVICE_PRICE = 1000;
+const DEFAULT_SERVICE_PRICE = 1;
 
 const SERVICE_PRICE_BOOK = [
   {
     match: ["gst registration"],
-    amount: 1499,
-    displayPrice: "Rs. 1,499",
+    amount: 1,
+    displayPrice: "Rs. 1",
   },
   {
     match: ["gstr 1 & 3b filing", "gstr 1 and 3b filing", "gstr filing"],
-    amount: 899,
-    displayPrice: "Rs. 899/month",
+    amount: 1,
+    displayPrice: "Rs. 1",
   },
   {
     match: ["itr filing (individuals)", "itr filing"],
-    amount: 1299,
-    displayPrice: "Rs. 1,299",
+    amount: 1,
+    displayPrice: "Rs. 1",
   },
   /*
   {
     match: ["capital gains tax filing", "capital gains"],
-    amount: 2499,
-    displayPrice: "Rs. 2,499",
+    amount: 1,
+    displayPrice: "Rs. 1",
   },
   {
     match: ["rental & house property itr", "house property"],
-    amount: 1499,
-    displayPrice: "Rs. 1,499",
+    amount: 1,
+    displayPrice: "Rs. 1",
   },
   {
     match: ["nri taxation & compliance", "nri taxation"],
-    amount: 2999,
-    displayPrice: "Rs. 2,999",
+    amount: 1,
+    displayPrice: "Rs. 1",
   },
   */
   {
     match: ["company incorporation"],
-    amount: 999,
-    displayPrice: "Rs. 999 + govt fees",
+    amount: 1,
+    displayPrice: "Rs. 1",
   },
   /*
   {
     match: ["virtual cfo service", "virtual cfo"],
-    amount: 25000,
-    displayPrice: "Rs. 25,000/month",
+    amount: 1,
+    displayPrice: "Rs. 1",
   },
   {
     match: ["virtual accountant"],
-    amount: 15000,
-    displayPrice: "Rs. 15,000/month",
+    amount: 1,
+    displayPrice: "Rs. 1",
   },
   {
     match: ["gst 2b reconciliation", "2b reconciliation"],
-    amount: 1299,
-    displayPrice: "Rs. 1,299/month",
+    amount: 1,
+    displayPrice: "Rs. 1",
   },
   {
     match: ["gst notice management"],
-    amount: 1999,
-    displayPrice: "Rs. 1,999",
+    amount: 1,
+    displayPrice: "Rs. 1",
   },
   {
     match: ["e-way bill & e-invoicing", "e-way bill", "e invoicing"],
-    amount: 999,
-    displayPrice: "Rs. 999/month",
+    amount: 1,
+    displayPrice: "Rs. 1",
   },
   {
     match: ["gst health check"],
-    amount: 2499,
-    displayPrice: "Rs. 2,499",
+    amount: 1,
+    displayPrice: "Rs. 1",
   },
   {
     match: ["tds payment & returns", "tds payment", "tds returns"],
-    amount: 1199,
-    displayPrice: "Rs. 1,199/month",
+    amount: 1,
+    displayPrice: "Rs. 1",
   },
   {
     match: ["it notice management", "income tax notice"],
-    amount: 1999,
-    displayPrice: "Rs. 1,999",
+    amount: 1,
+    displayPrice: "Rs. 1",
   },
   {
     match: ["refund postponement/reissue", "refund reissue", "refund postponement"],
-    amount: 899,
-    displayPrice: "Rs. 899",
+    amount: 1,
+    displayPrice: "Rs. 1",
   },
   {
     match: ["startup consulting"],
-    amount: 1999,
-    displayPrice: "Rs. 1,999",
+    amount: 1,
+    displayPrice: "Rs. 1",
   },
   {
     match: ["import & export (iec)", "import export", "iec"],
-    amount: 2499,
-    displayPrice: "Rs. 2,499 + govt fees",
+    amount: 1,
+    displayPrice: "Rs. 1",
   },
   */
   {
     match: ["mca annual filings", "mca filing"],
-    amount: 3499,
-    displayPrice: "Rs. 3,499/year",
+    amount: 1,
+    displayPrice: "Rs. 1",
   },
   /*
   {
     match: ["legal & secretarial service", "secretarial service"],
-    amount: 2999,
-    displayPrice: "Rs. 2,999",
+    amount: 1,
+    displayPrice: "Rs. 1",
   },
   {
     match: ["director & professional svc", "director professional"],
-    amount: 1499,
-    displayPrice: "Rs. 1,499",
+    amount: 1,
+    displayPrice: "Rs. 1",
   },
   {
     match: ["share transfer & esop", "share transfer", "esop"],
-    amount: 3999,
-    displayPrice: "Rs. 3,999",
+    amount: 1,
+    displayPrice: "Rs. 1",
   },
   {
     match: ["epf & esi management", "epf", "esi management"],
-    amount: 1499,
-    displayPrice: "Rs. 1,499/month",
+    amount: 1,
+    displayPrice: "Rs. 1",
   },
   {
     match: ["tds (payroll) compliance", "payroll tds"],
-    amount: 999,
-    displayPrice: "Rs. 999/month",
+    amount: 1,
+    displayPrice: "Rs. 1",
   },
   {
     match: ["technical service"],
-    amount: 1999,
-    displayPrice: "Rs. 1,999/month",
+    amount: 1,
+    displayPrice: "Rs. 1",
   },
   */
 ];
@@ -180,11 +180,16 @@ export const getServicePricing = (serviceName) => {
 
   return {
     amount: DEFAULT_SERVICE_PRICE,
-    displayPrice: "Rs. 1,000",
+    displayPrice: "Rs. 1",
   };
 };
 
-export const getLeadRevenueAmount = (lead) => {
+export const getLeadRevenueAmount = (lead, catalogService = null) => {
+  if (catalogService) {
+    const catalogFee = parseFeeAmount(catalogService?.recommendedFees);
+    if (Number.isFinite(catalogFee) && catalogFee > 0) return catalogFee;
+  }
+
   const raw = lead?.recommendedFees || lead?.recommendedFeeAmount || lead?.cost || "";
   const fee = getSmallFeeAmount(raw);
   
@@ -201,6 +206,17 @@ export const getLeadRevenueAmount = (lead) => {
   return DEFAULT_SERVICE_PRICE;
 };
 
+export const getOurFeeAmount = (lead) => {
+  if (Number.isFinite(lead?.recommendedFeeAmount) && lead.recommendedFeeAmount > 0) {
+    return lead.recommendedFeeAmount;
+  }
+  const fromString = parseFeeAmount(lead?.recommendedFees);
+  if (Number.isFinite(fromString) && fromString > 0) return fromString;
+  const cost = Number(lead?.cost);
+  if (Number.isFinite(cost) && cost > 0) return cost;
+  return 0;
+};
+
 export const hasRejectedDocuments = (lead) =>
   Array.isArray(lead?.documents) &&
   lead.documents.some((doc) => String(doc?.status || "").trim().toLowerCase() === "rejected");
@@ -210,6 +226,12 @@ export const shouldCountLeadRevenue = (lead) => {
   if (!status) return true;
 
   if (status === "Completed") {
+    return true;
+  }
+
+  // A staged executor rejection has status "Rejected" but the PR hasn't notified
+  // the client yet — treat it as active/in-progress for revenue counting purposes.
+  if (status === "Rejected" && lead?.executorServiceRejected === true && lead?.prNotifiedClientServiceRejection !== true) {
     return true;
   }
 

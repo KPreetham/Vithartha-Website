@@ -192,7 +192,7 @@ const Footer = () => {
               </button>
             </div>
 
-            {/* Socials */}
+            {/* Socials — hidden until social profiles are ready
             <div style={{ display: "flex", gap: "1rem", marginTop: "2rem" }}>
               {[
                 { icon: Linkedin, label: "LinkedIn", id: "footer-linkedin" },
@@ -229,6 +229,7 @@ const Footer = () => {
                 </button>
               ))}
             </div>
+            */}
           </div>
 
           {/* Solutions */}

@@ -10,12 +10,14 @@ const escapeRegExp = (value) =>
 const normalizeRole = (role) => String(role || "").trim().toLowerCase();
 
 const isDraftSentStatus = (status) => {
-  return ["DraftSent", "DraftAccepted", "DraftRejected", "UserAccepted", "Completed"].includes(status);
+  return ["ExecutionFinished", "DraftSent", "DraftAccepted", "DraftRejected", "UserAccepted", "Completed"].includes(status);
 };
 
 const filterUnsentDraftsForResponse = (leadOrLeads, role) => {
   const normalizedRole = normalizeRole(role);
-  if (normalizedRole !== "user" && normalizedRole !== "executor") {
+  const isExecutorRole = normalizedRole === "executor" ||
+    /^executor\d+$/.test(normalizedRole);
+  if (normalizedRole !== "user" && !isExecutorRole) {
     return leadOrLeads;
   }
 
@@ -354,6 +356,9 @@ export const createLead = async (req, res) => {
       cost: resolvedCost,
       recommendedFeeAmount: resolvedRecommendedFee,
       recommendedFees: serviceRecord?.recommendedFees || recommendedFees || "",
+      ourFee: serviceRecord?.recommendedFees || recommendedFees || "",
+      marketFees: serviceRecord?.marketFees || "",
+      workingDays: serviceRecord?.workingDays ?? 2,
       documents: Array.isArray(documents) ? documents : [],
     });
 
@@ -388,15 +393,18 @@ export const getLeads = async (req, res) => {
       // PR should see all user services so newly submitted requests are always visible.
       query = {};
     } else if (userRole === "executor") {
-      // Executor sees leads assigned to them OR unassigned leads waiting for approval
+      // Generic "executor" role: sees leads assigned to them by executorId ObjectId
+      query = {
+        executorId: req.user._id,
+      };
+    } else if (/^executor\d+$/.test(userRole)) {
+      // Named executor roles (executor1, executor2, …): see leads where assignedExecutor
+      // matches their role (case-insensitive) OR where their executorId ObjectId is set.
       query = {
         $or: [
+          { assignedExecutor: { $regex: new RegExp(`^${escapeRegExp(userRole)}$`, "i") } },
           { executorId: req.user._id },
-          {
-            status: { $in: ["PR_Accepted", "AssignedToExecutor"] },
-            $or: [{ executorId: { $exists: false } }, { executorId: null }]
-          }
-        ]
+        ],
       };
     } else {
       // Regular user sees their own leads
@@ -411,7 +419,35 @@ export const getLeads = async (req, res) => {
       .populate("prId", "name email")
       .populate("executorId", "name email")
       .sort({ createdAt: -1 });
-    const hydratedLeads = await attachReuploadMetadata(leads);
+
+    // Enrich leads with current service fees from the catalog
+    const uniqueServiceNames = [...new Set(leads.map((l) => String(l.serviceName || "").trim()).filter(Boolean))];
+    const serviceRecords = uniqueServiceNames.length
+      ? await Service.find({ title: { $in: uniqueServiceNames.map((n) => new RegExp(`^${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i")) } }).select("title recommendedFees marketFees workingDays").lean()
+      : [];
+    const serviceDataMap = {};
+    for (const svc of serviceRecords) {
+      serviceDataMap[String(svc.title || "").trim().toLowerCase()] = svc;
+    }
+
+    const enrichedLeads = leads.map((lead) => {
+      const obj = lead.toObject ? lead.toObject() : lead;
+      const svcKey = String(obj.serviceName || "").trim().toLowerCase();
+      const svcData = serviceDataMap[svcKey];
+      if (svcData) {
+        if (svcData.recommendedFees) {
+          obj.recommendedFees = svcData.recommendedFees;
+          obj.ourFee = svcData.recommendedFees;
+          const parsed = parseFeeAmount(svcData.recommendedFees);
+          if (parsed != null && parsed > 0) obj.recommendedFeeAmount = parsed;
+        }
+        if (svcData.marketFees) obj.marketFees = svcData.marketFees;
+        if (svcData.workingDays != null) obj.workingDays = svcData.workingDays;
+      }
+      return obj;
+    });
+
+    const hydratedLeads = await attachReuploadMetadata(enrichedLeads);
     const filteredLeads = filterUnsentDraftsForResponse(hydratedLeads, req.user.role);
     res.status(200).json(filteredLeads);
   } catch (error) {
@@ -422,7 +458,7 @@ export const getLeads = async (req, res) => {
 export const assignLead = async (req, res) => {
   try {
     const { id } = req.params;
-    const { prId, executorId, status } = req.body;
+    const { prId, executorId, status, assignedExecutor } = req.body;
 
     const lead = await Lead.findById(id);
     if (!lead) return res.status(404).json({ message: "Lead not found" });
@@ -430,6 +466,7 @@ export const assignLead = async (req, res) => {
     if (prId) lead.prId = prId;
     if (executorId) lead.executorId = executorId;
     if (status) lead.status = status;
+    if (assignedExecutor) lead.assignedExecutor = assignedExecutor;
 
     lead.updatedAt = Date.now();
     await lead.save();
@@ -508,13 +545,17 @@ export const updateLead = async (req, res) => {
     const leadUserId = lead.user?._id || lead.user;
     const isOwner = leadUserId && leadUserId.toString() === req.user._id.toString();
     const isPR = normalizeRole(req.user.role) === 'pr';
-    const isExecutor = normalizeRole(req.user.role) === 'executor';
+    const normalizedRole = normalizeRole(req.user.role);
+    const isExecutor = normalizedRole === 'executor' || /^executor\d+$/.test(normalizedRole);
     const isAdmin = normalizeRole(req.user.role) === 'admin';
 
     // PR can update if assigned or if the lead is not yet picked up by any PR
     const canPRUpdate = isPR && (!lead.prId || lead.prId.toString() === req.user._id.toString());
     // Executor can update if assigned
-    const canExecutorUpdate = isExecutor && (!lead.executorId || lead.executorId.toString() === req.user._id.toString());
+    const canExecutorUpdate = isExecutor && (
+      (!lead.executorId || lead.executorId.toString() === req.user._id.toString()) ||
+      (/^executor\d+$/.test(normalizedRole) && lead.assignedExecutor?.toLowerCase() === normalizedRole)
+    );
 
     if (!isAdmin && !isOwner && !canPRUpdate && !canExecutorUpdate) {
       return res.status(403).json({
@@ -539,6 +580,8 @@ export const updateLead = async (req, res) => {
       if (!item) return false;
       const status = String(item.status || "").trim().toLowerCase();
       if (status === "rejected") return true;
+      // InformationRequired means PR has told client to reupload (executor or PR rejected docs)
+      if (status === "informationrequired") return true;
 
       const rejectionText = [
         item.executorMessage,
@@ -559,6 +602,54 @@ export const updateLead = async (req, res) => {
     };
 
     const updateData = { ...req.body, updatedAt: Date.now() };
+
+    // Detect executor rejecting the entire service — set the staging flag so PR must
+    // click "Notify Client" before the rejection becomes visible outside the PR dashboard.
+    const isExecutorRole = isExecutor;
+    const isServiceRejectionByExecutor =
+      isExecutorRole &&
+      String(updateData.status || "").trim() === "Rejected" &&
+      String(updateData.executorMessage || "").trim().length > 0;
+
+    if (isServiceRejectionByExecutor) {
+      updateData.executorServiceRejected = true;
+      updateData.prNotifiedClientServiceRejection = false;
+    }
+
+    // If PR accepts a service that already has an executor assigned (reupload flow),
+    // skip PR_Accepted and go directly to AssignedToExecutor so the PR dashboard
+    // shows the correct "Assigned to ExecutorX" status instead of "Pending Executor Assignment".
+    if (updateData.status === "PR_Accepted") {
+      const existingExecutor = String(lead.assignedExecutor || "").trim();
+      if (existingExecutor) {
+        updateData.status = "AssignedToExecutor";
+        updateData.assignedExecutor = existingExecutor;
+      }
+    }
+
+    // When PR assigns service to executor, reset Client document statuses so the
+    // executor performs their own independent review — but PRESERVE docs the PR
+    // already accepted so the PR dashboard continues to show "Accepted" for those.
+    if (updateData.status === "AssignedToExecutor") {
+      const currentDocuments = Array.isArray(lead.documents)
+        ? lead.documents.map((doc) =>
+            typeof doc.toObject === "function" ? doc.toObject() : { ...doc }
+          )
+        : [];
+
+      updateData.documents = currentDocuments.map((doc) => {
+        const docType = String(doc?.type || "").trim().toLowerCase();
+        const docStatus = String(doc?.status || "").trim().toLowerCase();
+        // Only reset Client-uploaded docs that haven't been explicitly accepted by the PR.
+        // Docs the PR already marked "Accepted" keep that status so the PR dashboard
+        // still shows "Accepted" for them; the executor sees "Pending" for everything
+        // via the executor-specific display logic, not the raw DB status.
+        if ((docType === "client" || docType === "userupload" || docType === "") && docStatus !== "accepted") {
+          return { ...doc, status: "Pending", rejectionMessage: "" };
+        }
+        return doc;
+      });
+    }
 
     if (updateData.status === "DraftRejected") {
       const rawRejectionMessage = String(
@@ -711,6 +802,10 @@ export const updateLead = async (req, res) => {
             // Clear previous rejection messages when moving back to review
             updateData.executorMessage = "";
             updateData.prFeedback = "";
+            updateData.adminMessage = "";
+            // Clear the service-level executor rejection staging flags
+            updateData.executorServiceRejected = false;
+            updateData.prNotifiedClientServiceRejection = false;
           }
         }
       }
@@ -745,7 +840,21 @@ export const updateLead = async (req, res) => {
     }
 
     // Perform the update
-    const updatedLead = await Lead.findByIdAndUpdate(id, updateData, { new: true });
+    let updatedLead;
+    if (updateData.status === "AssignedToExecutor") {
+      console.log(`[updateLead] Assigning ${id} with data:`, JSON.stringify(updateData));
+      lead.set(updateData);
+      lead.updatedAt = Date.now();
+      try {
+        updatedLead = await lead.save();
+        console.log(`[updateLead] Save successful for ${id}, status: ${updatedLead.status}, assignedExecutor: ${updatedLead.assignedExecutor}`);
+      } catch (saveErr) {
+        console.error(`[updateLead] Save FAILED for ${id}:`, saveErr.message);
+        return res.status(500).json({ success: false, message: saveErr.message });
+      }
+    } else {
+      updatedLead = await Lead.findByIdAndUpdate(id, updateData, { new: true });
+    }
 
     if (!updatedLead) {
       return res.status(404).json({ success: false, message: "Lead not found after update" });
@@ -789,7 +898,8 @@ export const deleteLead = async (req, res) => {
     const isOwner = leadUserId && leadUserId.toString() === req.user._id.toString();
     const isAdmin = normalizeRole(req.user.role) === "admin";
     const isPR = normalizeRole(req.user.role) === "pr";
-    const isExecutor = normalizeRole(req.user.role) === "executor";
+    const normalizedRole = normalizeRole(req.user.role);
+    const isExecutor = normalizedRole === "executor" || /^executor\d+$/.test(normalizedRole);
     const isAssignedPR =
       lead.prId && lead.prId.toString() === req.user._id.toString();
     const isAssignedExecutor =
@@ -833,13 +943,19 @@ export const updateDocumentStatus = async (req, res) => {
         .status(404)
         .json({ success: false, message: "Lead not found" });
 
-    // Check if user is authorized to update status on this lead (Admin or Assigned PR or Client Owner)
     const isOwner = lead.user?.toString() === req.user._id.toString();
     const isAssignedPR = lead.prId?.toString() === req.user._id.toString();
     const isAdmin = normalizeRole(req.user.role) === "admin";
     const isPR = normalizeRole(req.user.role) === "pr";
+    const normalizedRole = normalizeRole(req.user.role);
+    const isExecutor = normalizedRole === "executor" ||
+      /^executor\d+$/.test(normalizedRole);
+    const isAssignedExecutor = isExecutor && (
+      (lead.executorId && lead.executorId.toString() === req.user._id.toString()) ||
+      (lead.assignedExecutor && lead.assignedExecutor.toLowerCase() === normalizedRole)
+    );
 
-    if (!isAdmin && !isOwner && !isAssignedPR && !isPR) {
+    if (!isAdmin && !isOwner && !isAssignedPR && !isPR && !isAssignedExecutor) {
       return res.status(403).json({
         success: false,
         message: "Not authorized to update document status for this lead",
@@ -852,18 +968,114 @@ export const updateDocumentStatus = async (req, res) => {
         .status(404)
         .json({ success: false, message: "Document not found" });
 
-    doc.status = status;
-    doc.rejectionMessage =
-      status === "Rejected" ? String(rejectionMessage || "").trim() : "";
+    if (isAssignedExecutor && !isAdmin && !isPR) {
+      // Executor rejection: hold in staging state — client cannot see it yet.
+      if (status === "Rejected") {
+        doc.executorRejected = true;
+        doc.rejectionMessage = String(rejectionMessage || "").trim();
+        doc.prNotifiedClient = false;
+        doc.executorAccepted = false;
+        doc.status = "Pending";
+      } else {
+        // Executor accepting a document
+        doc.status = "Accepted";
+        doc.executorAccepted = true;
+        doc.executorRejected = false;
+        doc.prNotifiedClient = false;
+        doc.rejectionMessage = "";
+      }
+    } else {
+      // PR / Admin rejection: immediately visible to client
+      doc.status = status;
+      doc.rejectionMessage = status === "Rejected" ? String(rejectionMessage || "").trim() : "";
+      doc.executorRejected = false;
+      doc.prNotifiedClient = status === "Rejected";
+    }
+
     lead.updatedAt = Date.now();
     await lead.save();
 
     res.status(200).json({ success: true, lead });
   } catch (error) {
     console.error("Error updating document status:", error);
-    res
-      .status(500)
-      .json({ success: false, message: "Error updating document status" });
+    res.status(500).json({ success: false, message: "Error updating document status" });
+  }
+};
+
+// PR clicks "Notify Client" on executor-rejected doc — makes it visible to the user
+export const notifyClientDocumentRejection = async (req, res) => {
+  try {
+    const { id, docId } = req.params;
+
+    const lead = await Lead.findById(id);
+    if (!lead) return res.status(404).json({ success: false, message: "Lead not found" });
+
+    const isAdmin = normalizeRole(req.user.role) === "admin";
+    const isPR = normalizeRole(req.user.role) === "pr";
+    const isAssignedPR = lead.prId?.toString() === req.user._id.toString();
+
+    if (!isAdmin && !isPR && !isAssignedPR) {
+      return res.status(403).json({ success: false, message: "Only PR can notify client" });
+    }
+
+    const doc = lead.documents.id(docId);
+    if (!doc) return res.status(404).json({ success: false, message: "Document not found" });
+
+    if (!doc.executorRejected) {
+      return res.status(400).json({ success: false, message: "Document is not pending client notification" });
+    }
+
+    // Now make the rejection visible to the client
+    doc.status = "Rejected";
+    doc.prNotifiedClient = true;
+
+    // Set lead to InformationRequired so the client knows to reupload
+    lead.status = "InformationRequired";
+    lead.prFeedback = `Document rejected: ${doc.name}. ${doc.rejectionMessage ? `Reason: ${doc.rejectionMessage}` : "Please reupload."}`;
+    lead.updatedAt = Date.now();
+    await lead.save();
+
+    res.status(200).json({ success: true, lead });
+  } catch (error) {
+    console.error("Error notifying client:", error);
+    res.status(500).json({ success: false, message: "Error notifying client" });
+  }
+};
+
+// PR clicks "Notify Client" for a service-level executor rejection —
+// sets prNotifiedClientServiceRejection = true so the rejection becomes
+// visible to the user, admin, and appears as "Rejected by Executor" everywhere.
+export const notifyClientServiceRejection = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const lead = await Lead.findById(id);
+    if (!lead) return res.status(404).json({ success: false, message: "Lead not found" });
+
+    const isAdmin = normalizeRole(req.user.role) === "admin";
+    const isPR = normalizeRole(req.user.role) === "pr";
+
+    if (!isAdmin && !isPR) {
+      return res.status(403).json({ success: false, message: "Only PR or admin can notify client" });
+    }
+
+    if (!lead.executorServiceRejected) {
+      return res.status(400).json({ success: false, message: "Service has not been rejected by executor" });
+    }
+
+    if (lead.prNotifiedClientServiceRejection) {
+      return res.status(400).json({ success: false, message: "Client has already been notified" });
+    }
+
+    // Open the gate — user, admin, and other dashboards can now see the rejection
+    lead.prNotifiedClientServiceRejection = true;
+    lead.updatedAt = Date.now();
+    await lead.save();
+
+    res.status(200).json({ success: true, lead });
+  } catch (error) {
+    console.error("Error notifying client of service rejection:", error);
+    res.status(500).json({ success: false, message: "Error notifying client" });
   }
 };
 
@@ -887,7 +1099,8 @@ export const getSignedUrl = async (req, res) => {
       const isOwner = leadUserId && leadUserId.toString() === req.user._id.toString();
       const isAdmin = normalizeRole(req.user.role) === "admin";
       const isPR = normalizeRole(req.user.role) === "pr";
-      const isExecutor = normalizeRole(req.user.role) === "executor";
+      const normalizedRole = normalizeRole(req.user.role);
+      const isExecutor = normalizedRole === "executor" || /^executor\d+$/.test(normalizedRole);
       const isAssignedPR = lead.prId && lead.prId.toString() === req.user._id.toString();
       const isAssignedExecutor = lead.executorId && lead.executorId.toString() === req.user._id.toString();
 
@@ -954,7 +1167,8 @@ export const generateViewToken = async (req, res) => {
       const leadUserId = lead.user?._id || lead.user;
       const isAdmin = normalizeRole(req.user.role) === "admin";
       const isPR = normalizeRole(req.user.role) === "pr";
-      const isExecutor = normalizeRole(req.user.role) === "executor";
+      const normalizedRole = normalizeRole(req.user.role);
+      const isExecutor = normalizedRole === "executor" || /^executor\d+$/.test(normalizedRole);
       const isOwner = leadUserId && leadUserId.toString() === req.user._id.toString();
       const isAssignedPR = lead.prId && lead.prId.toString() === req.user._id.toString();
       const isAssignedExecutor = lead.executorId && lead.executorId.toString() === req.user._id.toString();

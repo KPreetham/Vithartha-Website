@@ -541,6 +541,7 @@ const About = () => {
                 </div>
               </div>
 
+              {/* Connect with Us — hidden until social profiles are ready
               <div>
                 <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "1.5rem", color: "var(--text-main)" }}>Connect with Us</h3>
                 <div className="about-socials" style={{ display: "flex", gap: "1rem" }}>
@@ -549,15 +550,15 @@ const About = () => {
                     { icon: Twitter, color: "#1da1f2" },
                     { icon: Instagram, color: "#e4405f" },
                   ].map((social, i) => (
-                    <motion.a 
+                    <motion.a
                       key={i}
                       href="#"
                       whileHover={{ scale: 1.1, backgroundColor: social.color, color: "#fff" }}
-                      style={{ 
-                        width: "45px", 
-                        height: "45px", 
-                        borderRadius: "12px", 
-                        background: "#fff", 
+                      style={{
+                        width: "45px",
+                        height: "45px",
+                        borderRadius: "12px",
+                        background: "#fff",
                         border: "1px solid #e5e7eb",
                         display: "flex",
                         alignItems: "center",
@@ -571,6 +572,7 @@ const About = () => {
                   ))}
                 </div>
               </div>
+              */}
             </motion.div>
           </div>
         </section>

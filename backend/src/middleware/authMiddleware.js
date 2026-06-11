@@ -86,9 +86,15 @@ export const authorize = (...allowedRoles) => (req, res, next) => {
   const normalizedUserRole = normalizeRole(req.user.role);
   const normalizedAllowedRoles = allowedRoles.map(normalizeRole);
 
+  // "executorN" in the allowed list acts as a wildcard for any executor\d+ role
+  const isExecutorWildcard =
+    normalizedAllowedRoles.includes("executorn") &&
+    /^executor\d+$/.test(normalizedUserRole);
+
   if (
     normalizedAllowedRoles.length === 0 ||
-    normalizedAllowedRoles.includes(normalizedUserRole)
+    normalizedAllowedRoles.includes(normalizedUserRole) ||
+    isExecutorWildcard
   ) {
     return next();
   }

@@ -5,15 +5,13 @@ const serviceSchema = new mongoose.Schema({
   title: { type: String, required: true },
   description: { type: String, required: true },
   icon: { type: String, default: "FileText" },
-  category: {
-    type: String,
-    enum: ["Compliance", "Finance", "Legal", "Advisory", "Tax"],
-    required: true,
-  },
+  category: { type: String, required: true },
   trigger: { type: String, required: false },
   tags: [String],
+  documentsRequired: [String],
   marketFees: { type: String, default: "" },
   recommendedFees: { type: String, default: "" },
+  workingDays: { type: Number, default: 2 },
   createdAt: { type: Date, default: Date.now },
 });
 

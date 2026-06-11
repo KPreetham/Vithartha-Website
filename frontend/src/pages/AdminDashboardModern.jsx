@@ -1,5 +1,8 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
+import axios from "axios";
+import { toast } from "react-hot-toast";
 import {
   AlertCircle,
   CheckCircle,
@@ -16,14 +19,19 @@ import {
   Sparkles,
   RefreshCw,
   MessageSquare,
+  Users,
+  ShieldCheck,
+  Pencil,
 } from "lucide-react";
 import ConfirmationModal from "../components/ConfirmationModal";
 import { viewDocument } from "../utils/documentViewer";
 import { normalizeRole } from "../utils/roleRouting";
+import { resolveExecutorLabel } from "../utils/statusLabels";
 
-const PremiumCard = ({ children, style = {}, className = "" }) => (
+const PremiumCard = ({ children, style = {}, className = "", onClick }) => (
   <div
     className={className}
+    onClick={onClick}
     style={{
       background: "linear-gradient(145deg, #ffffff 0%, #f9fafb 100%)",
       backdropFilter: "blur(16px)",
@@ -78,6 +86,8 @@ const AdminDashboardModern = ({
   searchQuery,
   setSearchQuery,
   stats,
+  getServicesByStatus,
+  getTotalRevenueBreakdown,
   formatInr,
   getLeadRevenueAmount,
   getStatusTheme,
@@ -130,6 +140,21 @@ const AdminDashboardModern = ({
   handleDismissDetailsMissingMessage,
   handleDeleteRejectionMessage,
 }) => {
+  const [serviceListModal, setServiceListModal] = React.useState(null);
+  const [revenuePopup, setRevenuePopup] = React.useState(null);
+  const [managePRModal, setManagePRModal] = React.useState(false);
+  const [assignEmail, setAssignEmail] = React.useState("");
+  const [assignRole, setAssignRole] = React.useState("");
+  const [assignLoading, setAssignLoading] = React.useState(false);
+  const [assignError, setAssignError] = React.useState("");
+  const [assignSuccess, setAssignSuccess] = React.useState("");
+  const [prExecutorList, setPRExecutorList] = React.useState([]);
+  const [prListLoading, setPRListLoading] = React.useState(false);
+  const [prListError, setPRListError] = React.useState("");
+  const [editingUser, setEditingUser] = React.useState(null);
+  const [editRole, setEditRole] = React.useState("PR");
+  const [editLoading, setEditLoading] = React.useState(false);
+  const [editError, setEditError] = React.useState("");
   const [documentsOpen, setDocumentsOpen] = React.useState(false);
   const [isMessageTargetOpen, setIsMessageTargetOpen] = React.useState(false);
   const [uploadType, setUploadType] = React.useState("Draft");
@@ -143,6 +168,22 @@ const AdminDashboardModern = ({
   React.useEffect(() => {
     setDocumentsOpen(false);
   }, [activeLead?._id]);
+
+  const fetchPRExecutorList = React.useCallback(() => {
+    const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+    const apiUrl = import.meta.env.VITE_API_URL;
+    setPRListLoading(true);
+    setPRListError("");
+    axios.get(`${apiUrl}/auth/pr-executors`, { headers: { Authorization: `Bearer ${storedUser.token}` } })
+      .then((res) => { setPRExecutorList(Array.isArray(res.data) ? res.data : []); })
+      .catch((err) => { setPRListError(err?.response?.data?.message || "Failed to load users."); setPRExecutorList([]); })
+      .finally(() => setPRListLoading(false));
+  }, []);
+
+  React.useEffect(() => {
+    if (!managePRModal) return;
+    fetchPRExecutorList();
+  }, [managePRModal, fetchPRExecutorList]);
 
   React.useEffect(() => {
     const handleResize = () => setIsCompactMobile(window.innerWidth <= 480);
@@ -199,11 +240,21 @@ const AdminDashboardModern = ({
   };
 
   const documents = activeLead ? getVisibleDocuments(activeLead) : [];
-  const uploadedDocs = documents.filter((doc) => {
+  const clientOnlyDocs = documents.filter((doc) => {
+    const t = String(doc?.type || "").trim().toLowerCase();
+    const n = String(doc?.name || "").trim().toLowerCase();
+    return t !== "draft" && t !== "final" && !n.startsWith("final");
+  });
+  const draftFinalDocs = documents.filter((doc) => {
+    const t = String(doc?.type || "").trim().toLowerCase();
+    const n = String(doc?.name || "").trim().toLowerCase();
+    return t === "draft" || t === "final" || n.startsWith("final");
+  });
+  const uploadedDocs = clientOnlyDocs.filter((doc) => {
     const status = String(doc?.status || "").trim().toLowerCase();
     return ["uploaded", "accepted", "verified", "approved", "completed", "reuploaded"].includes(status) || !!doc?.url;
   });
-  const rejectedDocs = documents.filter((doc) => String(doc?.status || "").toLowerCase() === "rejected");
+  const rejectedDocs = clientOnlyDocs.filter((doc) => String(doc?.status || "").toLowerCase() === "rejected");
   const reviewSummary = activeLead ? getServiceReviewSummary(activeLead) : "";
   const serviceOutcomeLabel = activeLead ? getServiceOutcomeLabel(activeLead) : "";
   const activeLeadStatus = String(activeLead?.status || "").trim();
@@ -232,6 +283,11 @@ const AdminDashboardModern = ({
   const pendingReviewTextColor = "#16a34a";
   const getServiceProgressPercent = (lead) => {
     if (!lead) return 0;
+
+    // Staged executor rejection — show InProgress-level progress (60%)
+    if (lead?.executorServiceRejected === true && lead?.prNotifiedClientServiceRejection !== true) {
+      return 60;
+    }
 
     if (isExecutorRejectedState(lead)) return 20;
     if (isDetailsMissingState(lead)) return 20;
@@ -266,6 +322,9 @@ const AdminDashboardModern = ({
     ? "No service selected."
     : effectiveServiceStatus === "Completed"
       ? "Service completed."
+      // Staged executor rejection — PR hasn't notified client yet
+      : activeLead?.executorServiceRejected === true && activeLead?.prNotifiedClientServiceRejection !== true
+        ? `${resolveExecutorLabel(activeLead)} is reviewing the service.`
       : serviceOutcomeLabel.startsWith("Rejected")
           ? `${serviceOutcomeLabel}.`
         : activeLeadStatus === "InformationRequired" && hasReuploadedDocs && rejectedDocs.length === 0
@@ -279,7 +338,7 @@ const AdminDashboardModern = ({
             PR_Accepted: "Documents verified. Awaiting executor assignment.",
             AssignedToExecutor: "Executor assigned. Service is starting.",
             InProgress: "Accepted by Executor.",
-            ExecutionFinished: "Execution finished. Undergoing quality review.",
+            ExecutionFinished: activeLead?.draftSentToPR ? `Draft sent to PR by ${resolveExecutorLabel(activeLead)}. Awaiting PR to send to client.` : `Draft uploaded by ${resolveExecutorLabel(activeLead)}. Awaiting to send to PR.`,
             DraftSent: "Waiting for User Draft Approval.",
             DraftAccepted: "Draft approved. Waiting for final completion.",
             UserAccepted: "Draft approved. Waiting for final completion.",
@@ -307,6 +366,35 @@ const AdminDashboardModern = ({
     setSelectedLeadId?.(leadId);
   };
 
+  const handleServiceListClick = (status) => {
+    const services = getServicesByStatus(status);
+    setServiceListModal({ status, services });
+  };
+
+  const handleRevenuePopupClick = () => {
+    const breakdown = getTotalRevenueBreakdown();
+    const allLeads = filteredLeads;
+    const perService = allLeads
+      .map((l) => ({
+        serviceName: l.serviceName,
+        amount: getLeadRevenueAmount(l) || 0,
+      }))
+      .filter((i) => i.amount > 0);
+    setRevenuePopup({ breakdown: perService, total: breakdown.total });
+  };
+
+  const modalOverlayStyle = {
+    position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh",
+    background: "rgba(0,0,0,0.45)", zIndex: 10000,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    padding: 20,
+  };
+  const modalBoxStyle = {
+    background: "#fff", borderRadius: 16, maxWidth: 540, width: "100%",
+    height: "80vh", maxHeight: "80vh", display: "flex", flexDirection: "column", overflow: "hidden",
+    boxShadow: "0 12px 40px rgba(0,0,0,0.2)",
+  };
+
   const containerStyle = {
     minHeight: "100vh",
     background:
@@ -329,7 +417,7 @@ const AdminDashboardModern = ({
       <style>{`
         .admin-dashboard-shell .dashboard-stat-grid {
           display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
+          grid-template-columns: repeat(5, minmax(0, 1fr));
           gap: 10px;
           margin-bottom: 0;
           align-items: stretch;
@@ -505,7 +593,7 @@ const AdminDashboardModern = ({
         }
         @media (max-width: 1200px) {
           .admin-dashboard-shell .dashboard-stat-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
           }
           .admin-dashboard-shell .dashboard-main-grid {
             grid-template-columns: 1fr;
@@ -528,29 +616,52 @@ const AdminDashboardModern = ({
         }
         @media (max-width: 768px) {
           .admin-dashboard-shell .dashboard-stat-grid {
-            grid-template-columns: 1fr;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 8px;
           }
-          .admin-dashboard-shell .dashboard-table th,
-          .admin-dashboard-shell .dashboard-table td {
-            padding: 12px 12px;
-          }
-        }
-        @media (max-width: 480px) {
           .admin-dashboard-shell .dashboard-shell-inner {
-            padding: 8px 10px 10px;
+            padding: 8px 10px;
           }
           .admin-dashboard-shell .dashboard-main-grid {
             border-radius: 18px;
           }
           .admin-dashboard-shell .dashboard-sidebar-panel,
           .admin-dashboard-shell .dashboard-details-panel {
-            padding: 14px 12px;
+            padding: 14px 12px !important;
+          }
+          .admin-dashboard-shell .dashboard-table th,
+          .admin-dashboard-shell .dashboard-table td {
+            padding: 10px 10px;
+            font-size: 0.8rem;
           }
           .admin-dashboard-shell .dashboard-service-row {
-            padding: 14px 12px 14px 14px !important;
+            padding: 12px 10px 12px 12px !important;
+          }
+          .admin-dashboard-shell .stat-card {
+            min-height: 76px !important;
+            padding: 10px 8px !important;
+          }
+        }
+        @media (max-width: 480px) {
+          .admin-dashboard-shell .dashboard-stat-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 6px;
+          }
+          .admin-dashboard-shell .dashboard-shell-inner {
+            padding: 6px 8px 8px;
+          }
+          .admin-dashboard-shell .dashboard-main-grid {
+            border-radius: 14px;
+          }
+          .admin-dashboard-shell .dashboard-sidebar-panel,
+          .admin-dashboard-shell .dashboard-details-panel {
+            padding: 12px 10px !important;
+          }
+          .admin-dashboard-shell .dashboard-service-row {
+            padding: 12px 10px !important;
             flex-direction: column;
             align-items: stretch;
-            gap: 10px;
+            gap: 8px;
           }
           .admin-dashboard-shell .dashboard-pill {
             width: fit-content;
@@ -558,8 +669,12 @@ const AdminDashboardModern = ({
           }
           .admin-dashboard-shell .dashboard-table th,
           .admin-dashboard-shell .dashboard-table td {
-            padding: 10px 10px;
-            font-size: 0.76rem;
+            padding: 9px 8px;
+            font-size: 0.74rem;
+          }
+          .admin-dashboard-shell .stat-card {
+            min-height: 70px !important;
+            padding: 8px 6px !important;
           }
           .admin-dashboard-shell .dashboard-documents-scroll {
             overflow-x: auto;
@@ -569,21 +684,22 @@ const AdminDashboardModern = ({
             scrollbar-color: #b8b8b8 transparent;
             padding-bottom: 4px;
           }
-          .admin-dashboard-shell .dashboard-documents-scroll::-webkit-scrollbar {
-            height: 6px;
+          .admin-dashboard-shell .dashboard-documents-scroll::-webkit-scrollbar { height: 4px; }
+          .admin-dashboard-shell .dashboard-documents-scroll::-webkit-scrollbar-track { background: transparent; }
+          .admin-dashboard-shell .dashboard-documents-scroll::-webkit-scrollbar-thumb { background: #b8b8b8; border-radius: 999px; }
+          .admin-dashboard-shell .dashboard-documents-scroll .dashboard-table { min-width: 480px; }
+        }
+        @media (max-width: 360px) {
+          .admin-dashboard-shell .dashboard-stat-grid {
+            grid-template-columns: 1fr 1fr !important;
+            gap: 5px;
           }
-          .admin-dashboard-shell .dashboard-documents-scroll::-webkit-scrollbar-track {
-            background: transparent;
+          .admin-dashboard-shell .stat-card {
+            min-height: 62px !important;
+            padding: 7px 5px !important;
           }
-          .admin-dashboard-shell .dashboard-documents-scroll::-webkit-scrollbar-thumb {
-            background: #b8b8b8;
-            border-radius: 999px;
-          }
-          .admin-dashboard-shell .dashboard-documents-scroll::-webkit-scrollbar-thumb:hover {
-            background: #9ca3af;
-          }
-          .admin-dashboard-shell .dashboard-documents-scroll .dashboard-table {
-            min-width: 520px;
+          .admin-dashboard-shell .dashboard-shell-inner {
+            padding: 5px 6px;
           }
         }
       `}</style>
@@ -611,58 +727,65 @@ const AdminDashboardModern = ({
           <div className="dashboard-shell-inner">
             <div className="dashboard-stat-grid">
               {[
-                { label: "Services Pending", value: stats.pending, color: "#16a34a" },
-                { label: "Services In Progress", value: stats.inProgress, color: "#16a34a" },
-                { label: "Services Completed", value: stats.completed, color: "#16a34a" },
-                { label: "Revenue (₹)", value: stats.revenueValue || 0, color: "#16a34a", isMoney: true },
-              ].map((card) => {
-                return (
-                  <PremiumCard
-                    key={card.label}
-                    className="stat-card"
-                    style={{
-                      padding: 12,
-                      minHeight: 92,
-                      background: "#ffffff",
-                      border: "1px solid rgba(17,24,39,0.08)",
-                      boxShadow: "0 2px 4px rgba(0,0,0,0.02)",
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      textAlign: "center",
-                      borderRadius: 16,
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: "0.78rem",
-                        fontWeight: 700,
-                        color: "#111111",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.08em",
-                        marginBottom: 4,
-                      }}
-                    >
-                      {card.label}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: "1.44rem",
-                        fontWeight: 500,
-                        lineHeight: 1,
-                        color: card.color,
-                      }}
-                    >
-                      {card.isMoney ? (
-                        <CountUp end={card.value} formatter={(v) => formatInr(v)} />
-                      ) : (
-                        <CountUp end={card.value} />
-                      )}
-                    </div>
-                  </PremiumCard>
-                );
-              })}
+                { label: "Services Pending", value: stats.pending, color: "#16a34a", onClick: () => handleServiceListClick("pending") },
+                { label: "Services In Progress", value: stats.inProgress, color: "#16a34a", onClick: () => handleServiceListClick("inProgress") },
+                { label: "Services Completed", value: stats.completed, color: "#16a34a", onClick: () => handleServiceListClick("completed") },
+                { label: "Revenue (₹)", value: stats.revenueValue || 0, color: "#16a34a", isMoney: true, onClick: handleRevenuePopupClick },
+              ].map((card) => (
+                <PremiumCard
+                  key={card.label}
+                  className="stat-card"
+                  onClick={card.onClick}
+                  style={{
+                    padding: 12,
+                    minHeight: 92,
+                    background: "#ffffff",
+                    border: "1px solid rgba(17,24,39,0.08)",
+                    boxShadow: "0 2px 4px rgba(0,0,0,0.02)",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    textAlign: "center",
+                    borderRadius: 16,
+                    cursor: "pointer",
+                    transition: "transform 0.15s, box-shadow 0.15s",
+                  }}
+                >
+                  <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "#111111", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>
+                    {card.label}
+                  </div>
+                  <div style={{ fontSize: "1.44rem", fontWeight: 500, lineHeight: 1, color: card.color }}>
+                    {card.isMoney ? <CountUp end={card.value} formatter={(v) => formatInr(v)} /> : <CountUp end={card.value} />}
+                  </div>
+                </PremiumCard>
+              ))}
+              {/* Manage PR & Executor card */}
+              <PremiumCard
+                className="stat-card"
+                onClick={() => { setManagePRModal(true); setAssignEmail(""); setAssignRole("PR"); setAssignError(""); setAssignSuccess(""); }}
+                style={{
+                  padding: 12,
+                  minHeight: 92,
+                  background: "#ffffff",
+                  border: "1px solid rgba(17,24,39,0.08)",
+                  boxShadow: "0 2px 4px rgba(0,0,0,0.02)",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  textAlign: "center",
+                  borderRadius: 16,
+                  cursor: "pointer",
+                  transition: "transform 0.15s, box-shadow 0.15s",
+                  gap: 6,
+                }}
+              >
+                <Users size={22} color="#16a34a" />
+                <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "#111111", textTransform: "uppercase", letterSpacing: "0.08em", lineHeight: 1.3 }}>
+                  Manage PR &<br />Executor
+                </div>
+              </PremiumCard>
             </div>
           </div>
           <div className="dashboard-section-divider" />
@@ -882,13 +1005,13 @@ const AdminDashboardModern = ({
                       <div>
                         <div style={{ color: "#6b7280", fontSize: "0.82rem", marginBottom: 8, fontWeight: 500 }}>Service Progress</div>
                         <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-                          <span style={{ fontSize: "1.55rem", fontWeight: 700 }}>{uploadedDocumentCount} / {documents.length || 0}</span>
+                          <span style={{ fontSize: "1.55rem", fontWeight: 700 }}>{uploadedDocumentCount} / {clientOnlyDocs.length || 0}</span>
                           <span style={{ color: "#6b7280", fontSize: "0.88rem" }}>uploaded</span>
                         </div>
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                         <div style={{ width: "100%", height: 10, background: "rgba(17,24,39,0.08)", borderRadius: 999, overflow: "hidden" }}>
-                          <div style={{ width: `${serviceProgressPercent}%`, height: "100%", borderRadius: 999, background: "linear-gradient(90deg, #22c55e, #14b8a6)" }} />
+                          <div style={{ width: `${serviceProgressPercent}%`, height: "100%", borderRadius: 999, background: "linear-gradient(90deg, #22c55e, #14b8a6)", transition: "width 0.4s ease" }} />
                         </div>
                         <div style={{ color: "#6b7280", fontSize: "0.84rem" }}>
                           {serviceProgressMessage}
@@ -971,7 +1094,7 @@ const AdminDashboardModern = ({
                           <p style={{ color: "#6b7280", fontSize: isCompactMobile ? "0.74rem" : "0.8rem", fontWeight: 400 }}>Review uploaded and pending files for this service.</p>
                         </div>
                         <span style={{ color: "#6b7280", fontSize: isCompactMobile ? "0.74rem" : "0.8rem", fontWeight: 500 }}>
-                          {uploadedDocumentCount} / {documents.length || 0} uploaded {documentsOpen ? "▴" : "▾"}
+                          {uploadedDocumentCount} / {clientOnlyDocs.length || 0} uploaded {documentsOpen ? "▴" : "▾"}
                         </span>
                       </button>
 
@@ -986,8 +1109,8 @@ const AdminDashboardModern = ({
                             </tr>
                           </thead>
                           <tbody>
-                            {documents.length > 0 ? (
-                              documents.map((doc, idx) => {
+                            {clientOnlyDocs.length > 0 ? (
+                              clientOnlyDocs.map((doc, idx) => {
                                 const hasFile =
                                   !!doc?.url ||
                                   !!doc?.secure_url ||
@@ -998,9 +1121,13 @@ const AdminDashboardModern = ({
                                 const docStatusLower = docStatus.toLowerCase();
                                 const isDraftDocument = String(doc?.type || "").trim().toLowerCase() === "draft";
                                 const leadStatusLower = String(activeLead?.status || "").trim().toLowerCase();
-                                const serviceRejectedByExecutor = isExecutorRejectedState(activeLead);
+                                // Staged: executor rejected but PR hasn't notified client — don't show rejection UI
+                                const isStagedRejection =
+                                  activeLead?.executorServiceRejected === true &&
+                                  activeLead?.prNotifiedClientServiceRejection !== true;
+                                const serviceRejectedByExecutor = !isStagedRejection && isExecutorRejectedState(activeLead);
                                 const explicitReuploaded = !serviceRejectedByExecutor && (!!doc?.displayReuploaded || !!doc?.reuploaded);
-                                const documentRejected = docStatusLower.includes("rejected") || !!doc?.executorRejected;
+                                const documentRejected = !isStagedRejection && (docStatusLower.includes("rejected") || !!doc?.executorRejected);
                                 const requiresReupload = serviceRejectedByExecutor || (documentRejected && !explicitReuploaded);
                                 const documentNotice = serviceRejectedByExecutor || documentRejected
                                   ? "Reupload required"
@@ -1010,6 +1137,7 @@ const AdminDashboardModern = ({
                                 const draftRejected = leadStatusLower === "draftrejected";
                                 const draftAccepted = leadStatusLower === "draftaccepted" || leadStatusLower === "useraccepted" || leadStatusLower === "completed";
                                 const draftShared = leadStatusLower === "draftsent" || leadStatusLower === "draftrejected" || leadStatusLower === "draftaccepted" || leadStatusLower === "useraccepted";
+                                const isExecutorReviewingState = ["assignedtoexecutor", "inprogress"].includes(leadStatusLower);
                                 const displayedStatus = isDraftDocument
                                   ? draftAccepted
                                     ? "Accepted"
@@ -1018,23 +1146,31 @@ const AdminDashboardModern = ({
                                         : draftShared
                                           ? "Draft Shared"
                                           : "Draft Uploaded"
-                                  : docStatus;
+                                  // Executor is actively reviewing — show per-doc decision or generic label
+                                  : isExecutorReviewingState || isStagedRejection
+                                    ? doc.executorRejected
+                                      ? "Rejected"
+                                      : doc.executorAccepted
+                                        ? "Accepted"
+                                        : "Executor Reviewing"
+                                    : docStatus;
                                 const displayedStatusLower = displayedStatus.toLowerCase();
                                 const isDone = isDraftDocument
                                   ? draftAccepted || explicitReuploaded || hasFile
                                   : ["uploaded", "accepted", "verified", "approved", "completed", "reuploaded"].includes(displayedStatusLower) || explicitReuploaded || !!doc?.url;
                                 const isRejected = displayedStatusLower.includes("rejected") || documentRejected;
+                                const isExecutorReviewing = displayedStatus === "Executor Reviewing";
                                 const isDraftSentState = isDraftDocument && draftShared && !draftRejected && !draftAccepted;
                                 
-                                const statusColor = isRejected ? "#ef4444" : (isDone || isDraftSentState) ? "#16a34a" : "#f59e0b";
-                                const statusBg = isRejected ? "rgba(239, 68, 68, 0.08)" : (isDone || isDraftSentState) ? "rgba(22, 163, 74, 0.08)" : "rgba(245, 158, 11, 0.08)";
+                                const statusColor = isRejected ? "#ef4444" : (isDone || isDraftSentState) ? "#16a34a" : isExecutorReviewing ? "#7c3aed" : "#f59e0b";
+                                const statusBg = isRejected ? "rgba(239, 68, 68, 0.08)" : (isDone || isDraftSentState) ? "rgba(22, 163, 74, 0.08)" : isExecutorReviewing ? "rgba(124, 58, 237, 0.08)" : "rgba(245, 158, 11, 0.08)";
                                 
                                 return (
                                   <tr key={`${doc.name}-${idx}`}>
                                     <td>
                                       <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0, flexWrap: isCompactMobile ? "wrap" : "nowrap" }}>
-                                        <div style={{ padding: 8, background: isDone ? "rgba(22,163,74,0.06)" : "rgba(17,24,39,0.04)", borderRadius: 10 }}>
-                                          <FileText size={18} color={isDone ? "#16a34a" : isRejected ? "#ef4444" : "#6b7280"} />
+                                        <div style={{ padding: 8, background: isDone ? "rgba(22,163,74,0.06)" : isExecutorReviewing ? "rgba(124,58,237,0.06)" : "rgba(17,24,39,0.04)", borderRadius: 10 }}>
+                                          <FileText size={18} color={isDone ? "#16a34a" : isRejected ? "#ef4444" : isExecutorReviewing ? "#7c3aed" : "#6b7280"} />
                                         </div>
                                         <div style={{ minWidth: 0 }}>
                                           <div style={{ fontSize: isCompactMobile ? "0.84rem" : "0.9rem", fontWeight: 700, color: "#111111", whiteSpace: isCompactMobile ? "normal" : "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.name}</div>
@@ -1100,6 +1236,55 @@ const AdminDashboardModern = ({
                       </div>
                     )}
                   </PremiumCard>
+
+                  {/* Draft & Final Documents */}
+                  {draftFinalDocs.length > 0 && (() => {
+                    const leadStatusLower = String(activeLead?.status || "").trim().toLowerCase();
+                    const draftDocs = draftFinalDocs.filter(d => String(d?.type || "").trim().toLowerCase() === "draft");
+                    const finalDocs = draftFinalDocs.filter(d => {
+                      const t = String(d?.type || "").trim().toLowerCase();
+                      const n = String(d?.name || "").trim().toLowerCase();
+                      return t === "final" || n.startsWith("final");
+                    });
+                    const latestDraft = draftDocs.sort((a,b) => new Date(b?.uploadedAt||0) - new Date(a?.uploadedAt||0))[0] || null;
+                    const latestFinal = finalDocs.sort((a,b) => new Date(b?.uploadedAt||0) - new Date(a?.uploadedAt||0))[0] || null;
+                    const getDraftBadge = (doc) => {
+                      const isSentOrBeyond = ["draftsent","draftaccepted","draftrejected","useraccepted","completed"].includes(leadStatusLower);
+                      const s = String(doc?.status || "").trim().toLowerCase();
+                      if (leadStatusLower === "draftaccepted" || leadStatusLower === "useraccepted" || leadStatusLower === "completed") return { label: "Accepted", color: "#16a34a", bg: "rgba(22,163,74,0.08)", border: "rgba(22,163,74,0.2)" };
+                      if (leadStatusLower === "draftrejected") return { label: "Rejected", color: "#ef4444", bg: "rgba(239,68,68,0.08)", border: "rgba(239,68,68,0.18)" };
+                      if (isSentOrBeyond || s === "draft shared") return { label: "Draft Shared", color: "#2563eb", bg: "rgba(37,99,235,0.08)", border: "rgba(37,99,235,0.18)" };
+                      return { label: "Draft Uploaded", color: "#16a34a", bg: "rgba(22,163,74,0.08)", border: "rgba(22,163,74,0.2)" };
+                    };
+                    const renderRow = (doc, badge) => (
+                      <div key={doc.name} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderRadius: 12, background: "#fafafa", border: "1px solid rgba(17,24,39,0.08)", gap: 10, flexWrap: "wrap" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flex: 1 }}>
+                          <FileText size={16} color="#8b5cf6" style={{ flexShrink: 0 }} />
+                          <span style={{ fontSize: "0.88rem", fontWeight: 600, color: "#111111", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{doc.name}</span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                          <span style={{ fontSize: "0.76rem", fontWeight: 700, color: badge.color, background: badge.bg, border: `1px solid ${badge.border}`, borderRadius: 8, padding: "3px 10px" }}>{badge.label}</span>
+                          {(doc.url || doc.secure_url || doc.uploadedUrl || doc.publicId) && (
+                            <button type="button" onClick={() => viewDocument(doc.publicId, doc.url || doc.secure_url || doc.uploadedUrl, activeLead._id)} style={{ padding: "0 12px", height: 30, borderRadius: 10, border: "1px solid rgba(17,24,39,0.08)", background: "#fff", color: "#111111", display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: "0.75rem", fontWeight: 600 }}>
+                              VIEW <Eye size={13} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                    return (
+                      <PremiumCard style={{ padding: 0, overflow: "hidden", background: "#ffffff", border: "1px solid rgba(17,24,39,0.14)", borderRadius: 20, marginTop: 16 }}>
+                        <div style={{ padding: "14px 18px", borderBottom: "1px solid rgba(17,24,39,0.08)" }}>
+                          <h3 style={{ fontSize: "0.98rem", fontWeight: 700, marginBottom: 3, color: "#111111" }}>Draft & Final Documents</h3>
+                          <p style={{ color: "#6b7280", fontSize: "0.8rem", fontWeight: 400 }}>Draft and final documents for this service.</p>
+                        </div>
+                        <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+                          {latestDraft && renderRow(latestDraft, getDraftBadge(latestDraft))}
+                          {latestFinal && renderRow(latestFinal, { label: "Uploaded", color: "#16a34a", bg: "rgba(22,163,74,0.08)", border: "rgba(22,163,74,0.2)" })}
+                        </div>
+                      </PremiumCard>
+                    );
+                  })()}
 
                     <div style={{ display: "grid", gap: 18, marginTop: 10 }}>
                       {/* Service Management Control */}
@@ -1281,14 +1466,346 @@ const AdminDashboardModern = ({
         </div>
       </div>
 
-        <ConfirmationModal
-          isOpen={deleteConfirm.isOpen}
-          title="Remove Service"
-          message={`Are you sure you want to remove ${deleteConfirm.lead?.serviceName || "this service"}? It will be hidden from the dashboard.`}
-          onConfirm={handleConfirmDelete}
-          onCancel={() => setDeleteConfirm({ isOpen: false, lead: null, isLoading: false })}
-          isLoading={deleteConfirm.isLoading}
-        />
+        {createPortal(
+          <ConfirmationModal
+            isOpen={deleteConfirm.isOpen}
+            title="Remove Service"
+            message={`Are you sure you want to remove ${deleteConfirm.lead?.serviceName || "this service"}? It will be hidden from the dashboard.`}
+            onConfirm={handleConfirmDelete}
+            onCancel={() => setDeleteConfirm({ isOpen: false, lead: null, isLoading: false })}
+            isLoading={deleteConfirm.isLoading}
+          />,
+          document.body
+        )}
+
+        {serviceListModal && createPortal(
+          <div style={modalOverlayStyle} onClick={() => setServiceListModal(null)}>
+            <div style={modalBoxStyle} onClick={(e) => e.stopPropagation()}>
+              <div style={{ padding: "28px 24px 0", flexShrink: 0 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <h3 style={{ margin: 0, fontSize: "1.2rem", fontWeight: 700, color: "#111" }}>
+                      {serviceListModal.status === "inProgress" ? "Services In Progress" : serviceListModal.status === "pending" ? "Services Pending" : "Services Completed"}
+                    </h3>
+                    <span style={{ background: serviceListModal.status === "inProgress" ? "#fef3c7" : serviceListModal.status === "pending" ? "#dbeafe" : "#dcfce7", color: serviceListModal.status === "inProgress" ? "#92400e" : serviceListModal.status === "pending" ? "#1e40af" : "#166534", fontSize: "0.75rem", fontWeight: 700, padding: "2px 10px", borderRadius: 999 }}>
+                      {serviceListModal.services.length}
+                    </span>
+                  </div>
+                  <button onClick={() => setServiceListModal(null)} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#6b7280", lineHeight: 1, padding: "0 4px" }}>&times;</button>
+                </div>
+              </div>
+              <div style={{ overflowY: "auto", flex: "1 1 0", minHeight: 0, padding: "0 24px 24px", scrollbarWidth: "thin", scrollbarColor: "#d1d5db transparent" }}>
+                {serviceListModal.services.length === 0 ? (
+                  <p style={{ color: "#6b7280", textAlign: "center", padding: "20px 0" }}>No services in this category.</p>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {serviceListModal.services.map((lead, idx) => (
+                      <div key={lead._id || idx} style={{ padding: "12px 14px", borderRadius: 10, background: "#f9fafb", border: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, color: "#111", fontSize: "0.95rem" }}>{lead.serviceName}</div>
+                          <div style={{ marginTop: 6 }}>
+                            <span style={{ fontSize: "0.75rem", fontWeight: 600, padding: "2px 8px", borderRadius: 6, background: getStatusTheme ? getStatusTheme(lead)?.bg || "#f3f4f6" : "#f3f4f6", color: getStatusTheme ? getStatusTheme(lead)?.text || "#374151" : "#374151", display: "inline-block" }}>
+                              {getDisplayStatus ? getDisplayStatus(lead) : lead.status}
+                            </span>
+                          </div>
+                        </div>
+                        <div style={{ color: "#16a34a", fontWeight: 600, fontSize: "0.85rem", marginLeft: 12, whiteSpace: "nowrap" }}>
+                          {formatInr(getLeadRevenueAmount(lead) || 0)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+        {revenuePopup && createPortal(
+          <div style={modalOverlayStyle} onClick={() => setRevenuePopup(null)}>
+            <div style={modalBoxStyle} onClick={(e) => e.stopPropagation()}>
+              <div style={{ padding: "28px 24px 0", flexShrink: 0 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+                  <h3 style={{ margin: 0, fontSize: "1.2rem", fontWeight: 700, color: "#111" }}>Total Commitment</h3>
+                  <button onClick={() => setRevenuePopup(null)} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#6b7280", lineHeight: 1, padding: "0 4px" }}>&times;</button>
+                </div>
+              </div>
+              <div style={{ overflowY: "auto", flex: "1 1 0", minHeight: 0, padding: "0 24px 24px", scrollbarWidth: "thin", scrollbarColor: "#d1d5db transparent" }}>
+                {(!revenuePopup.breakdown || revenuePopup.breakdown.length === 0) ? (
+                  <p style={{ color: "#6b7280", textAlign: "center", padding: "20px 0" }}>No revenue data available.</p>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {(revenuePopup.breakdown || []).map((item, idx) => (
+                      <div key={idx} style={{ padding: "12px 14px", borderRadius: 10, background: "#f9fafb", border: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{ fontWeight: 600, color: "#111", fontSize: "0.95rem" }}>{item.serviceName}</span>
+                        <span style={{ color: "#16a34a", fontWeight: 700, fontSize: "0.95rem" }}>{formatInr(item.amount)}</span>
+                      </div>
+                    ))}
+                    <div style={{ padding: "12px 14px", borderRadius: 10, background: "#f0fdf4", border: "1px solid #bbf7d0", display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
+                      <span style={{ fontWeight: 700, color: "#111", fontSize: "1rem" }}>Total</span>
+                      <span style={{ color: "#16a34a", fontWeight: 800, fontSize: "1rem" }}>{formatInr(revenuePopup.total)}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+        {managePRModal && createPortal(
+          <div
+            onClick={() => setManagePRModal(false)}
+            style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 9999, display: "flex", alignItems: isCompactMobile ? "flex-end" : "center", justifyContent: "center", padding: isCompactMobile ? 0 : 16 }}
+          >
+            <style>{`
+              .manage-pr-modal::-webkit-scrollbar { width: 4px; }
+              .manage-pr-modal::-webkit-scrollbar-track { background: rgba(17,24,39,0.05); border-radius: 4px; margin-top: 28px; margin-bottom: 28px; }
+              .manage-pr-modal::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; min-height: 30px; }
+              .manage-pr-modal::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+              .manage-pr-modal::-webkit-scrollbar-button { display: none; }
+            `}</style>
+            {/* Outer: clips scrollbar to rounded corners */}
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{ background: "#fff", borderRadius: isCompactMobile ? "14px 14px 0 0" : 20, width: "100%", maxWidth: 480, maxHeight: isCompactMobile ? "88vh" : "70vh", overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,0.18)" }}
+            >
+            {/* Inner: scrolls, scrollbar appears inside the clipped area */}
+            <div
+              className="manage-pr-modal"
+              style={{ overflowY: "auto", maxHeight: "70vh", display: "flex", flexDirection: "column", scrollbarWidth: "thin", scrollbarColor: "#d1d5db transparent" }}
+            >
+              {/* Header */}
+              <div style={{ padding: "14px 20px 12px", borderBottom: "1px solid rgba(17,24,39,0.08)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg,#7c3aed,#4f46e5)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <ShieldCheck size={18} color="#fff" />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: "1rem", fontWeight: 800, color: "#111" }}>Manage PR & Executor</div>
+                    <div style={{ fontSize: "0.75rem", color: "#6b7280", fontWeight: 500 }}>Assign roles to registered users</div>
+                  </div>
+                </div>
+                <button onClick={() => setManagePRModal(false)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, borderRadius: 8, color: "#6b7280" }}><X size={20} /></button>
+              </div>
+
+              {/* Form */}
+              <div style={{ padding: "14px 20px", borderBottom: "1px solid rgba(17,24,39,0.06)" }}>
+                <div style={{ marginBottom: 10 }}>
+                  <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#374151", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 6 }}>Email ID of User</label>
+                  <input
+                    type="email"
+                    value={assignEmail}
+                    onChange={(e) => { setAssignEmail(e.target.value); setAssignError(""); setAssignSuccess(""); }}
+                    placeholder="Enter registered email address"
+                    style={{ width: "100%", padding: "10px 14px", borderRadius: 10, border: "1.5px solid rgba(17,24,39,0.12)", fontSize: "0.88rem", color: "#111", outline: "none", boxSizing: "border-box", background: "#fafafa" }}
+                  />
+                </div>
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#374151", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 6 }}>Assign Role</label>
+                  <input
+                    type="text"
+                    value={assignRole}
+                    onChange={(e) => { setAssignRole(e.target.value); setAssignError(""); setAssignSuccess(""); }}
+                    placeholder="e.g. pr  or  executor1, executor2, executor3 …"
+                    style={{ width: "100%", padding: "10px 14px", borderRadius: 10, border: "1.5px solid rgba(17,24,39,0.12)", fontSize: "0.88rem", color: "#111", background: "#fafafa", outline: "none", boxSizing: "border-box" }}
+                  />
+                  <div style={{ fontSize: "0.72rem", color: "#6b7280", marginTop: 4 }}>PR role: enter exactly <strong>pr</strong> &nbsp;|&nbsp; Executor role: <strong>executor1</strong>, <strong>executor2</strong>, <strong>executor3</strong> … (number required)</div>
+                </div>
+                {assignError && <div style={{ fontSize: "0.82rem", color: "#ef4444", fontWeight: 600, marginBottom: 10, padding: "8px 12px", background: "rgba(239,68,68,0.06)", borderRadius: 8 }}>{assignError}</div>}
+                {assignSuccess && <div style={{ fontSize: "0.82rem", color: "#16a34a", fontWeight: 600, marginBottom: 10, padding: "8px 12px", background: "rgba(22,163,74,0.06)", borderRadius: 8 }}>{assignSuccess}</div>}
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button
+                    disabled={assignLoading || !assignEmail.trim() || !assignRole.trim()}
+                    onClick={async () => {
+                      setAssignError(""); setAssignSuccess("");
+                      const normalizedRole = assignRole.trim().toLowerCase();
+                      const isPR = normalizedRole === "pr";
+                      const isExecutorWithNum = /^executor\d+$/.test(normalizedRole);
+                      if (!isPR && !isExecutorWithNum) {
+                        let msg;
+                        if (normalizedRole === "executor") {
+                          msg = "Executor role must include a number, e.g. executor1, executor2, executor3 …";
+                        } else if (/^pr\d+$/.test(normalizedRole)) {
+                          msg = "PR role must be entered as exactly \"pr\" with no number.";
+                        } else {
+                          msg = "Invalid role. Enter \"pr\" for PR role, or \"executor1\", \"executor2\" … for Executor role.";
+                        }
+                        setAssignError(msg);
+                        toast.error(msg);
+                        return;
+                      }
+                      setAssignLoading(true);
+                      try {
+                        const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+                        const apiUrl = import.meta.env.VITE_API_URL;
+                        const res = await axios.patch(
+                          `${apiUrl}/auth/assign-role`,
+                          { email: assignEmail.trim(), role: normalizedRole },
+                          { headers: { Authorization: `Bearer ${storedUser.token}` } }
+                        );
+                        const updated = res.data?.user;
+                        const successMsg = res.data?.message || "Role assigned successfully!";
+                        toast.success(successMsg);
+                        setAssignEmail("");
+                        setAssignRole("");
+                        setManagePRModal(false);
+                        // Optimistically update list if user already exists in it, else refetch
+                        if (updated) {
+                          setPRExecutorList((prev) => {
+                            const exists = prev.find((u) => u._id === updated._id);
+                            if (exists) return prev.map((u) => u._id === updated._id ? { ...u, role: updated.role } : u);
+                            return [...prev, updated];
+                          });
+                        }
+                        fetchPRExecutorList();
+                      } catch (err) {
+                        const status = err.response?.status;
+                        const msg = status === 404
+                          ? "User not registered. Please login to the site first."
+                          : err.response?.data?.message || "Failed to assign role.";
+                        setAssignError(msg);
+                        toast.error(msg);
+                      } finally {
+                        setAssignLoading(false);
+                      }
+                    }}
+                    style={{ flex: 1, padding: "10px 0", borderRadius: 10, background: assignLoading || !assignEmail.trim() ? "#e5e7eb" : "linear-gradient(135deg,#7c3aed,#4f46e5)", color: assignLoading || !assignEmail.trim() ? "#9ca3af" : "#fff", border: "none", fontWeight: 700, fontSize: "0.88rem", cursor: assignLoading || !assignEmail.trim() ? "not-allowed" : "pointer" }}
+                  >
+                    {assignLoading ? "Assigning…" : "Assign Role"}
+                  </button>
+                  <button
+                    onClick={() => setManagePRModal(false)}
+                    style={{ padding: "10px 20px", borderRadius: 10, background: "#f3f4f6", color: "#374151", border: "none", fontWeight: 700, fontSize: "0.88rem", cursor: "pointer" }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+
+              {/* Active PR & Executors list */}
+              <div style={{ padding: "12px 20px 32px" }}>
+                <div style={{ fontSize: "0.78rem", fontWeight: 800, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span>Active PR &amp; Executors ({prExecutorList.length})</span>
+                  {prListLoading && <span style={{ fontSize: "0.72rem", color: "#7c3aed", fontWeight: 600 }}>Loading…</span>}
+                </div>
+                {prListError ? (
+                  <div style={{ fontSize: "0.82rem", color: "#ef4444", padding: "10px 14px", background: "rgba(239,68,68,0.06)", borderRadius: 10 }}>{prListError}</div>
+                ) : prListLoading ? (
+                  <div style={{ fontSize: "0.85rem", color: "#9ca3af", textAlign: "center", padding: "20px 0" }}>Fetching users…</div>
+                ) : prExecutorList.length === 0 ? (
+                  <div style={{ fontSize: "0.85rem", color: "#9ca3af", textAlign: "center", padding: "20px 0", background: "#f9fafb", borderRadius: 12, border: "1px solid rgba(17,24,39,0.06)" }}>No PR or Executor users assigned yet.</div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {prExecutorList.map((u) => {
+                      const roleRaw = String(u.role || "").trim().toLowerCase();
+                      const isPR = /^pr\d*$/.test(roleRaw);
+                      const roleLabel = roleRaw.toUpperCase();
+                      const isEditing = editingUser?._id === u._id;
+                      return (
+                        <div key={u._id}>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", borderRadius: 9, background: "#f9fafb", border: "1px solid rgba(17,24,39,0.07)" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flex: 1 }}>
+                              <div style={{ width: 28, height: 28, borderRadius: 8, background: "#f3f4f6", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                <Users size={13} color="#6b7280" />
+                              </div>
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "#111", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{u.name}</div>
+                                <div style={{ fontSize: "0.72rem", color: "#6b7280", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{u.email}</div>
+                              </div>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginLeft: 8 }}>
+                              <span style={{ fontSize: "0.82rem", fontWeight: 800, color: "#16a34a", whiteSpace: "nowrap" }}>{roleLabel}</span>
+                              <button
+                                onClick={() => { setEditingUser(u); setEditRole(String(u.role || "").trim().toLowerCase()); setEditError(""); }}
+                                style={{ width: 26, height: 26, borderRadius: 7, border: "1px solid rgba(17,24,39,0.1)", background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+                                title="Edit role"
+                              >
+                                <Pencil size={12} color="#6b7280" />
+                              </button>
+                            </div>
+                          </div>
+                          {isEditing && (
+                            <div style={{ margin: "4px 0 2px", padding: "10px 12px", borderRadius: 9, background: "#f0fdf4", border: "1px solid rgba(22,163,74,0.2)", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                              <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#374151", whiteSpace: "nowrap" }}>Change role:</span>
+                              <input
+                                type="text"
+                                value={editRole}
+                                onChange={(e) => setEditRole(e.target.value)}
+                                placeholder="pr  or  executor1, executor2 …"
+                                style={{ flex: 1, minWidth: 110, padding: "5px 8px", borderRadius: 7, border: "1px solid rgba(17,24,39,0.12)", fontSize: "0.82rem", color: "#111", background: "#fff", outline: "none" }}
+                              />
+                              {editError && <span style={{ fontSize: "0.75rem", color: "#ef4444", width: "100%" }}>{editError}</span>}
+                              <button
+                                disabled={editLoading}
+                                onClick={async () => {
+                                  const normalizedEditRole = editRole.trim().toLowerCase();
+                                  const isEditPR = normalizedEditRole === "pr";
+                                  const isEditExecutorWithNum = /^executor\d+$/.test(normalizedEditRole);
+                                  if (!isEditPR && !isEditExecutorWithNum) {
+                                    let msg;
+                                    if (normalizedEditRole === "executor") {
+                                      msg = "Executor role must include a number, e.g. executor1, executor2 …";
+                                    } else if (/^pr\d+$/.test(normalizedEditRole)) {
+                                      msg = "PR role must be exactly \"pr\" with no number.";
+                                    } else {
+                                      msg = "Invalid role. Enter \"pr\" for PR role, or \"executor1\", \"executor2\" … for Executor role.";
+                                    }
+                                    setEditError(msg);
+                                    toast.error(msg);
+                                    return;
+                                  }
+                                  setEditLoading(true); setEditError("");
+                                  try {
+                                    const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+                                    const apiUrl = import.meta.env.VITE_API_URL;
+                                    const res = await axios.patch(
+                                      `${apiUrl}/auth/assign-role`,
+                                      { email: u.email, role: normalizedEditRole },
+                                      { headers: { Authorization: `Bearer ${storedUser.token}` } }
+                                    );
+                                    const updated = res.data?.user;
+                                    // Optimistically update this item in the list immediately
+                                    if (updated) {
+                                      setPRExecutorList((prev) => prev.map((item) =>
+                                        item._id === updated._id ? { ...item, role: updated.role } : item
+                                      ));
+                                    }
+                                    setEditingUser(null);
+                                    fetchPRExecutorList();
+                                  } catch (err) {
+                                    const status = err.response?.status;
+                                    const msg = status === 404
+                                      ? "User not registered. Please login to the site first."
+                                      : err.response?.data?.message || "Failed to update role.";
+                                    setEditError(msg);
+                                    toast.error(msg);
+                                  } finally { setEditLoading(false); }
+                                }}
+                                style={{ padding: "5px 14px", borderRadius: 7, background: "#16a34a", color: "#fff", border: "none", fontWeight: 700, fontSize: "0.78rem", cursor: editLoading ? "not-allowed" : "pointer" }}
+                              >
+                                {editLoading ? "Saving…" : "Save"}
+                              </button>
+                              <button
+                                onClick={() => setEditingUser(null)}
+                                style={{ padding: "5px 10px", borderRadius: 7, background: "#f3f4f6", color: "#374151", border: "none", fontWeight: 700, fontSize: "0.78rem", cursor: "pointer" }}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+            </div>
+          </div>,
+          document.body
+        )}
       </div>
     </div>
   );
