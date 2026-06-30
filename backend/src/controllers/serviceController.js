@@ -27,6 +27,24 @@ const deduplicateDocs = (docs) => {
     });
 };
 
+// Like deduplicateDocs but does NOT canonicalize names (e.g. forcing any
+// "PAN ..." name back to "PAN Card"). Used on generic updates (renames,
+// deletes) where the admin's exact typed name must be preserved — only
+// exact case-insensitive duplicates are collapsed.
+const dedupeDocsPreservingNames = (docs) => {
+  if (!Array.isArray(docs)) return [];
+  const seen = new Set();
+  return docs
+    .map((d) => String(d || "").trim())
+    .filter((name) => {
+      if (!name) return false;
+      const key = name.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+};
+
 export const createService = async (req, res) => {
   try {
     const { title, description, category, marketFees, recommendedFees, workingDays, documentsRequired } = req.body;
@@ -96,7 +114,7 @@ export const updateService = async (req, res) => {
       updateData.workingDays = workingDays;
     }
     if (Array.isArray(updateData.documentsRequired)) {
-      updateData.documentsRequired = deduplicateDocs(updateData.documentsRequired);
+      updateData.documentsRequired = dedupeDocsPreservingNames(updateData.documentsRequired);
     }
     updateData.updatedAt = Date.now();
 

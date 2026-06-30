@@ -4166,18 +4166,41 @@ const Recommendations = () => {
                       >
                         {selectedService.category}
                       </div>
-                      <h2
-                        style={{
-                          fontSize: isMobile ? "1rem" : "1.15rem",
-                          fontWeight: 700,
-                          color: "#0f172a",
-                          margin: 0,
-                          letterSpacing: "-0.01em",
-                          lineHeight: 1.2,
-                        }}
-                      >
-                        {selectedService.title}
-                      </h2>
+                      {isAdmin && isEditingService ? (
+                        <input
+                          type="text"
+                          value={editedService?.title ?? selectedService.title ?? ""}
+                          onChange={(e) => setEditedService({ ...editedService, title: e.target.value })}
+                          placeholder="Service name"
+                          style={{
+                            fontSize: isMobile ? "1rem" : "1.15rem",
+                            fontWeight: 700,
+                            color: "#0f172a",
+                            margin: 0,
+                            letterSpacing: "-0.01em",
+                            lineHeight: 1.2,
+                            width: "100%",
+                            padding: "4px 8px",
+                            background: "#ffffff",
+                            border: "1px solid #cbd5e1",
+                            borderRadius: "8px",
+                            outline: "none",
+                          }}
+                        />
+                      ) : (
+                        <h2
+                          style={{
+                            fontSize: isMobile ? "1rem" : "1.15rem",
+                            fontWeight: 700,
+                            color: "#0f172a",
+                            margin: 0,
+                            letterSpacing: "-0.01em",
+                            lineHeight: 1.2,
+                          }}
+                        >
+                          {selectedService.title}
+                        </h2>
+                      )}
                       {showReadyForReviewBanner && !isCompactMobile && (
                         <span
                           style={{
@@ -4594,10 +4617,15 @@ const Recommendations = () => {
                           <>
                             <button
                               onClick={async () => {
+                                const trimmedTitle = String(editedService?.title ?? "").trim();
+                                if (!trimmedTitle) {
+                                  toast.error("Please enter a service name");
+                                  return;
+                                }
                                 try {
                                   const apiUrl = import.meta.env.VITE_API_URL;
                                   const token = JSON.parse(localStorage.getItem("user"))?.token;
-                                  await axios.patch(`${apiUrl}/services/${selectedService._id}`, editedService, {
+                                  await axios.patch(`${apiUrl}/services/${selectedService._id}`, { ...editedService, title: trimmedTitle }, {
                                     headers: { Authorization: `Bearer ${token}` }
                                   });
                                   toast.success("Service updated successfully");
@@ -4610,7 +4638,7 @@ const Recommendations = () => {
                                     })()
                                   }));
                                   setIsEditingService(false);
-                                  setSelectedService({ ...selectedService, ...editedService });
+                                  setSelectedService({ ...selectedService, ...editedService, title: trimmedTitle });
                                   // Refresh all services
                                   const refreshRes = await axios.get(`${apiUrl}/services`);
                                   setAllDbServices(refreshRes.data);
@@ -4647,7 +4675,7 @@ const Recommendations = () => {
                               }}
                               style={{ padding: "6px 14px", background: "#10b981", border: "none", color: "#fff", borderRadius: "8px", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer" }}
                             >
-                              Edit Fees
+                              Edit
                             </button>
                             <button
                               onClick={() => {
