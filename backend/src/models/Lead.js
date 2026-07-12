@@ -59,6 +59,11 @@ const leadSchema = new mongoose.Schema({
       uploadedAt: { type: Date, default: Date.now },
     },
   ],
+  documentsRequired: { type: [String], default: [] },
+  documentsSentToUser: { type: Boolean, default: false },
+  // Note attached by admin when requesting documents — shown only on this
+  // specific user's dashboard, scoped to this one lead/service.
+  documentsRequiredNote: { type: String, default: "" },
   adminMessage: { type: String, default: "" },
   adminToPrMessage: { type: String, default: "" },
   prMessage: { type: String, default: "" },
@@ -73,6 +78,23 @@ const leadSchema = new mongoose.Schema({
   executorServiceRejected: { type: Boolean, default: false },
   prNotifiedClientServiceRejection: { type: Boolean, default: false },
   reuploadedDocumentNames: [String],
+  // Set by PR from the "Additional details" box under Service Status Control
+  // when a service is sent to them for review; visible only on the Admin
+  // Dashboard as a dismissible notification for this specific lead.
+  prAdditionalDetailsMessage: { type: String, default: "" },
+  // Initial-submission payment gate: the user must complete a Razorpay
+  // payment before the first-ever document submission for a lead can be
+  // confirmed/sent to admin. Not required again on later reupload cycles.
+  paymentStatus: { type: String, enum: ["Pending", "Paid"], default: "Pending" },
+  paymentAmount: { type: Number, default: 0 },
+  razorpayOrderId: { type: String, default: "" },
+  razorpayPaymentId: { type: String, default: "" },
+  paymentVerifiedAt: { type: Date },
+  // True once the client has clicked "Submit" with the current set of
+  // admin-required documents — used to keep the Submit button disabled
+  // afterwards. Reset to false any time a document is uploaded/reuploaded
+  // so the button re-enables only when something actually changed.
+  initialSubmissionConfirmed: { type: Boolean, default: false },
   isDeleted: { type: Boolean, default: false },
   updatedAt: { type: Date, default: Date.now },
   createdAt: { type: Date, default: Date.now },

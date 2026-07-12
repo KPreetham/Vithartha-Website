@@ -2,7 +2,7 @@ import React from "react";
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import ConfirmationModal from "../components/ConfirmationModal";
-import { resolveExecutorLabel } from "../utils/statusLabels";
+import { resolveExecutorLabel, hasAdminRejectedDocuments } from "../utils/statusLabels";
 import {
   AlertCircle,
   ArrowUpRight,
@@ -19,6 +19,7 @@ import {
   ChevronRight,
   Target,
   MessageSquare,
+  Download,
 } from "lucide-react";
 
 const PremiumCard = ({ children, style = {}, className = "", onClick }) => (
@@ -70,6 +71,8 @@ const UserDashboardModern = ({
   getDetailsMissingSignature,
   getDetailsMissingMessage,
   handleDismissDetailsMissingMessage,
+  dismissedNoteSignatureByLead,
+  handleDismissDocumentsRequiredNote,
   handleDeleteRejectionMessage,
   isExecutorRejectedState,
   isPrRejectedState,
@@ -96,6 +99,7 @@ const UserDashboardModern = ({
   handleConfirmDelete,
   setDeleteConfirm,
   viewDocument,
+  downloadDocument,
   isRejectedServiceState,
   getRejectionDisplayLabel,
 }) => {
@@ -361,7 +365,7 @@ const UserDashboardModern = ({
     }
 
     const statusMap = {
-      Open: "Pending verification and initial review.",
+      Open: "Pending admin review and documents upload.",
       PendingReview: "Documents are being reviewed by PR.",
       InformationRequired: "Service rejected by PR. Action required.",
       PR_Accepted: "Documents verified. Pending executor assignment.",
@@ -378,11 +382,17 @@ const UserDashboardModern = ({
     };
 
     if (status === "Open") {
+      if (hasAdminRejectedDocuments(activeLead)) {
+        return "Documents rejected by admin. Please reupload the flagged documents.";
+      }
       if (clientOnlyDocs.length > 0 && clientUploadedCount >= clientOnlyDocs.length) {
-        return "All documents uploaded. Awaiting PR review.";
+        return "All documents uploaded. Pending admin review.";
       }
       if (clientOnlyDocs.length > 0) {
         return `${clientUploadedCount} of ${clientOnlyDocs.length} documents uploaded. Keep going!`;
+      }
+      if (activeLead?.documentsSentToUser) {
+        return "Pending client documents upload.";
       }
     }
 
@@ -1063,52 +1073,6 @@ const UserDashboardModern = ({
                       </div>
                     </PremiumCard>
 
-                    {Array.isArray(selectedLeadPendingAdminDocs) && selectedLeadPendingAdminDocs.length > 0 && !selectedLeadPendingAdminDocsDismissed && (
-                      <div
-                        className="inner-card"
-                        style={{
-                          padding: 14,
-                          borderRadius: 18,
-                          border: "1px solid rgba(245,158,11,0.28)",
-                          background: "rgba(245,158,11,0.08)",
-                          display: "flex",
-                          flexDirection: isCompactMobile ? "column" : "row",
-                          alignItems: isCompactMobile ? "flex-start" : "center",
-                          gap: 10,
-                        }}
-                      >
-                        <div style={{ display: "inline-flex", alignItems: "center", gap: 8, color: "#b45309", fontWeight: 700, fontSize: "0.92rem" }}>
-                          <AlertCircle size={16} />
-                          {selectedLeadPendingAdminDocs.length === 1
-                            ? "1 new document has been added by admin"
-                            : `${selectedLeadPendingAdminDocs.length} new documents have been added by admin`}
-                        </div>
-                        <div style={{ color: "#92400e", fontSize: "0.84rem", lineHeight: 1.45, flex: 1 }}>
-                          {selectedLeadPendingAdminDocs.length === 1
-                            ? `Please upload "${selectedLeadPendingAdminDocs[0]}" from the Services page to continue.`
-                            : `Please upload: ${selectedLeadPendingAdminDocs.map((d) => `"${d}"`).join(", ")} from the Services page to continue.`}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleDismissAdminDocsBanner(selectedLead._id)}
-                          style={{
-                            padding: 6,
-                            color: "#b45309",
-                            background: "transparent",
-                            border: "none",
-                            cursor: "pointer",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            borderRadius: 8,
-                          }}
-                          aria-label="Dismiss"
-                        >
-                          <X size={16} />
-                        </button>
-                      </div>
-                    )}
-
                     {showRejectionBanner && (
                       <div className="inner-card" style={{ padding: 16, borderRadius: 18, border: "1px solid rgba(239,68,68,0.22)", background: "rgba(239,68,68,0.08)" }}>
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: activeRejectionBanner.message ? 8 : 0, color: "#fb7185" }}>
@@ -1208,10 +1172,71 @@ const UserDashboardModern = ({
                               {forceOpen ? "Action required — reupload the documents below." : "Track uploaded and pending files for this service."}
                             </p>
                           </div>
-                          <span style={{ color: "#6b7280", fontSize: isCompactMobile ? "0.74rem" : "0.8rem", fontWeight: 500 }}>
-                            {clientOnlyDocs.length} documents {isOpen ? "▴" : "▾"}
+                          <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            {Array.isArray(selectedLeadPendingAdminDocs) && selectedLeadPendingAdminDocs.length > 0 && (
+                              <span
+                                style={{
+                                  color: "#b45309",
+                                  fontSize: isCompactMobile ? "0.68rem" : "0.72rem",
+                                  fontWeight: 700,
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                Documents to Upload
+                              </span>
+                            )}
+                            <span style={{ color: "#6b7280", fontSize: isCompactMobile ? "0.74rem" : "0.8rem", fontWeight: 500, whiteSpace: "nowrap" }}>
+                              {clientOnlyDocs.length} documents {isOpen ? "▴" : "▾"}
+                            </span>
                           </span>
                         </button>
+
+                        {activeLead?.documentsRequiredNote &&
+                          String(activeLead.documentsRequiredNote).trim() &&
+                          dismissedNoteSignatureByLead?.[activeLead._id] !== String(activeLead.documentsRequiredNote) && (
+                          <div
+                            style={{
+                              position: "relative",
+                              margin: isCompactMobile ? "0 12px 12px" : "0 16px 14px",
+                              padding: isCompactMobile ? "10px 30px 10px 14px" : "10px 34px 10px 14px",
+                              borderRadius: 12,
+                              background: "#f9fafb",
+                              border: "1px solid rgba(17,24,39,0.08)",
+                              borderLeft: "3px solid #f59e0b",
+                            }}
+                          >
+                            <button
+                              type="button"
+                              onClick={(e) => handleDismissDocumentsRequiredNote(activeLead, e)}
+                              aria-label="Dismiss note"
+                              style={{
+                                position: "absolute",
+                                top: 8,
+                                right: 8,
+                                width: 22,
+                                height: 22,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                border: "none",
+                                background: "transparent",
+                                color: "#9ca3af",
+                                cursor: "pointer",
+                                borderRadius: 6,
+                              }}
+                              onMouseEnter={(e) => { e.currentTarget.style.color = "#111111"; e.currentTarget.style.background = "rgba(17,24,39,0.06)"; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.color = "#9ca3af"; e.currentTarget.style.background = "transparent"; }}
+                            >
+                              <X size={14} />
+                            </button>
+                            <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "#b45309", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>
+                              Note from Admin
+                            </div>
+                            <div style={{ fontSize: isCompactMobile ? "0.82rem" : "0.86rem", color: "#111111", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
+                              {activeLead.documentsRequiredNote}
+                            </div>
+                          </div>
+                        )}
 
                         <div
                           style={{
@@ -1227,12 +1252,37 @@ const UserDashboardModern = ({
                             <table className="dashboard-table">
                               <thead>
                                 <tr>
-                                  <th style={{ width: isCompactMobile ? "58%" : "68%" }}>Document</th>
-                                  <th>Status</th>
-                                  <th style={{ width: isCompactMobile ? 86 : 110, textAlign: "right" }}>Action</th>
+                                  <th style={{ width: isCompactMobile ? "42%" : "48%" }}>Document</th>
+                                  <th style={{ width: isCompactMobile ? "34%" : "32%" }}>Status</th>
+                                  <th style={{ width: isCompactMobile ? 66 : 90, textAlign: "left" }}>Action</th>
                                 </tr>
                               </thead>
                               <tbody>
+                                {Array.isArray(selectedLeadPendingAdminDocs) && selectedLeadPendingAdminDocs.map((docName) => (
+                                  <tr key={`pending-admin-doc-${docName}`}>
+                                    <td>
+                                      <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0, flexWrap: isCompactMobile ? "wrap" : "nowrap" }}>
+                                        <FileText size={18} color="#f59e0b" style={{ flexShrink: 0 }} />
+                                        <div style={{ minWidth: 0 }}>
+                                          <div style={{ fontSize: isCompactMobile ? "0.86rem" : "0.92rem", fontWeight: 600, whiteSpace: isCompactMobile ? "normal" : "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{docName}</div>
+                                          <div style={{ marginTop: 4, color: "#b45309", fontSize: "0.76rem", fontWeight: 700 }}>
+                                            Upload the document from the Services page
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td style={{ verticalAlign: "middle" }}>
+                                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "#d97706", fontSize: isCompactMobile ? "0.74rem" : "0.82rem", fontWeight: 700, whiteSpace: "nowrap" }}>
+                                        Pending
+                                      </span>
+                                    </td>
+                                    <td style={{ textAlign: "left" }}>
+                                      <span style={{ color: "#b45309", fontSize: isCompactMobile ? "0.7rem" : "0.75rem", fontWeight: 700, whiteSpace: "nowrap" }}>
+                                        Upload
+                                      </span>
+                                    </td>
+                                  </tr>
+                                ))}
                                 {clientOnlyDocs.length > 0 ? (
                                   clientOnlyDocs.map((doc, idx) => {
                                     const docStatus = String(doc?.status || (doc?.url ? "Uploaded" : "Pending")).trim();
@@ -1338,8 +1388,8 @@ const UserDashboardModern = ({
                                             {displayStatus}
                                           </span>
                                         </td>
-                                        <td style={{ textAlign: "right" }}>
-                                          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                                        <td style={{ textAlign: "left" }}>
+                                          <div style={{ display: "flex", justifyContent: "flex-start", gap: 8 }}>
                                             {hasFile && (
                                               <button
                                                 type="button"
@@ -1364,16 +1414,40 @@ const UserDashboardModern = ({
                                                 VIEW <Eye size={15} />
                                               </button>
                                             )}
+                                            {hasFile && leadStatusLower === "completed" && (
+                                              <button
+                                                type="button"
+                                                onClick={() => downloadDocument(doc.publicId, doc.url || doc.secure_url || doc.uploadedUrl || doc.viewUrl, activeLead._id, doc.name)}
+                                                style={{
+                                                  padding: isCompactMobile ? "0 10px" : "0 14px",
+                                                  height: isCompactMobile ? 32 : 34,
+                                                  borderRadius: 10,
+                                                  border: "1px solid rgba(22,163,74,0.25)",
+                                                  background: "rgba(22,163,74,0.08)",
+                                                  color: "#16a34a",
+                                                  display: "inline-flex",
+                                                  alignItems: "center",
+                                                  justifyContent: "center",
+                                                  gap: 8,
+                                                  cursor: "pointer",
+                                                  fontSize: isCompactMobile ? "0.7rem" : "0.75rem",
+                                                  fontWeight: 600
+                                                }}
+                                                title="Download Document"
+                                              >
+                                                <Download size={15} />
+                                              </button>
+                                            )}
                                           </div>
                                         </td>
                                       </tr>
                                     );
                                   })
-                                ) : (
+                                ) : (!Array.isArray(selectedLeadPendingAdminDocs) || selectedLeadPendingAdminDocs.length === 0) ? (
                                   <tr>
                                     <td colSpan={3} style={{ color: "#6b7280", textAlign: "center", padding: "24px 20px" }}>No documents uploaded yet.</td>
                                   </tr>
-                                )}
+                                ) : null}
                               </tbody>
                             </table>
                           </div>
@@ -1404,6 +1478,11 @@ const UserDashboardModern = ({
                               {(doc.url || doc.secure_url || doc.uploadedUrl || doc.publicId) && (
                                 <button type="button" onClick={() => viewDocument(doc.publicId, doc.url || doc.secure_url || doc.uploadedUrl, activeLead._id)} style={{ padding: "0 12px", height: 30, borderRadius: 10, border: "1px solid rgba(17,24,39,0.08)", background: "#fff", color: "#111111", display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: "0.75rem", fontWeight: 600 }}>
                                   VIEW <Eye size={13} />
+                                </button>
+                              )}
+                              {(doc.url || doc.secure_url || doc.uploadedUrl || doc.publicId) && leadStatusLower === "completed" && (
+                                <button type="button" onClick={() => downloadDocument(doc.publicId, doc.url || doc.secure_url || doc.uploadedUrl, activeLead._id, doc.name)} style={{ padding: "0 12px", height: 30, borderRadius: 10, border: "1px solid rgba(22,163,74,0.25)", background: "rgba(22,163,74,0.08)", color: "#16a34a", display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: "0.75rem", fontWeight: 600 }} title="Download Document">
+                                  <Download size={13} />
                                 </button>
                               )}
                             </div>

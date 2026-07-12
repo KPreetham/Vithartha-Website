@@ -16,6 +16,62 @@ export const resolveExecutorLabel = (lead) => {
 };
 
 /**
+ * True once every document name in lead.documentsRequired has a matching
+ * uploaded (url-bearing) entry in lead.documents. Used to distinguish
+ * "client still uploading" from "ready for admin to review" while the lead
+ * is still sitting in the "Open" status.
+ */
+export const areAllRequiredDocumentsUploaded = (lead) => {
+  const requiredNames = Array.isArray(lead?.documentsRequired) ? lead.documentsRequired : [];
+  if (requiredNames.length === 0) return false;
+  const docs = Array.isArray(lead?.documents) ? lead.documents : [];
+  return requiredNames.every((name) => {
+    const key = String(name || "").trim().toLowerCase();
+    return docs.some((d) => {
+      const docKey = String(d?.name || "").trim().toLowerCase();
+      return docKey === key && !!(d?.url || d?.publicId || d?.secure_url || d?.uploadedUrl);
+    });
+  });
+};
+
+/**
+ * True while the lead is still in the admin's own "Open" pre-review stage and
+ * the admin has rejected one or more of the client's uploaded documents (and
+ * the client hasn't reuploaded them yet — a reupload resets the doc status
+ * back to "Pending"). Draft/Final documents go through their own review flow
+ * and are excluded here.
+ */
+export const hasAdminRejectedDocuments = (lead) => {
+  const docs = Array.isArray(lead?.documents) ? lead.documents : [];
+  return docs.some((d) => {
+    const type = String(d?.type || "").trim().toLowerCase();
+    if (type === "draft" || type === "final") return false;
+    return String(d?.status || "").trim().toLowerCase() === "rejected";
+  });
+};
+
+/**
+ * True when EVERY required document has been rejected by the admin (as opposed
+ * to just some of them). Treated as a near-restart of the service — the client
+ * has nothing usable on file until they reupload, so progress should drop back
+ * close to 0% rather than the partial-rejection value.
+ */
+export const allAdminRequiredDocumentsRejected = (lead) => {
+  const requiredNames = Array.isArray(lead?.documentsRequired) ? lead.documentsRequired : [];
+  if (requiredNames.length === 0) return false;
+  const docs = Array.isArray(lead?.documents) ? lead.documents : [];
+  return requiredNames.every((name) => {
+    const key = String(name || "").trim().toLowerCase();
+    return docs.some((d) => {
+      const docKey = String(d?.name || "").trim().toLowerCase();
+      const type = String(d?.type || "").trim().toLowerCase();
+      if (type === "draft" || type === "final") return false;
+      return docKey === key && String(d?.status || "").trim().toLowerCase() === "rejected";
+    });
+  });
+};
+
+/**
  * Returns a human-readable display label for a given status + lead.
  * Role-specific overrides can be applied via the `role` parameter:
  *   "admin" | "pr" | "user" | "executor"
@@ -40,7 +96,13 @@ export const getStatusLabel = (status, lead, role = "user") => {
   }
 
   const map = {
-    open:               role === "pr" ? "New Request"            : "Pending Verification",
+    open:               lead?.documentsSentToUser
+                           ? (allAdminRequiredDocumentsRejected(lead)
+                               ? "All Documents Rejected by Admin"
+                               : hasAdminRejectedDocuments(lead)
+                                 ? "Documents Rejected by Admin"
+                                 : areAllRequiredDocumentsUploaded(lead) ? "Admin Reviewing" : "Pending Client Documents Upload")
+                           : role === "pr" ? "New Request" : "Pending Admin Review",
     pendingreview:      role === "pr" ? "PR Reviewing"           : "PR Reviewing",
     informationrequired: role === "pr" ? "Rejected by PR"         : "Rejected by PR",
     pr_accepted:        "Pending Executor Assignment",

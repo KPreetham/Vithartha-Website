@@ -390,17 +390,21 @@ export const getLeads = async (req, res) => {
       if (prId) query.prId = prId;
       if (executorId) query.executorId = executorId;
     } else if (userRole === "pr") {
-      // PR should see all user services so newly submitted requests are always visible.
-      query = {};
+      // PR should see all user services so newly submitted requests are always visible,
+      // except brand-new "Open" leads — those stay admin-only until the admin has
+      // collected the required documents and forwarded the lead for PR review.
+      query = { status: { $ne: "Open" } };
     } else if (userRole === "executor") {
       // Generic "executor" role: sees leads assigned to them by executorId ObjectId
       query = {
+        status: { $ne: "Open" },
         executorId: req.user._id,
       };
     } else if (/^executor\d+$/.test(userRole)) {
       // Named executor roles (executor1, executor2, …): see leads where assignedExecutor
       // matches their role (case-insensitive) OR where their executorId ObjectId is set.
       query = {
+        status: { $ne: "Open" },
         $or: [
           { assignedExecutor: { $regex: new RegExp(`^${escapeRegExp(userRole)}$`, "i") } },
           { executorId: req.user._id },
@@ -493,6 +497,96 @@ export const updatePrFeedback = async (req, res) => {
     res.status(200).json({ success: true, lead });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const setDocumentsRequired = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { documentsRequired } = req.body;
+
+    if (!Array.isArray(documentsRequired)) {
+      return res.status(400).json({ success: false, message: "documentsRequired must be an array" });
+    }
+
+    const cleanedNames = [
+      ...new Set(
+        documentsRequired
+          .map((name) => String(name || "").trim())
+          .filter(Boolean),
+      ),
+    ];
+
+    const lead = await Lead.findByIdAndUpdate(
+      id,
+      { $set: { documentsRequired: cleanedNames, updatedAt: Date.now() } },
+      { new: true },
+    );
+
+    if (!lead) {
+      return res.status(404).json({ success: false, message: "Lead not found" });
+    }
+
+    res.status(200).json({ success: true, lead });
+  } catch (error) {
+    console.error("Error setting documents required:", error);
+    res.status(500).json({ success: false, message: "Error setting documents required" });
+  }
+};
+
+export const sendDocumentsToUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { note } = req.body;
+    const lead = await Lead.findById(id);
+
+    if (!lead) {
+      return res.status(404).json({ success: false, message: "Lead not found" });
+    }
+
+    if (!Array.isArray(lead.documentsRequired) || lead.documentsRequired.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Add at least one required document before sending to the user",
+      });
+    }
+
+    if (typeof note === "string") {
+      lead.documentsRequiredNote = note.trim();
+    }
+
+    const existingNames = new Set(
+      (Array.isArray(lead.documents) ? lead.documents : []).map((doc) =>
+        String(doc?.name || "").trim().toLowerCase(),
+      ),
+    );
+
+    lead.documentsRequired.forEach((name) => {
+      const trimmedName = String(name || "").trim();
+      if (!trimmedName || existingNames.has(trimmedName.toLowerCase())) return;
+      lead.documents.push({
+        name: trimmedName,
+        type: "Client",
+        status: "Pending",
+        adminAdded: true,
+      });
+      existingNames.add(trimmedName.toLowerCase());
+    });
+
+    lead.documentsSentToUser = true;
+    lead.updatedAt = Date.now();
+    await lead.save();
+
+    // Deliberately NOT propagated to the Service catalog: documents requested
+    // for one user's lead must stay scoped to that lead only. Writing them onto
+    // the shared Service.documentsRequired list would leak this specific
+    // request onto every other user who picked the same service (they'd see a
+    // "required" document they were never actually asked for).
+
+    res.status(200).json({ success: true, lead });
+  } catch (error) {
+    console.error("Error sending documents to user:", error);
+    res.status(500).json({ success: false, message: "Error sending documents to user" });
   }
 };
 
@@ -616,6 +710,26 @@ export const updateLead = async (req, res) => {
       updateData.prNotifiedClientServiceRejection = false;
     }
 
+    // When admin accepts the service and forwards it to PR, reset the admin-reviewed
+    // client document statuses back to Pending so PR performs its own independent
+    // accept/reject review — mirroring how AssignedToExecutor resets PR-reviewed
+    // documents for the executor's own review below.
+    if (updateData.status === "PendingReview" && lead.status === "Open") {
+      const currentDocuments = Array.isArray(lead.documents)
+        ? lead.documents.map((doc) =>
+            typeof doc.toObject === "function" ? doc.toObject() : { ...doc }
+          )
+        : [];
+
+      updateData.documents = currentDocuments.map((doc) => {
+        const docType = String(doc?.type || "").trim().toLowerCase();
+        if (docType === "client" || docType === "userupload" || docType === "") {
+          return { ...doc, status: "Pending", rejectionMessage: "" };
+        }
+        return doc;
+      });
+    }
+
     // If PR accepts a service that already has an executor assigned (reupload flow),
     // skip PR_Accepted and go directly to AssignedToExecutor so the PR dashboard
     // shows the correct "Assigned to ExecutorX" status instead of "Pending Executor Assignment".
@@ -681,6 +795,33 @@ export const updateLead = async (req, res) => {
 
     const pushedDocuments = req.body?.$push?.documents;
     const hasIncomingDocuments = !!pushedDocuments;
+
+    // PR/admin rejecting the whole service or requesting more info (not the
+    // reupload-merge flow, which has its own status recovery logic below)
+    // starts a brand-new review cycle. Clear any stale "reuploaded" markers
+    // left over from a previous cycle so the dashboards don't misreport this
+    // fresh rejection as "already resubmitted, pending PR re-review" — this
+    // matters even when no specific document is marked Rejected (e.g. a
+    // direct service-level rejection), since otherwise a stale reuploaded
+    // flag on any document keeps the lead looking resubmitted.
+    const nextStatus = String(updateData.status || "").trim();
+    const isDirectServiceRejectionByReviewer =
+      (isAdmin || isPR) &&
+      (nextStatus === "Rejected" || nextStatus === "InformationRequired") &&
+      !hasIncomingDocuments;
+
+    if (isDirectServiceRejectionByReviewer) {
+      updateData.reuploadedDocumentNames = [];
+      updateData.documents = (Array.isArray(lead.documents) ? lead.documents : []).map((doc) => {
+        const plainDoc = typeof doc.toObject === "function" ? doc.toObject() : { ...doc };
+        return { ...plainDoc, reuploaded: false };
+      });
+      await ReuploadedDocument.deleteMany({ lead: lead._id });
+      // Fresh rejection cycle — clear any stale "already resubmitted" confirmation
+      // left over from a prior cycle so the Services page shows this rejection.
+      updateData.initialSubmissionConfirmed = false;
+    }
+
     const reuploadedDocumentNames = Array.isArray(req.body?.reuploadedDocumentNames)
       ? req.body.reuploadedDocumentNames
       : [];
@@ -692,6 +833,12 @@ export const updateLead = async (req, res) => {
     );
 
     let inferredReuploads = new Set(normalizedReuploads);
+    // Names that are genuinely being reuploaded (as opposed to a document
+    // replacing an admin-requested placeholder for the first time) — used for
+    // the per-document `reuploaded` flag/display AND for what gets persisted to
+    // the ReuploadedDocument audit trail below. Declared here (not just inside
+    // the merge block) so it's still in scope when we persist after saving.
+    let trueReuploadNames = new Set(normalizedReuploads);
 
     if (
       updateData.status === "AssignedToExecutor" ||
@@ -735,29 +882,68 @@ export const updateLead = async (req, res) => {
           .map((doc) => normalizeDocumentName(doc?.name))
           .filter(Boolean)
       );
+      // Names that already have an uploaded FILE (not just an admin-requested
+      // placeholder with no file yet). The very first upload against a document
+      // the admin requested replaces a same-named placeholder, but it is not a
+      // "reupload" — only a document that already had a file counts as one.
+      const currentDocumentNamesWithFile = new Set(
+        currentDocuments
+          .filter((doc) => !!(doc?.url || doc?.publicId || doc?.secure_url || doc?.uploadedUrl))
+          .map((doc) => normalizeDocumentName(doc?.name))
+          .filter(Boolean)
+      );
+      // Count how many incoming documents share each name — used to catch the
+      // case where several files are uploaded for the same document name at once.
+      // A document name must resolve to a single stored file, so same-named
+      // incoming entries must go through the merge/collapse path below rather
+      // than accumulating as separate copies.
+      const incomingNameCounts = new Map();
+      for (const doc of incomingDocsRaw) {
+        const n = normalizeDocumentName(doc?.name);
+        if (!n) continue;
+        incomingNameCounts.set(n, (incomingNameCounts.get(n) || 0) + 1);
+      }
 
-      // Identify which incoming documents are actually reuploads
+      // Identify which incoming documents replace an existing entry (placeholder
+      // or real file) so the stale entry gets removed below.
       for (const doc of incomingDocsRaw) {
         const incomingName = normalizeDocumentName(doc?.name);
         const markedReupload =
           String(doc?.status || "").trim().toLowerCase() === "reuploaded" ||
           !!doc?.reuploaded;
-        // A document is a reupload if it's explicitly marked OR it replaces an existing document
+        const hasSameNameSibling = incomingName && (incomingNameCounts.get(incomingName) || 0) > 1;
         if (
           incomingName &&
           (
             currentDocumentNames.has(incomingName) ||
             markedReupload ||
+            hasSameNameSibling ||
             (shouldReplaceDraftDocs && String(doc?.type || "").trim().toLowerCase() === "draft") ||
             (shouldReplaceFinalDocs && String(doc?.type || "").trim().toLowerCase() === "final")
           )
         ) {
           inferredReuploads.add(incomingName);
         }
+        // Only a document that already had an uploaded file (or was explicitly
+        // marked as a reupload) is a TRUE reupload.
+        if (incomingName && (currentDocumentNamesWithFile.has(incomingName) || markedReupload)) {
+          trueReuploadNames.add(incomingName);
+        }
       }
 
       // If we are reuploading, we need to replace existing versions of those documents
       if (inferredReuploads.size > 0) {
+        // Names the admin explicitly requested (placeholder entries). When a reupload
+        // replaces a same-named document, the surviving entry must inherit this flag —
+        // otherwise the very first upload of an admin-requested document would silently
+        // erase the "admin requested this" marker along with the placeholder it replaces.
+        const adminAddedNames = new Set(
+          currentDocuments
+            .filter((doc) => doc?.adminAdded === true)
+            .map((doc) => normalizeDocumentName(doc?.name))
+            .filter(Boolean),
+        );
+
         const preservedDocuments = currentDocuments.filter((doc) => {
           const docName = normalizeDocumentName(doc?.name);
           if (inferredReuploads.has(docName)) return false;
@@ -770,7 +956,7 @@ export const updateLead = async (req, res) => {
           const docName = normalizeDocumentName(doc?.name);
           const isDraftDoc = String(doc?.type || "").trim().toLowerCase() === "draft";
           const isFinalDoc = String(doc?.type || "").trim().toLowerCase() === "final";
-          const isReupload = inferredReuploads.has(docName) || (shouldReplaceDraftDocs && isDraftDoc) || (shouldReplaceFinalDocs && isFinalDoc);
+          const isReupload = trueReuploadNames.has(docName) || (shouldReplaceDraftDocs && isDraftDoc) || (shouldReplaceFinalDocs && isFinalDoc);
           const isFinal = String(doc?.type || "").trim().toLowerCase() === "final";
 
           return {
@@ -778,10 +964,32 @@ export const updateLead = async (req, res) => {
             name: doc?.name || "",
             reuploaded: isReupload,
             status: isFinal ? "Accepted" : (isReupload ? "Pending" : (doc?.status || "Pending")),
+            adminAdded: doc?.adminAdded === true || adminAddedNames.has(docName),
           };
         });
 
-        const allDocuments = [...preservedDocuments, ...taggedIncomingDocuments];
+        const allDocumentsRaw = [...preservedDocuments, ...taggedIncomingDocuments];
+        // Collapse duplicate client documents by name — each document name must
+        // map to a single stored file. When multiple files are uploaded for the
+        // same document (or a re-upload arrives), the latest one overrides the
+        // rest instead of accumulating multiple copies. Draft/Final documents are
+        // exempt (they have their own replace handling above). Iterating from the
+        // end keeps the newest occurrence of each name (incoming docs are appended
+        // last), while unshift preserves the original ordering.
+        const seenClientNames = new Set();
+        const allDocuments = [];
+        for (let i = allDocumentsRaw.length - 1; i >= 0; i--) {
+          const doc = allDocumentsRaw[i];
+          const type = String(doc?.type || "").trim().toLowerCase();
+          if (type === "draft" || type === "final") {
+            allDocuments.unshift(doc);
+            continue;
+          }
+          const key = normalizeDocumentName(doc?.name);
+          if (key && seenClientNames.has(key)) continue;
+          if (key) seenClientNames.add(key);
+          allDocuments.unshift(doc);
+        }
         updateData.documents = allDocuments;
 
         // Clean up the update payload to avoid conflicts between $set and $push
@@ -795,8 +1003,22 @@ export const updateLead = async (req, res) => {
             String(d?.status || "").trim().toLowerCase() === "rejected"
           );
 
-          if (stillRejectedDocs.length > 0) {
-            updateData.status = "Rejected";
+          // Whether the rejection was on the whole service ("Rejected") or on
+          // one or more individual documents ("InformationRequired"), reuploading
+          // an admin-required document here only stages the file — it should
+          // NOT silently resubmit the lead on its own. The lead stays in its
+          // rejected state (whole-service or per-document) until the user
+          // explicitly clicks "Submit" (a separate request), even once every
+          // required document has been reuploaded.
+          const originalStatusLower = String(lead.status || "").trim().toLowerCase();
+          const isWholeServiceRejection = originalStatusLower === "rejected";
+          const isInformationRequiredRejection = originalStatusLower === "informationrequired";
+          const requiredDocNames = Array.isArray(lead.documentsRequired) ? lead.documentsRequired : [];
+          const requiresManualResubmit =
+            (isWholeServiceRejection || isInformationRequiredRejection) && requiredDocNames.length > 0;
+
+          if (stillRejectedDocs.length > 0 || requiresManualResubmit) {
+            updateData.status = isInformationRequiredRejection ? "InformationRequired" : "Rejected";
           } else {
             updateData.status = "PendingReview";
             // Clear previous rejection messages when moving back to review
@@ -860,19 +1082,23 @@ export const updateLead = async (req, res) => {
       return res.status(404).json({ success: false, message: "Lead not found after update" });
     }
 
-    // Persist to ReuploadedDocuments table for history/tracking
-    if (inferredReuploads.size > 0) {
+    // Persist to ReuploadedDocuments table for history/tracking. Uses
+    // trueReuploadNames (not the broader inferredReuploads) so the very first
+    // upload against an admin-requested placeholder isn't recorded as a
+    // reupload — that persisted record is what drives the "Reuploaded" badge
+    // shown across dashboards via displayReuploaded.
+    if (trueReuploadNames.size > 0) {
       // Re-calculate incoming docs to store (only those that were reuploaded)
       const currentFinalDocs = Array.isArray(updatedLead.documents) ? updatedLead.documents : [];
       const docsToPersist = currentFinalDocs.filter((d) =>
-        inferredReuploads.has(normalizeDocumentName(d.name)) ||
+        trueReuploadNames.has(normalizeDocumentName(d.name)) ||
         (String(d?.type || "").trim().toLowerCase() === "draft" && currentFinalDocs.filter((doc) => String(doc?.type || "").trim().toLowerCase() === "draft").length === 1),
       );
 
       await persistReuploadedDocuments({
         lead: updatedLead,
         incomingDocuments: docsToPersist,
-        reuploadedNames: Array.from(inferredReuploads),
+        reuploadedNames: Array.from(trueReuploadNames),
         sourceRole: req.user?.role || "User",
       });
     }
@@ -990,12 +1216,26 @@ export const updateDocumentStatus = async (req, res) => {
       doc.rejectionMessage = status === "Rejected" ? String(rejectionMessage || "").trim() : "";
       doc.executorRejected = false;
       doc.prNotifiedClient = status === "Rejected";
+      // This is a fresh decision on this document — clear any stale "reuploaded"
+      // flag left over from an earlier review cycle so status displays (which
+      // treat a still-reuploaded doc as "already resubmitted") reflect this
+      // rejection instead of a prior, unrelated resubmission.
+      doc.reuploaded = false;
     }
 
     lead.updatedAt = Date.now();
     await lead.save();
 
-    res.status(200).json({ success: true, lead });
+    if (!(isAssignedExecutor && !isAdmin && !isPR)) {
+      const normalizedDocName = normalizeDocumentName(doc.name);
+      if (normalizedDocName) {
+        await ReuploadedDocument.deleteMany({ lead: lead._id, normalizedDocumentName: normalizedDocName });
+        await Lead.findByIdAndUpdate(lead._id, { $pull: { reuploadedDocumentNames: normalizedDocName } });
+      }
+    }
+
+    const hydratedLead = await attachReuploadMetadata(lead);
+    res.status(200).json({ success: true, lead: hydratedLead });
   } catch (error) {
     console.error("Error updating document status:", error);
     res.status(500).json({ success: false, message: "Error updating document status" });
@@ -1069,6 +1309,10 @@ export const notifyClientServiceRejection = async (req, res) => {
 
     // Open the gate — user, admin, and other dashboards can now see the rejection
     lead.prNotifiedClientServiceRejection = true;
+    // This is a fresh rejection cycle becoming visible to the client — clear any
+    // stale confirmation from a prior submission so the Services page correctly
+    // shows the rejection/reupload state again instead of masking it.
+    lead.initialSubmissionConfirmed = false;
     lead.updatedAt = Date.now();
     await lead.save();
 

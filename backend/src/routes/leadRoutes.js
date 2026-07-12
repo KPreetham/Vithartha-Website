@@ -10,6 +10,8 @@ import {
   notifyClientServiceRejection,
   assignLead,
   updatePrFeedback,
+  setDocumentsRequired,
+  sendDocumentsToUser,
   getSignedUrl,
   generateViewToken,
   streamDocument,
@@ -177,6 +179,8 @@ router.patch("/:id", protect, updateLead);
 router.delete("/:id", protect, deleteLead);
 router.patch("/:id/assign", protect, assignLead);
 router.patch("/:id/pr-feedback", protect, updatePrFeedback);
+router.patch("/:id/documents-required", protect, authorize("admin"), setDocumentsRequired);
+router.patch("/:id/send-documents", protect, authorize("admin"), sendDocumentsToUser);
 
 router.get("/signed-url/:publicId", protect, getSignedUrl);
 router.get(/^\/view-token\/(.+)/, protect, (req, res) => {

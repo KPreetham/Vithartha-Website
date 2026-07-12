@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import axios from "axios";
@@ -7,14 +8,7 @@ import {
   Calendar,
   ChevronRight,
   ArrowRight,
-  Star,
-  Zap,
-  Shield,
-  BarChart3,
-  FileCheck,
-  Building,
   X,
-  Users,
   ShieldAlert,
   CheckCircle,
   Clock,
@@ -29,21 +23,15 @@ import {
   XCircle,
   Edit,
   Trash2,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { formatInr, getServicePricing, parseFeeAmount } from "../utils/servicePricing";
 import { viewDocument } from "../utils/documentViewer";
+import { payForLead } from "../utils/razorpay";
 import { normalizeRole } from "../utils/roleRouting";
+import { hasAdminRejectedDocuments } from "../utils/statusLabels";
 import ConfirmationModal from "../components/ConfirmationModal";
-
-const iconMap = {
-  "GST COMPLIANCE": Shield,
-  "MCA & COMPANY COMPLIANCE": Building,
-  "EPF, ESI & PAYROLL COMPLIANCE": Users,
-  "INCOME TAX & ITR FILING": FileCheck,
-  "TRUST & NGO COMPLIANCE": Star,
-  "VIRTUAL CFO & ACCOUNTING SERVICES": BarChart3,
-};
 
 const categoryColors = {
   "GST COMPLIANCE": { color: "#10b981", bg: "rgba(16,185,129,0.08)" },
@@ -1657,8 +1645,6 @@ const ServiceCard = ({
   isMobile = false,
   topBadge = null,
 }) => {
-  const cat = service.category || "Advisory";
-  const Icon = iconMap[cat] || Zap;
 
   return (
     <div
@@ -1757,17 +1743,6 @@ const ServiceCard = ({
               gap: "0.4rem",
             }}
           >
-            <span
-              style={{
-                color: "#64748b",
-                fontSize: isMobile ? "0.65rem" : "0.75rem",
-                fontWeight: 700,
-                letterSpacing: "0.08em",
-                textTransform: "uppercase",
-              }}
-            >
-              {service.category}
-            </span>
             <h3
               style={{
                 fontSize: isMobile ? "1.15rem" : "1.35rem",
@@ -1916,10 +1891,13 @@ const Recommendations = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [interestData, setInterestData] = useState({ name: "", email: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [uploadingDoc, setUploadingDoc] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [userLeads, setUserLeads] = useState([]);
   const [allDbServices, setAllDbServices] = useState([]);
+  // Initial-submission payment gate: keyed by lead id so each service's
+  // "confirm payment" toggle is independent of any other.
+  const [paymentConfirmedByLead, setPaymentConfirmedByLead] = useState({});
+  const [payingLeadId, setPayingLeadId] = useState(null);
   const storedUser = JSON.parse(localStorage.getItem("user"));
   const isUserRole = normalizeRole(storedUser?.role) === "user";
 
@@ -1944,30 +1922,35 @@ const Recommendations = () => {
   const [ourFeeInputValue, setOurFeeInputValue] = useState("");
   const [isEditingService, setIsEditingService] = useState(false);
   const [editedService, setEditedService] = useState(null);
-  const [isSavingService, setIsSavingService] = useState(false);
-  const [isAddingDocument, setIsAddingDocument] = useState(false);
-  const [newDocumentName, setNewDocumentName] = useState("");
-  const [deleteConfirmDocName, setDeleteConfirmDocName] = useState(null);
-  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [editingDocName, setEditingDocName] = useState(null);
-  const [editDocumentNameInput, setEditDocumentNameInput] = useState("");
+  const [editedWorkingDays, setEditedWorkingDays] = useState(2);
+  const [isEditingAbout, setIsEditingAbout] = useState(false);
+  const [editedAbout, setEditedAbout] = useState("");
+  const [isEditingTopDescription, setIsEditingTopDescription] = useState(false);
+  const [editedTopDescription, setEditedTopDescription] = useState("");
+  const openedServiceKeyRef = useRef(null);
   const [serviceToDelete, setServiceToDelete] = useState(null);
   const [isServiceDeleteConfirmOpen, setIsServiceDeleteConfirmOpen] = useState(false);
   const [isServiceDeleting, setIsServiceDeleting] = useState(false);
   const [isAddingService, setIsAddingService] = useState(false);
-  const [customCategoryInput, setCustomCategoryInput] = useState("");
-  const [isAddDocModalOpen, setIsAddDocModalOpen] = useState(false);
-  const [addDocInput, setAddDocInput] = useState("");
   const [newServiceForm, setNewServiceForm] = useState({
     title: "",
     description: "",
-    category: "Advisory",
+    aboutInfo: "",
     marketFees: "",
     recommendedFees: "",
-    workingDays: 2,
-    documentsRequired: [],
   });
+  const [uploadingDocKey, setUploadingDocKey] = useState(null);
+  const [isAddingServiceRequiredDoc, setIsAddingServiceRequiredDoc] = useState(false);
+  const [newServiceRequiredDocName, setNewServiceRequiredDocName] = useState("");
+  const [isSavingServiceRequiredDocs, setIsSavingServiceRequiredDocs] = useState(false);
+  const [editingServiceDocRowKey, setEditingServiceDocRowKey] = useState(null);
+  const [editingServiceDocRowValue, setEditingServiceDocRowValue] = useState("");
+  // Admin/PR/Executor browse the Services page without any specific-user context,
+  // so when a service has more than one user's lead, they must explicitly pick
+  // which lead the "Documents Required" edits below apply to — otherwise edits
+  // would land on whichever lead happened to update most recently, and (via the
+  // shared Service catalog) leak into every other user's view of that service.
+  const [selectedDocsLeadId, setSelectedDocsLeadId] = useState(null);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [isCompactMobile, setIsCompactMobile] = useState(window.innerWidth <= 480);
   const [isLightMode, setIsLightMode] = useState(() => {
@@ -1982,6 +1965,7 @@ const Recommendations = () => {
     : null;
   const selectedServiceRecommendedFeeAmount = selectedService
     ? (parseFeeAmount(overriddenOurFees[selectedService?._id || selectedService?.id]) ??
+      parseFeeAmount(selectedService?.recommendedFees) ??
       selectedServicePricing?.amount ??
       1)
     : 1;
@@ -1994,6 +1978,17 @@ const Recommendations = () => {
       setIsEditingService(false);
       setEditedService(null);
       setOurFeeInputValue("");
+      openedServiceKeyRef.current = null;
+      return;
+    }
+    const serviceKey = selectedService._id || selectedService.id || selectedService.title;
+    if (openedServiceKeyRef.current !== serviceKey) {
+      setIsEditingAbout(false);
+      setEditedAbout("");
+      setIsEditingTopDescription(false);
+      setEditedTopDescription("");
+      setSelectedDocsLeadId(null);
+      openedServiceKeyRef.current = serviceKey;
     }
   }, [selectedService]);
 
@@ -2117,195 +2112,6 @@ const Recommendations = () => {
     }
   }, [uploadedDocs, storedUser?._id, storedUser?.id]);
 
-  // Memoized document filtering logic
-  const getActiveDocs = useCallback(
-    (service) => {
-      if (!service) return [];
-
-      const normalizeDocName = (s) => String(s || "").trim().toLowerCase();
-
-      // If the service has documentsRequired from DB, show only those — no auto-injection
-      if (Array.isArray(service.documentsRequired) && service.documentsRequired.length > 0) {
-        return service.documentsRequired
-          .filter((docName) => normalizeDocName(docName) !== "gross annual value data")
-          .map(docName => ({
-            name: docName,
-            required: true,
-            desc: `Please upload your ${docName}`
-          }));
-      }
-
-      // Fallback to registry logic (legacy services without DB documents)
-      // Inject PAN + Aadhaar only in this fallback path, not for admin-created services
-      const UNIVERSAL_DOCS = ["PAN Card", "Aadhaar Card"];
-      const injectUniversalDocs = (docs) => {
-        const present = new Set(docs.map((d) => normalizeDocName(d.name || d)));
-        const toAdd = UNIVERSAL_DOCS
-          .filter((name) => !present.has(normalizeDocName(name)))
-          .map((name) => ({ name, required: true, desc: `Copy of ${name}` }));
-        return [...toAdd, ...docs];
-      };
-
-      let list = [...DOCUMENTS_REGISTRY.common];
-
-      // Use userData from location state if available, else fallback to storedUser profile
-      const profile = userData || storedUser?.profile || {};
-
-      // Income Tax specific documents
-      if (service.trigger === "Income Tax") {
-        if (
-          profile.salaried ||
-          service.title?.toLowerCase().includes("salary")
-        ) {
-          list = [...list, ...DOCUMENTS_REGISTRY.salary];
-        }
-        if (
-          profile.capitalGains ||
-          service.title?.toLowerCase().includes("capital gains")
-        ) {
-          list = [...list, ...DOCUMENTS_REGISTRY.capitalGains];
-        }
-        if (
-          profile.houseProperty ||
-          service.title?.toLowerCase().includes("house property") ||
-          service.title?.toLowerCase().includes("rental")
-        ) {
-          list = [...list, ...DOCUMENTS_REGISTRY.houseProperty];
-        }
-        if (
-          profile.otherSources ||
-          service.title?.toLowerCase().includes("dividend") ||
-          service.title?.toLowerCase().includes("interest")
-        ) {
-          list = [...list, ...DOCUMENTS_REGISTRY.otherSources];
-        }
-      }
-
-      return injectUniversalDocs(list);
-    },
-    [userData, storedUser?.profile],
-  );
-
-  const handleAddDocument = async () => {
-    if (!selectedService) return;
-
-    const trimmedName = String(newDocumentName || "").trim();
-    if (!trimmedName) {
-      toast.error("Please enter a document name");
-      return;
-    }
-
-    const currentDocs = getActiveDocs(selectedService);
-    const normalizedExisting = new Set(currentDocs.map((doc) => normalizeText(doc.name)));
-    if (normalizedExisting.has(normalizeText(trimmedName))) {
-      toast.error("This document is already added");
-      return;
-    }
-
-    const apiUrl = import.meta.env.VITE_API_URL;
-    const token = storedUser?.token;
-    const serviceId = selectedService._id;
-
-    try {
-      setIsSavingService(true);
-
-      const addRes = await axios.patch(
-        `${apiUrl}/services/${serviceId}/add-document`,
-        { documentName: trimmedName, markAsAdminAdded: true },
-        token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
-      );
-
-      const [refreshServicesRes, refreshLeadsRes] = await Promise.allSettled([
-        axios.get(`${apiUrl}/services`),
-        token
-          ? axios.get(`${apiUrl}/leads`, { headers: { Authorization: `Bearer ${token}` } })
-          : Promise.resolve({ data: [] }),
-      ]);
-
-      if (refreshServicesRes.status === "fulfilled" && Array.isArray(refreshServicesRes.value.data)) {
-        setAllDbServices(refreshServicesRes.value.data);
-        const refreshedSelectedService = refreshServicesRes.value.data.find(
-          (service) => String(service?._id) === String(serviceId),
-        );
-        if (refreshedSelectedService) {
-          setSelectedService(refreshedSelectedService);
-        }
-      }
-
-      if (refreshLeadsRes.status === "fulfilled" && Array.isArray(refreshLeadsRes.value.data)) {
-        setUserLeads(refreshLeadsRes.value.data);
-      }
-
-      try {
-        window.dispatchEvent(new CustomEvent("service-document-added", {
-          detail: {
-            serviceId,
-            serviceTitle: selectedService?.title || "",
-            documentName: trimmedName,
-            updatedLeadsCount: addRes?.data?.updatedLeadsCount || 0,
-          }
-        }));
-      } catch (evtErr) {
-        console.error("Error dispatching service-document-added event:", evtErr);
-      }
-
-      setIsAddingDocument(false);
-      setNewDocumentName("");
-      const updatedCount = addRes?.data?.updatedLeadsCount || 0;
-      toast.success(
-        updatedCount > 0
-          ? `Document added. Propagated to ${updatedCount} existing lead(s).`
-          : "Document added successfully"
-      );
-    } catch (error) {
-      const apiMessage = error?.response?.data?.message;
-      toast.error(apiMessage || "Failed to add document");
-    } finally {
-      setIsSavingService(false);
-    }
-  };
-
-  const handleDeleteDocument = async (docToDeleteName) => {
-    if (!selectedService) return;
-    setIsDeleting(true);
-
-    const storedDocs = Array.isArray(selectedService.documentsRequired) ? selectedService.documentsRequired : [];
-    const nextDocumentsRequired = storedDocs.filter(name => name !== docToDeleteName);
-
-    const apiUrl = import.meta.env.VITE_API_URL;
-    const token = storedUser?.token;
-
-    try {
-      const saveRes = await axios.patch(
-        `${apiUrl}/services/${selectedService._id}`,
-        { documentsRequired: nextDocumentsRequired },
-        token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
-      );
-
-      const refreshRes = await axios.get(`${apiUrl}/services`);
-      const servicesFromServer = Array.isArray(refreshRes.data) ? refreshRes.data : [];
-      setAllDbServices(servicesFromServer);
-      const refreshedSelectedService = servicesFromServer.find(
-        (service) => String(service?._id) === String(selectedService._id),
-      );
-      setSelectedService(
-        saveRes?.data?.service || refreshedSelectedService || {
-          ...selectedService,
-          documentsRequired: nextDocumentsRequired,
-        },
-      );
-      toast.success("Document deleted successfully");
-      setIsDeleteConfirmOpen(false);
-      setDeleteConfirmDocName(null);
-    } catch (error) {
-      const apiMessage = error?.response?.data?.message;
-      toast.error(apiMessage || "Failed to delete document");
-      setIsDeleteConfirmOpen(false);
-      setDeleteConfirmDocName(null);
-    } finally {
-      setIsDeleting(false);
-    }
-  };
 
   const handleDeleteService = async (service) => {
     if (!service) return;
@@ -2391,38 +2197,24 @@ const Recommendations = () => {
   };
 
   const handleCreateService = async () => {
-    const { title, description, category, marketFees, recommendedFees, workingDays, documentsRequired } = newServiceForm;
-    if (!title.trim() || !description.trim()) {
-      toast.error("Service name and description are required");
+    const { title, description, aboutInfo, marketFees, recommendedFees } = newServiceForm;
+    if (!title.trim() || !description.trim() || !aboutInfo.trim()) {
+      toast.error("Service name, description, and about the service are required");
       return;
     }
 
     const apiUrl = import.meta.env.VITE_API_URL;
     const token = storedUser?.token;
 
-    // Deduplicate and canonicalize PAN/Aadhaar before sending
-    const canonicalize = (name) => {
-      const s = String(name || "").trim();
-      if (/^pan\b/i.test(s)) return "PAN Card";
-      if (/^(aadhar|aadhaar|adhar|adhaar)\b/i.test(s)) return "Aadhaar Card";
-      return s;
-    };
-    const seenDocs = new Set();
-    const dedupedDocs = (Array.isArray(documentsRequired) ? documentsRequired : [])
-      .map(canonicalize)
-      .filter((name) => { if (!name || seenDocs.has(name.toLowerCase())) return false; seenDocs.add(name.toLowerCase()); return true; });
-
     try {
-      const res = await axios.post(
+      await axios.post(
         `${apiUrl}/services`,
         {
           title: title.trim(),
           description: description.trim(),
-          category,
+          aboutInfo: aboutInfo ? aboutInfo.trim() : "",
           marketFees: marketFees ? `Rs. ${formatOnlyDigits(marketFees)}` : "",
           recommendedFees: recommendedFees ? `Rs. ${formatOnlyDigits(recommendedFees)}` : "",
-          workingDays: Number(workingDays) || 2,
-          documentsRequired: dedupedDocs,
         },
         token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
       );
@@ -2437,51 +2229,148 @@ const Recommendations = () => {
     }
   };
 
-  const handleEditDocument = async () => {
-    if (!selectedService || !editingDocName) return;
-
-    const trimmedName = String(editDocumentNameInput || "").trim();
-    if (!trimmedName) {
-      toast.error("Please enter a document name");
+  const handleRequiredDocumentUpload = async (leadId, docName, files) => {
+    const fileArray = Array.from(files || []);
+    if (fileArray.length === 0) return;
+    if (fileArray.some((file) => file.type !== "application/pdf")) {
+      toast.error("Only PDF documents are accepted");
       return;
     }
-
-    const storedDocs = Array.isArray(selectedService.documentsRequired) ? selectedService.documentsRequired : [];
-    const nextDocumentsRequired = storedDocs.map(name =>
-      name === editingDocName ? trimmedName : name
-    );
-
-    const apiUrl = import.meta.env.VITE_API_URL;
-    const token = storedUser?.token;
-
+    setUploadingDocKey(docName);
     try {
-      setIsSavingService(true);
-      const saveRes = await axios.patch(
-        `${apiUrl}/services/${selectedService._id}`,
-        { documentsRequired: nextDocumentsRequired },
-        token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
+      const apiUrl = import.meta.env.VITE_API_URL;
+      const formData = new FormData();
+      fileArray.forEach((file) => formData.append("files", file));
+      const uploadRes = await axios.post(`${apiUrl}/leads/upload`, formData, {
+        headers: { Authorization: `Bearer ${storedUser.token}` },
+      });
+      const uploadedFiles = Array.isArray(uploadRes.data?.files) ? uploadRes.data.files : [];
+      if (uploadedFiles.length !== fileArray.length) throw new Error("Upload failed");
+
+      await axios.patch(
+        `${apiUrl}/leads/${leadId}`,
+        {
+          // Any new upload/reupload invalidates a prior submission confirmation
+          // so the Submit button re-enables to let the client confirm again.
+          initialSubmissionConfirmed: false,
+          $push: {
+            documents: {
+              $each: uploadedFiles.map((uploaded) => ({
+                name: docName,
+                url: uploaded.url,
+                publicId: uploaded.filename,
+                type: "Client",
+                status: "Pending",
+                uploadedAt: new Date(),
+              })),
+            },
+          },
+        },
+        { headers: { Authorization: `Bearer ${storedUser.token}` } },
       );
 
-      const refreshRes = await axios.get(`${apiUrl}/services`);
-      const servicesFromServer = Array.isArray(refreshRes.data) ? refreshRes.data : [];
-      setAllDbServices(servicesFromServer);
-      const refreshedSelectedService = servicesFromServer.find(
-        (service) => String(service?._id) === String(selectedService._id),
-      );
-      setSelectedService(
-        saveRes?.data?.service || refreshedSelectedService || {
-          ...selectedService,
-          documentsRequired: nextDocumentsRequired,
-        },
-      );
-      setEditingDocName(null);
-      setEditDocumentNameInput("");
-      toast.success("Document updated successfully");
+      toast.success(`"${docName}" uploaded successfully`);
+      const userId = storedUser?._id || storedUser?.id;
+      const refreshed = await axios.get(`${apiUrl}/leads?userId=${userId}`, {
+        headers: { Authorization: `Bearer ${storedUser.token}` },
+      });
+      setUserLeads(refreshed.data || []);
     } catch (error) {
-      const apiMessage = error?.response?.data?.message;
-      toast.error(apiMessage || "Failed to update document");
+      toast.error("Failed to upload document");
     } finally {
-      setIsSavingService(false);
+      setUploadingDocKey(null);
+    }
+  };
+
+  const refreshUserLeadsList = async () => {
+    const apiUrl = import.meta.env.VITE_API_URL;
+    const userId = storedUser?._id || storedUser?.id;
+    const url = storedUser?.role === "user" ? `${apiUrl}/leads?userId=${userId}` : `${apiUrl}/leads`;
+    const refreshed = await axios.get(url, { headers: { Authorization: `Bearer ${storedUser.token}` } });
+    setUserLeads(refreshed.data || []);
+  };
+
+  // Persist a required-documents change from the Services page. When a specific
+  // user's lead is targeted, the change is written ONLY to that lead — never to
+  // the shared Service catalog — so a document requested for one user (e.g. a
+  // PR follow-up request) never shows up on every other user who picked the
+  // same service. The Service catalog is only touched when there is no lead
+  // yet (pure template editing before any user has taken up the service).
+  const persistServiceRequiredDocs = async (service, lead, nextNames, { notify = false } = {}) => {
+    const apiUrl = import.meta.env.VITE_API_URL;
+    const token = storedUser.token;
+    if (lead?._id) {
+      await axios.patch(`${apiUrl}/leads/${lead._id}/documents-required`, { documentsRequired: nextNames }, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (notify) {
+        await axios.patch(`${apiUrl}/leads/${lead._id}/send-documents`, {}, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      }
+    } else if (service?._id) {
+      await axios.patch(`${apiUrl}/services/${service._id}`, { documentsRequired: nextNames }, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    }
+    const svcRes = await axios.get(`${apiUrl}/services`);
+    setAllDbServices(Array.isArray(svcRes.data) ? svcRes.data : []);
+    await refreshUserLeadsList();
+    if (!lead?._id) {
+      setSelectedService((prev) => (prev ? { ...prev, documentsRequired: nextNames } : prev));
+    }
+  };
+
+  const handleAddServiceRequiredDoc = async (service, lead, currentNames, docName) => {
+    const trimmedName = String(docName || "").trim();
+    if (!trimmedName) return;
+    if ((currentNames || []).some((n) => String(n).trim().toLowerCase() === trimmedName.toLowerCase())) {
+      setNewServiceRequiredDocName("");
+      return;
+    }
+    setIsSavingServiceRequiredDocs(true);
+    try {
+      const nextNames = [...(currentNames || []), trimmedName];
+      await persistServiceRequiredDocs(service, lead, nextNames, { notify: true });
+      setNewServiceRequiredDocName("");
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to add document");
+    } finally {
+      setIsSavingServiceRequiredDocs(false);
+    }
+  };
+
+  const handleRemoveServiceRequiredDoc = async (service, lead, currentNames, docName) => {
+    setIsSavingServiceRequiredDocs(true);
+    try {
+      const nextNames = (currentNames || []).filter((n) => n !== docName);
+      await persistServiceRequiredDocs(service, lead, nextNames);
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to remove document");
+    } finally {
+      setIsSavingServiceRequiredDocs(false);
+    }
+  };
+
+  const handleRenameServiceRequiredDoc = async (service, lead, currentNames, oldName, newNameRaw) => {
+    const newName = String(newNameRaw || "").trim();
+    if (!newName || newName === oldName) {
+      setEditingServiceDocRowKey(null);
+      return;
+    }
+    if ((currentNames || []).some((n) => n !== oldName && n.trim().toLowerCase() === newName.toLowerCase())) {
+      toast.error("A document with that name already exists");
+      return;
+    }
+    setIsSavingServiceRequiredDocs(true);
+    try {
+      const nextNames = (currentNames || []).map((n) => (n === oldName ? newName : n));
+      await persistServiceRequiredDocs(service, lead, nextNames, { notify: true });
+      setEditingServiceDocRowKey(null);
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to rename document");
+    } finally {
+      setIsSavingServiceRequiredDocs(false);
     }
   };
 
@@ -2544,6 +2433,25 @@ const Recommendations = () => {
       window.removeEventListener("service-deleted", handleServiceDeleted);
     };
   }, [isLoggedIn, storedUser?._id, storedUser?.id, storedUser?.role]);
+
+  // Once a lead's payment is verified server-side, keep its "Confirm Payment"
+  // toggle permanently on — driven by the persisted paymentStatus rather than
+  // the local click, so it survives refreshes, resubmission, and re-logins
+  // instead of resetting to off.
+  useEffect(() => {
+    if (!Array.isArray(userLeads) || userLeads.length === 0) return;
+    setPaymentConfirmedByLead((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      userLeads.forEach((lead) => {
+        if (lead?.paymentStatus === "Paid" && lead?._id && !next[lead._id]) {
+          next[lead._id] = true;
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [userLeads]);
 
   function normalizeText(value) {
     return String(value || "")
@@ -2930,10 +2838,41 @@ const Recommendations = () => {
       const effectiveStatus = hasFinalDocument && !["rejected", "informationrequired"].includes(status)
         ? "completed"
         : status;
-      const isRejected = effectiveStatus === "rejected" || effectiveStatus === "informationrequired";
+      // Once the client has reuploaded every document and explicitly clicked
+      // Submit, the rejection banner must clear immediately even if the status
+      // field hasn't finished propagating everywhere yet.
+      const isRejected =
+        (effectiveStatus === "rejected" || effectiveStatus === "informationrequired") &&
+        !lead?.initialSubmissionConfirmed;
       const isCompleted = effectiveStatus === "completed";
+      // Admin rejected one or more of the client's uploaded documents while the
+      // lead is still in the admin's own "Open" pre-review stage — the lead
+      // itself never leaves "Open" for this, so it needs its own badge check.
+      const isRejectedByAdmin = effectiveStatus === "open" && hasAdminRejectedDocuments(lead);
 
-      if (!isRejected && !isCompleted) return null;
+      if (!isRejected && !isCompleted && !isRejectedByAdmin) return null;
+
+      if (isRejectedByAdmin) {
+        return (
+          <span
+            style={{
+              color: "#ef4444",
+              fontWeight: 900,
+              letterSpacing: "0.1em",
+              textTransform: "uppercase",
+              fontSize: "0.85rem",
+              whiteSpace: "normal",
+              wordBreak: "break-word",
+              lineHeight: 1.2,
+              textAlign: "right",
+              display: "inline-block",
+              padding: "4px 0",
+            }}
+          >
+            Rejected by Admin
+          </span>
+        );
+      }
 
       if (isRejected) {
         const serviceRejectionState = getServiceRejectionState(trimmedTitle);
@@ -3607,9 +3546,11 @@ const Recommendations = () => {
   const isFreshOnboarding =
     !!location.state?.recommendations || !!location.state?.fallback;
 
-  // Prevent body scroll when service detail modal is open
+  // Prevent body scroll when the add-service modal is open. The service
+  // detail modal intentionally leaves page scroll enabled (see below) — it
+  // stays pinned in front of the footer via position:fixed + z-index instead.
   useEffect(() => {
-    if (selectedService) {
+    if (isAddingService) {
       document.body.style.overflow = "hidden";
       document.documentElement.style.overflow = "hidden";
     } else {
@@ -3620,7 +3561,7 @@ const Recommendations = () => {
       document.body.style.overflow = "";
       document.documentElement.style.overflow = "";
     };
-  }, [selectedService]);
+  }, [isAddingService]);
 
   return (
     <div
@@ -3819,13 +3760,10 @@ const Recommendations = () => {
                     setNewServiceForm({
                       title: "",
                       description: "",
-                      category: FINAL_CATEGORY_ORDER?.[0] || "Advisory",
+                      aboutInfo: "",
                       marketFees: "",
                       recommendedFees: "",
-                      workingDays: 2,
-                      documentsRequired: [],
                     });
-                    setCustomCategoryInput("");
                     setIsAddingService(true);
                   }}
                   title="Add new service"
@@ -3865,7 +3803,56 @@ const Recommendations = () => {
         </div>
       </section>
 
-      {/* Cards */}
+      {/* -- Services list: shows every service (including ones just added) as a card -- */}
+      <section className="section-sm" style={{ position: "relative", zIndex: 1 }}>
+        <div className="container recommendations-container">
+          <h2
+            style={{
+              fontSize: isMobile ? "1.4rem" : "1.75rem",
+              fontWeight: 500,
+              color: "#0f172a",
+              margin: "0 0 1.5rem",
+              letterSpacing: "-0.01em",
+              textAlign: "left",
+            }}
+          >
+            Services
+          </h2>
+          {allDbServices.length === 0 ? (
+            <NoServicesFound onClear={() => setSearchQuery("")} isLightMode={isLightMode} />
+          ) : (
+            <div
+              className="recommendations-grid"
+              style={{
+                display: "grid",
+                gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(320px, 1fr))",
+                gap: isMobile ? "1.25rem" : "2rem",
+                justifyContent: "center",
+              }}
+            >
+              {allDbServices.map((service, idx) => (
+                <ServiceCard
+                  key={service._id || service.id || idx}
+                  service={service}
+                  idx={idx}
+                  onClick={setSelectedService}
+                  isAdmin={isAdmin}
+                  onDelete={(svc) => {
+                    setServiceToDelete(svc);
+                    setIsServiceDeleteConfirmOpen(true);
+                  }}
+                  isLightMode={isLightMode}
+                  isMobile={isMobile}
+                  topBadge={renderServiceCardBadge(service.title)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Cards - commented out to remove services cards from the site, code preserved below */}
+      {false && (
       <section
         className="section-sm"
         style={{ position: "relative", zIndex: 1 }}
@@ -4028,26 +4015,20 @@ const Recommendations = () => {
           </div>
         </div>
       </section>
+      )}
 
 
 
       {/* Service Detail Modal/Form */}
-      <AnimatePresence>
-        {selectedService && (() => {
-          const cat = selectedService.category || "Advisory";
-          const CatIcon = iconMap[cat] || Zap;
+      {selectedService && (() => {
           const serviceRejectionState = getServiceRejectionState(selectedService.title);
           const serviceRejectionSignature = getServiceRejectionSignature(selectedService.title);
           const serviceRejectionDismissed =
             dismissedServiceRejectionSignatures[normalizeText(selectedService.title)] ===
             serviceRejectionSignature;
-          const docs = getActiveDocs(selectedService);
+          const docs = [];
           const required = docs.filter((d) => d.required);
           const localUploadsForService = uploadedDocs[selectedService.title] || {};
-          const hasAnyReuploadedDocs = Object.values(localUploadsForService).some((value) => {
-            const arr = Array.isArray(value) ? value : value ? [value] : [];
-            return arr.filter(Boolean).length > 0;
-          });
           const hasAllRequiredDocsReuploaded =
             serviceRejectionState &&
             required.length > 0 &&
@@ -4058,19 +4039,169 @@ const Recommendations = () => {
             });
           const serviceReuploadReady =
             !!serviceRejectionState && hasAllRequiredDocsReuploaded;
-          const showServiceRejectionBanner = serviceRejectionState && !serviceRejectionDismissed;
           const showReadyForReviewBanner =
             serviceReuploadReady && !serviceRejectionDismissed;
-          const uploadedCount = required.filter(
-            (d) => getDocumentState(selectedService.title, d.name).uploaded
-          ).length;
           const isComplete = required.every((d) => {
             const state = getDocumentState(selectedService.title, d.name);
             return state.uploaded && !state.reuploadRequired;
           });
-          const progressPct = required.length > 0
-            ? Math.round((uploadedCount / required.length) * 100)
-            : 100;
+
+          // Documents the admin has explicitly requested for this lead (see the
+          // "Documents Required" section below) — used both to render that list
+          // and to gate the Confirm & Submit button until all are uploaded.
+          // Admin/PR/Executor can have several different users' leads for the same
+          // service title, so they must explicitly pick which one "Documents
+          // Required" applies to (see the selector rendered below) rather than
+          // silently falling on whichever lead happened to update most recently.
+          const leadsForThisService = isUserRole
+            ? []
+            : userLeads
+                .filter((l) => serviceNamesMatch(l?.serviceName, selectedService.title))
+                .sort((a, b) => new Date(b?.updatedAt || b?.createdAt || 0) - new Date(a?.updatedAt || a?.createdAt || 0));
+          const currentLeadForRequiredDocs = isUserRole
+            ? getLatestLeadForService(selectedService.title)
+            : (leadsForThisService.find((l) => l._id === selectedDocsLeadId) || leadsForThisService[0] || null);
+          const adminRequiredDocRows = (() => {
+            const allDocs = Array.isArray(currentLeadForRequiredDocs?.documents)
+              ? currentLeadForRequiredDocs.documents
+              : [];
+            const isUploaded = (name) => {
+              const key = String(name || "").trim().toLowerCase();
+              return allDocs.some((d) => {
+                const docNameKey = String(d?.name || "").trim().toLowerCase();
+                return docNameKey === key && !!(d?.url || d?.publicId || d?.secure_url || d?.uploadedUrl);
+              });
+            };
+            // A whole-service rejection (lead.status === "Rejected") only ever sets the
+            // lead-level status — it never touches each document's own `status`, so
+            // checking individual document status alone would miss every document and
+            // hide the Reupload button entirely. Treat a whole-service rejection as
+            // requiring reupload of every required document that hasn't been freshly
+            // reuploaded yet in THIS rejection cycle. The backend resets every
+            // document's `reuploaded` flag to false at the moment PR rejects the whole
+            // service (see leadController.js's isDirectServiceRejectionByReviewer) and
+            // sets it back to true on the specific document that gets reuploaded — so
+            // checking that flag here tells apart "still needs reupload" from "already
+            // reuploaded, awaiting the user's explicit Submit" per document, without
+            // the lead-level status needing to change (submission is manual).
+            const isWholeServiceRejected = String(currentLeadForRequiredDocs?.status || "").trim().toLowerCase() === "rejected";
+            const hasFreshReupload = (name) => {
+              const key = String(name || "").trim().toLowerCase();
+              return allDocs.some((d) => {
+                const docNameKey = String(d?.name || "").trim().toLowerCase();
+                return docNameKey === key && !!d?.reuploaded && !!(d?.url || d?.publicId || d?.secure_url || d?.uploadedUrl);
+              });
+            };
+            const isRejectedByAdmin = (name) => {
+              // Once the client has explicitly resubmitted (all documents reuploaded
+              // and Submit clicked), every document reads as reuploaded — never show
+              // "Reupload" again for this cycle regardless of any other stale signal.
+              if (currentLeadForRequiredDocs?.initialSubmissionConfirmed) return false;
+              if (isWholeServiceRejected) return !hasFreshReupload(name);
+              const key = String(name || "").trim().toLowerCase();
+              return allDocs.some((d) => {
+                const docNameKey = String(d?.name || "").trim().toLowerCase();
+                const type = String(d?.type || "").trim().toLowerCase();
+                if (type === "draft" || type === "final") return false;
+                return docNameKey === key && String(d?.status || "").trim().toLowerCase() === "rejected";
+              });
+            };
+            // Identify who actually rejected this document so the reupload prompt
+            // names the right reviewer instead of always saying "Admin" — a document
+            // carries executorRejected=true when the executor (not PR/admin) flagged
+            // it, and the lead only stays "Open" while it's still in admin's own
+            // pre-PR intake stage; anything past that is a PR-stage rejection.
+            const getRejectedByLabel = (name) => {
+              const key = String(name || "").trim().toLowerCase();
+              const rejectedDoc = allDocs.find((d) => {
+                const docNameKey = String(d?.name || "").trim().toLowerCase();
+                const type = String(d?.type || "").trim().toLowerCase();
+                if (type === "draft" || type === "final") return false;
+                return docNameKey === key && String(d?.status || "").trim().toLowerCase() === "rejected";
+              });
+              if (rejectedDoc?.executorRejected) return "Executor";
+              if (rejectedDoc) {
+                const leadStatus = String(currentLeadForRequiredDocs?.status || "").trim().toLowerCase();
+                return leadStatus === "open" ? "Admin" : "PR";
+              }
+              if (isWholeServiceRejected) {
+                // No specific document carries a rejected status — this is a
+                // whole-service rejection, so infer who rejected it from the
+                // same message-origin signals getServiceRejectionState uses.
+                const execMsg = String(currentLeadForRequiredDocs?.executorMessage || "").toLowerCase();
+                const prMsg = String(currentLeadForRequiredDocs?.prFeedback || "").toLowerCase();
+                const adminMsg = String(currentLeadForRequiredDocs?.adminMessage || "").toLowerCase();
+                const executorIndicators = ["executor", "assignment rejected", "rejected by executor"];
+                const isExecutorOrigin =
+                  execMsg.length > 0 ||
+                  executorIndicators.some((ind) => prMsg.includes(ind) || adminMsg.includes(ind));
+                return isExecutorOrigin ? "Executor" : "PR";
+              }
+              return "PR";
+            };
+
+            let names = [];
+            if (isUserRole) {
+              // The client only ever sees documents requested on THEIR OWN lead
+              // (sourced from stable, admin-controlled per-lead fields rather than
+              // the "adminAdded" flag, which reuploads replace).
+              if (!currentLeadForRequiredDocs?.documentsSentToUser) return [];
+              names = Array.isArray(currentLeadForRequiredDocs?.documentsRequired)
+                ? currentLeadForRequiredDocs.documentsRequired
+                : [];
+            } else if (currentLeadForRequiredDocs) {
+              // A specific user's lead is selected — show ONLY that lead's own
+              // required-documents list, exactly what that one user sees. Never
+              // mix in the shared Service catalog list here, otherwise a document
+              // requested for this user would appear to leak onto every other
+              // user who picked the same service.
+              names = Array.isArray(currentLeadForRequiredDocs.documentsRequired)
+                ? currentLeadForRequiredDocs.documentsRequired
+                : [];
+            } else {
+              // No lead exists yet for this service (pure template editing before
+              // any user has taken it up) — fall back to the shared catalog list.
+              names = Array.isArray(selectedService?.documentsRequired)
+                ? selectedService.documentsRequired
+                : [];
+            }
+
+            return names
+              .map((name) => String(name || "").trim())
+              .filter(Boolean)
+              .map((name) => ({ key: name.toLowerCase(), name, uploaded: isUploaded(name), rejected: isRejectedByAdmin(name), rejectedBy: getRejectedByLabel(name) }));
+          })();
+          const allAdminRequiredDocsUploaded = adminRequiredDocRows.every((r) => r.uploaded);
+          const hasRejectedRequiredDocs = adminRequiredDocRows.some((r) => r.rejected);
+          // The payment gate only applies to the user's very first submission for
+          // this lead (status still "Open") — later reupload/resubmit cycles after
+          // a rejection never require paying again.
+          const isInitialPaymentGateActive =
+            isUserRole &&
+            adminRequiredDocRows.length > 0 &&
+            String(currentLeadForRequiredDocs?.status || "").trim().toLowerCase() === "open";
+          // The Payment Confirmation container itself, however, must stay visible
+          // for the lifetime of this lead once admin-required docs exist — even
+          // after PR/executor/admin rejects the whole service — so the client can
+          // always see their payment status. Only the submit-blocking gate above
+          // is scoped to the initial "Open" stage.
+          const showPaymentConfirmationContainer =
+            isUserRole && adminRequiredDocRows.length > 0;
+          const isConfirmDisabled = (() => {
+            if (!isComplete || isSubmitting) return true;
+            if (adminRequiredDocRows.length > 0) {
+              if (!allAdminRequiredDocsUploaded || hasRejectedRequiredDocs) return true;
+              if (isInitialPaymentGateActive && !paymentConfirmedByLead[currentLeadForRequiredDocs?._id]) return true;
+              // Already submitted with this exact set of documents — stay disabled
+              // until a new upload/reupload resets the confirmation flag.
+              if (currentLeadForRequiredDocs?.initialSubmissionConfirmed) return true;
+              return false;
+            }
+            const existingLead = getLatestLeadForService(selectedService.title);
+            if (!existingLead?._id) return false;
+            const localUploadsForService = uploadedDocs[selectedService.title] || {};
+            return Object.keys(localUploadsForService).length === 0;
+          })();
 
           const fees = (() => {
             const marketFeesRaw = String(selectedService.marketFees || "").trim();
@@ -4092,7 +4223,15 @@ const Recommendations = () => {
             return { market, recommended };
           })();
 
-          return (
+          // Working Days lives on the specific user's lead and only makes sense
+          // once admin has actually set the documents required for that user's
+          // request — a freshly added service (or one with no per-user documents
+          // configured yet) has no meaningful working-days figure to show.
+          const hasWorkingDaysContext =
+            Array.isArray(currentLeadForRequiredDocs?.documentsRequired) &&
+            currentLeadForRequiredDocs.documentsRequired.length > 0;
+
+          return createPortal(
             <>
               <motion.div
               key="modal-backdrop"
@@ -4128,6 +4267,7 @@ const Recommendations = () => {
                   maxWidth: "720px",
                   maxHeight: "100%",
                   overflowY: "auto",
+                  overscrollBehavior: "contain",
                   borderRadius: isMobile ? "16px 16px 0 0" : "12px",
                   border: "1px solid #e2e8f0",
                   display: "flex",
@@ -4154,18 +4294,6 @@ const Recommendations = () => {
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: isMobile ? "0.85rem" : "1rem", flex: 1, minWidth: 0 }}>
                     <div style={{ minWidth: 0 }}>
-                      <div
-                        style={{
-                          color: "#64748b",
-                          fontSize: "0.7rem",
-                          fontWeight: 700,
-                          letterSpacing: "0.1em",
-                          textTransform: "uppercase",
-                          marginBottom: "4px",
-                        }}
-                      >
-                        {selectedService.category}
-                      </div>
                       {isAdmin && isEditingService ? (
                         <input
                           type="text"
@@ -4319,6 +4447,7 @@ const Recommendations = () => {
                   style={{
                     flex: 1,
                     overflowY: "auto",
+                    overscrollBehavior: "contain",
                     padding: isCompactMobile
                       ? "0.9rem 0.9rem 1.2rem"
                       : isMobile
@@ -4329,192 +4458,79 @@ const Recommendations = () => {
                   }}
                 >
 
-                  {isAdmin && isEditingService ? (
-                    <>
-                      {/* Description (Read-only) & Turnaround (Editable) */}
-                      <div
-                        style={{
-                          display: "flex",
-                          flexDirection: isMobile ? "column" : "row",
-                          justifyContent: "space-between",
-                          alignItems: "flex-start",
-                          gap: isMobile ? "0.8rem" : "1.5rem",
-                          marginTop: 0,
-                          marginRight: 0,
-                          marginBottom: "8px",
-                          marginLeft: 0,
-                          padding: 0,
-                        }}
-                      >
-                        <p
+                  {/* -- Top Description (with admin-only Edit Description toggle) -- */}
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: isMobile ? "column" : "row",
+                      justifyContent: "space-between",
+                      alignItems: "flex-start",
+                      gap: isMobile ? "0.8rem" : "1.5rem",
+                      marginBottom: isEditingTopDescription ? "1rem" : "0.5rem",
+                    }}
+                  >
+                    {isEditingTopDescription ? (
+                      <div style={{ flex: 1, width: "100%" }}>
+                        <textarea
+                          value={editedTopDescription}
+                          onChange={(e) => setEditedTopDescription(e.target.value)}
+                          rows={4}
+                          placeholder="Describe this service..."
                           style={{
-                            color: "#000000",
+                            width: "100%",
+                            padding: "0.65rem 0.85rem",
+                            border: "1px solid #cbd5e1",
+                            borderRadius: "10px",
                             fontSize: isMobile ? "0.88rem" : "0.95rem",
+                            color: "#0f172a",
+                            resize: "vertical",
+                            outline: "none",
+                            fontFamily: "inherit",
                             lineHeight: 1.6,
-                            margin: 0,
-                            flex: 1,
+                            boxSizing: "border-box",
                           }}
-                        >
-                          {selectedService.description}
-                        </p>
-
-                        <div style={{ display: "flex", alignItems: "baseline", gap: "6px", flexShrink: 0, alignSelf: "flex-start" }}>
-                          <span style={{ fontSize: "0.62rem", fontWeight: 700, textTransform: "uppercase", color: "#000000", letterSpacing: "0.05em" }}>Turnaround:</span>
-                          <input
-                            type="number"
-                            value={editedService?.workingDays || 2}
-                            onChange={(e) => setEditedService({ ...editedService, workingDays: Number(e.target.value) })}
-                            style={{
-                              width: "60px",
-                              padding: "4px 8px",
-                              background: "var(--bg-card)",
-                              border: "1px solid var(--border)",
-                              borderRadius: "6px",
-                              color: "#000000",
-                              fontSize: "0.75rem",
-                              outline: "none",
-                              fontWeight: 700,
-                              textAlign: "center"
+                        />
+                        <div style={{ display: "flex", gap: "8px", marginTop: "0.6rem", justifyContent: "flex-end" }}>
+                          <button
+                            onClick={() => {
+                              setIsEditingTopDescription(false);
+                              setEditedTopDescription("");
                             }}
-                          />
-                          <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#10b981" }}>Days</span>
+                            style={{ padding: "6px 14px", background: "transparent", border: "1px solid #10b981", color: "#10b981", borderRadius: "8px", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer" }}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={async () => {
+                              const trimmedDesc = String(editedTopDescription || "").trim();
+                              if (!trimmedDesc) {
+                                toast.error("Please enter a service description");
+                                return;
+                              }
+                              try {
+                                const apiUrl = import.meta.env.VITE_API_URL;
+                                const token = JSON.parse(localStorage.getItem("user"))?.token;
+                                await axios.patch(`${apiUrl}/services/${selectedService._id}`, { description: trimmedDesc }, {
+                                  headers: { Authorization: `Bearer ${token}` }
+                                });
+                                toast.success("Service description updated successfully");
+                                setIsEditingTopDescription(false);
+                                setSelectedService({ ...selectedService, description: trimmedDesc });
+                                const refreshRes = await axios.get(`${apiUrl}/services`);
+                                setAllDbServices(refreshRes.data);
+                              } catch (err) {
+                                console.error("Update service description error:", err.response?.data || err.message);
+                                toast.error(err.response?.data?.message || "Failed to update service description");
+                              }
+                            }}
+                            style={{ padding: "6px 14px", background: "#10b981", border: "none", color: "#fff", borderRadius: "8px", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer" }}
+                          >
+                            Save
+                          </button>
                         </div>
                       </div>
-
-                      {/* -- Market & Recommended Fees (Styled with Container Border) -- */}
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
-                          gap: "1px",
-                          background: "#e2e8f0",
-                          border: "1px solid #e2e8f0",
-                          borderRadius: "12px",
-                          overflow: "hidden",
-                          marginBottom: "1.25rem",
-                        }}
-                      >
-                        <div
-                          style={{
-                            padding: "0.6rem 0.85rem",
-                            background: "#f8fafc",
-                            textAlign: "left",
-                          }}
-                        >
-                          <label style={{ fontSize: "0.65rem", fontWeight: 700, color: "#059669", display: "block", marginBottom: "4px", textTransform: "uppercase" }}>
-                            Our Fee (Recommended)
-                          </label>
-                          <div
-                             style={{
-                               display: "flex",
-                               alignItems: "center",
-                               background: "#ffffff",
-                               border: "1px solid #cbd5e1",
-                               borderRadius: "8px",
-                               padding: "0.5rem 0.75rem",
-                               boxShadow: "inset 0 1px 2px rgba(0,0,0,0.05)",
-                               transition: "border-color 0.2s",
-                               gap: "4px"
-                             }}
-                           >
-                             <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "#64748b", userSelect: "none" }}>Rs.</span>
-                              <input
-                                type="text"
-                                value={ourFeeInputValue}
-                                onChange={(e) => {
-                                  const raw = e.target.value;
-                                  setOurFeeInputValue(raw);
-                                  const formatted = formatOnlyDigits(raw);
-                                  setEditedService({ ...editedService, recommendedFees: formatted ? `Rs. ${formatted}` : "" });
-                                }}
-                               style={{
-                                 flex: 1,
-                                 border: "none",
-                                 outline: "none",
-                                 background: "transparent",
-                                 padding: 0,
-                                 margin: 0,
-                                 color: "#000000",
-                                 fontSize: "0.85rem",
-                                 fontWeight: 600,
-                               }}
-                               onFocus={(e) => {
-                                 e.currentTarget.parentElement.style.borderColor = "#10b981";
-                               }}
-                               onBlur={(e) => {
-                                 e.currentTarget.parentElement.style.borderColor = "#cbd5e1";
-                               }}
-                             />
-                           </div>
-                        </div>
-                        <div
-                          style={{
-                            padding: "0.6rem 0.85rem",
-                            background: "#f8fafc",
-                            textAlign: "left",
-                          }}
-                        >
-                          <label style={{ fontSize: "0.65rem", fontWeight: 700, color: "#ef4444", display: "block", marginBottom: "4px", textTransform: "uppercase" }}>
-                            Market Fees
-                          </label>
-                          <div
-                             style={{
-                               display: "flex",
-                               alignItems: "center",
-                               background: "#ffffff",
-                               border: "1px solid #cbd5e1",
-                               borderRadius: "8px",
-                               padding: "0.5rem 0.75rem",
-                               boxShadow: "inset 0 1px 2px rgba(0,0,0,0.05)",
-                               transition: "border-color 0.2s",
-                               gap: "4px"
-                             }}
-                           >
-                             <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "#64748b", userSelect: "none" }}>Rs.</span>
-                              <input
-                                type="text"
-                                value={(() => {
-                                  const avg = calculateMarketAverage(editedService?.marketFees);
-                                  return avg ? formatOnlyDigits(String(Math.round(avg))) : "";
-                                })()}
-                                onChange={(e) => {
-                                  const formatted = formatOnlyDigits(e.target.value);
-                                  setEditedService({ ...editedService, marketFees: formatted ? `Rs. ${formatted}` : "" });
-                                }}
-                               style={{
-                                 flex: 1,
-                                 border: "none",
-                                 outline: "none",
-                                 background: "transparent",
-                                 padding: 0,
-                                 margin: 0,
-                                 color: "#000000",
-                                 fontSize: "0.85rem",
-                                 fontWeight: 600,
-                               }}
-                               onFocus={(e) => {
-                                 e.currentTarget.parentElement.style.borderColor = "#ef4444";
-                               }}
-                               onBlur={(e) => {
-                                 e.currentTarget.parentElement.style.borderColor = "#cbd5e1";
-                               }}
-                             />
-                           </div>
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div
-                        style={{
-                          display: "flex",
-                          flexDirection: isMobile ? "column" : "row",
-                          justifyContent: "space-between",
-                          alignItems: "flex-start",
-                          gap: isMobile ? "0.8rem" : "1.5rem",
-                          marginBottom: "0.5rem",
-                        }}
-                      >
+                    ) : (
+                      <>
                         <p
                           style={{
                             color: "#000000",
@@ -4526,62 +4542,268 @@ const Recommendations = () => {
                         >
                           {selectedService.description}
                         </p>
-
-                        <div style={{ display: "flex", alignItems: "baseline", gap: "6px", flexShrink: 0, alignSelf: "flex-start" }}>
-                          <span style={{ fontSize: "0.62rem", fontWeight: 700, textTransform: "uppercase", color: "#000000", letterSpacing: "0.05em" }}>Turnaround:</span>
-                          <span style={{ fontSize: "0.88rem", fontWeight: 700, color: "#10b981" }}>{selectedService.workingDays || 2} Working Days</span>
-                        </div>
-                      </div>
-
-                      {/* -- Market & Recommended Fees -- */}
-                      {(fees.market || fees.recommended) && (
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
-                            gap: "1px",
-                            background: "#e2e8f0",
-                            border: "1px solid #e2e8f0",
-                            borderRadius: "12px",
-                            overflow: "hidden",
-                            marginBottom: "1.75rem",
-                          }}
-                        >
-                          <div
+                        {isAdmin && (
+                          <button
+                            onClick={() => {
+                              setEditedTopDescription(selectedService.description || "");
+                              setIsEditingTopDescription(true);
+                            }}
                             style={{
-                              padding: "0.85rem",
-                              background: "#f8fafc",
-                              textAlign: "left",
-                              transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-                              position: "relative",
-                              zIndex: 1,
-                              cursor: "default"
+                              padding: "6px 12px",
+                              background: "#3b82f6",
+                              border: "none",
+                              color: "#fff",
+                              borderRadius: "8px",
+                              fontSize: "0.72rem",
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "4px",
+                              flexShrink: 0,
                             }}
                           >
-                            <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "#000000", textTransform: "uppercase", display: "block", marginBottom: "4px", whiteSpace: "nowrap" }}>Our Fee</span>
-                            <span style={{ fontSize: "0.9rem", fontWeight: 700, color: "#10b981" }}>{fees.recommended || "—"}</span>
-                          </div>
-                          {fees.market && (
-                            <div
-                              style={{
-                                padding: "0.85rem",
-                                background: "#f8fafc",
-                                textAlign: "left",
-                                transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-                                position: "relative",
-                                zIndex: 1,
-                                cursor: "default"
+                            <Edit size={12} /> Edit Description
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+
+                  {/* -- Our Fee / Market Fees / Working Days -- */}
+                  {isAdmin && isEditingService ? (
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: isMobile ? "1fr" : (hasWorkingDaysContext ? "1fr 1fr 1fr" : "1fr 1fr"),
+                        gap: "1px",
+                        background: "#e2e8f0",
+                        border: "1px solid #e2e8f0",
+                        borderRadius: "12px",
+                        overflow: "hidden",
+                        marginBottom: "1.25rem",
+                      }}
+                    >
+                      <div
+                        style={{
+                          padding: "0.6rem 0.7rem",
+                          background: "#f8fafc",
+                          textAlign: "left",
+                          minWidth: 0,
+                        }}
+                      >
+                        <label style={{ fontSize: "0.62rem", fontWeight: 700, color: "#059669", display: "block", marginBottom: "4px", textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          Our Fee
+                        </label>
+                        <div
+                           style={{
+                             display: "flex",
+                             alignItems: "center",
+                             background: "#ffffff",
+                             border: "1px solid #cbd5e1",
+                             borderRadius: "8px",
+                             padding: "0.5rem 0.6rem",
+                             boxShadow: "inset 0 1px 2px rgba(0,0,0,0.05)",
+                             transition: "border-color 0.2s",
+                             gap: "4px",
+                             minWidth: 0,
+                           }}
+                         >
+                           <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "#64748b", userSelect: "none", flexShrink: 0 }}>Rs.</span>
+                            <input
+                              type="text"
+                              value={ourFeeInputValue}
+                              onChange={(e) => {
+                                const raw = e.target.value;
+                                setOurFeeInputValue(raw);
+                                const formatted = formatOnlyDigits(raw);
+                                setEditedService({ ...editedService, recommendedFees: formatted ? `Rs. ${formatted}` : "" });
                               }}
-                            >
-                              <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "#000000", textTransform: "uppercase", display: "block", marginBottom: "4px", whiteSpace: "nowrap" }}>Market Fees</span>
-                              <span style={{ fontSize: "0.9rem", fontWeight: 700, color: "#000000", textDecoration: "line-through", textDecorationThickness: "2px" }}>
-                                {getFormattedMarketAverage(fees.market)}
-                              </span>
-                            </div>
-                          )}
-                        </div>
+                             style={{
+                               flex: 1,
+                               minWidth: 0,
+                               width: "100%",
+                               border: "none",
+                               outline: "none",
+                               background: "transparent",
+                               padding: 0,
+                               margin: 0,
+                               color: "#000000",
+                               fontSize: "0.85rem",
+                               fontWeight: 600,
+                             }}
+                             onFocus={(e) => {
+                               e.currentTarget.parentElement.style.borderColor = "#10b981";
+                             }}
+                             onBlur={(e) => {
+                               e.currentTarget.parentElement.style.borderColor = "#cbd5e1";
+                             }}
+                           />
+                         </div>
+                      </div>
+                      <div
+                        style={{
+                          padding: "0.6rem 0.7rem",
+                          background: "#f8fafc",
+                          textAlign: "left",
+                          minWidth: 0,
+                        }}
+                      >
+                        <label style={{ fontSize: "0.62rem", fontWeight: 700, color: "#ef4444", display: "block", marginBottom: "4px", textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          Market Fees
+                        </label>
+                        <div
+                           style={{
+                             display: "flex",
+                             alignItems: "center",
+                             background: "#ffffff",
+                             border: "1px solid #cbd5e1",
+                             borderRadius: "8px",
+                             padding: "0.5rem 0.6rem",
+                             boxShadow: "inset 0 1px 2px rgba(0,0,0,0.05)",
+                             transition: "border-color 0.2s",
+                             gap: "4px",
+                             minWidth: 0,
+                           }}
+                         >
+                           <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "#64748b", userSelect: "none", flexShrink: 0 }}>Rs.</span>
+                            <input
+                              type="text"
+                              value={(() => {
+                                const avg = calculateMarketAverage(editedService?.marketFees);
+                                return avg ? formatOnlyDigits(String(Math.round(avg))) : "";
+                              })()}
+                              onChange={(e) => {
+                                const formatted = formatOnlyDigits(e.target.value);
+                                setEditedService({ ...editedService, marketFees: formatted ? `Rs. ${formatted}` : "" });
+                              }}
+                             style={{
+                               flex: 1,
+                               minWidth: 0,
+                               width: "100%",
+                               border: "none",
+                               outline: "none",
+                               background: "transparent",
+                               padding: 0,
+                               margin: 0,
+                               color: "#000000",
+                               fontSize: "0.85rem",
+                               fontWeight: 600,
+                             }}
+                             onFocus={(e) => {
+                               e.currentTarget.parentElement.style.borderColor = "#ef4444";
+                             }}
+                             onBlur={(e) => {
+                               e.currentTarget.parentElement.style.borderColor = "#cbd5e1";
+                             }}
+                           />
+                         </div>
+                      </div>
+                      {hasWorkingDaysContext && (
+                      <div
+                        style={{
+                          padding: "0.6rem 0.7rem",
+                          background: "#f8fafc",
+                          textAlign: "left",
+                          minWidth: 0,
+                        }}
+                      >
+                        <label style={{ fontSize: "0.62rem", fontWeight: 700, color: "#3b82f6", display: "block", marginBottom: "4px", textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          Working Days
+                        </label>
+                        <div
+                           style={{
+                             display: "flex",
+                             alignItems: "center",
+                             background: "#ffffff",
+                             border: "1px solid #cbd5e1",
+                             borderRadius: "8px",
+                             padding: "0.5rem 0.6rem",
+                             boxShadow: "inset 0 1px 2px rgba(0,0,0,0.05)",
+                             transition: "border-color 0.2s",
+                             minWidth: 0,
+                           }}
+                         >
+                            <input
+                              type="number"
+                              min={1}
+                              step={1}
+                              value={editedWorkingDays}
+                              onChange={(e) => setEditedWorkingDays(e.target.value)}
+                             style={{
+                               flex: 1,
+                               minWidth: 0,
+                               width: "100%",
+                               border: "none",
+                               outline: "none",
+                               background: "transparent",
+                               padding: 0,
+                               margin: 0,
+                               color: "#000000",
+                               fontSize: "0.85rem",
+                               fontWeight: 600,
+                             }}
+                             onFocus={(e) => {
+                               e.currentTarget.parentElement.style.borderColor = "#3b82f6";
+                             }}
+                             onBlur={(e) => {
+                               e.currentTarget.parentElement.style.borderColor = "#cbd5e1";
+                             }}
+                           />
+                         </div>
+                      </div>
                       )}
-                    </>
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: isMobile ? "1fr" : (hasWorkingDaysContext ? "1fr 1fr 1fr" : "1fr 1fr"),
+                        gap: "1px",
+                        background: "#e2e8f0",
+                        border: "1px solid #e2e8f0",
+                        borderRadius: "12px",
+                        overflow: "hidden",
+                        marginBottom: "1.75rem",
+                      }}
+                    >
+                      <div
+                        style={{
+                          padding: "0.85rem",
+                          background: "#f8fafc",
+                          textAlign: "left",
+                        }}
+                      >
+                        <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "#000000", textTransform: "uppercase", display: "block", marginBottom: "4px", whiteSpace: "nowrap" }}>Our Fee</span>
+                        <span style={{ fontSize: "0.9rem", fontWeight: 700, color: "#10b981" }}>{fees.recommended || "—"}</span>
+                      </div>
+                      <div
+                        style={{
+                          padding: "0.85rem",
+                          background: "#f8fafc",
+                          textAlign: "left",
+                        }}
+                      >
+                        <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "#000000", textTransform: "uppercase", display: "block", marginBottom: "4px", whiteSpace: "nowrap" }}>Market Fees</span>
+                        <span style={{ fontSize: "0.9rem", fontWeight: 700, color: "#000000", textDecoration: fees.market ? "line-through" : "none", textDecorationThickness: "2px" }}>
+                          {fees.market ? getFormattedMarketAverage(fees.market) : "—"}
+                        </span>
+                      </div>
+                      {hasWorkingDaysContext && (
+                      <div
+                        style={{
+                          padding: "0.85rem",
+                          background: "#f8fafc",
+                          textAlign: "left",
+                        }}
+                      >
+                        <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "#000000", textTransform: "uppercase", display: "block", marginBottom: "4px", whiteSpace: "nowrap" }}>Working Days</span>
+                        <span style={{ fontSize: "0.9rem", fontWeight: 700, color: "#10b981" }}>
+                          {currentLeadForRequiredDocs?.workingDays ?? 2}
+                        </span>
+                      </div>
+                      )}
+                    </div>
                   )}
 
                    {/* -- Admin Management Bar -- */}
@@ -4628,6 +4850,15 @@ const Recommendations = () => {
                                   await axios.patch(`${apiUrl}/services/${selectedService._id}`, { ...editedService, title: trimmedTitle }, {
                                     headers: { Authorization: `Bearer ${token}` }
                                   });
+                                  // Working days live on the lead (per client request), not the service catalog.
+                                  if (currentLeadForRequiredDocs?._id) {
+                                    const parsedDays = parseInt(editedWorkingDays, 10);
+                                    if (Number.isFinite(parsedDays) && parsedDays > 0) {
+                                      await axios.patch(`${apiUrl}/leads/${currentLeadForRequiredDocs._id}`, { workingDays: parsedDays }, {
+                                        headers: { Authorization: `Bearer ${token}` }
+                                      });
+                                    }
+                                  }
                                   toast.success("Service updated successfully");
                                   // Store the edited our fee override for immediate display
                                   setOverriddenOurFees(prev => ({
@@ -4642,6 +4873,7 @@ const Recommendations = () => {
                                   // Refresh all services
                                   const refreshRes = await axios.get(`${apiUrl}/services`);
                                   setAllDbServices(refreshRes.data);
+                                  await refreshUserLeadsList();
                                 } catch (err) {
                                   console.error("Update service error:", err.response?.data || err.message);
                                   toast.error(err.response?.data?.message || "Failed to update service");
@@ -4671,20 +4903,12 @@ const Recommendations = () => {
                                 setEditedService({ ...selectedService, recommendedFees: displayFee });
                                 const parsed = parseFeeAmount(displayFee);
                                 setOurFeeInputValue(parsed ? formatOnlyDigits(String(parsed)) : "1");
+                                setEditedWorkingDays(currentLeadForRequiredDocs?.workingDays ?? 2);
                                 setIsEditingService(true);
                               }}
                               style={{ padding: "6px 14px", background: "#10b981", border: "none", color: "#fff", borderRadius: "8px", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer" }}
                             >
                               Edit
-                            </button>
-                            <button
-                              onClick={() => {
-                                setIsAddingDocument(true);
-                                setNewDocumentName("");
-                              }}
-                              style={{ padding: "6px 14px", background: "transparent", border: "1px solid #10b981", color: "#10b981", borderRadius: "8px", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer" }}
-                            >
-                              Add Document
                             </button>
                           </>
                         )}
@@ -4692,24 +4916,25 @@ const Recommendations = () => {
                     </div>
                   )}
 
-                  {/* -- Documents Section -- */}
-                  <div
-                    style={{
-                      marginBottom: "0.5rem",
-                    }}
-                  >
-                    {/* Section Header */}
+                  {
                     <div
                       style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: isCompactMobile ? "flex-start" : "space-between",
-                        marginBottom: isCompactMobile ? "0.8rem" : "1rem",
-                        flexWrap: "wrap",
-                        gap: isCompactMobile ? "0.35rem" : "0.5rem",
+                        background: "#ffffff",
+                        border: "1px solid #e2e8f0",
+                        borderRadius: "14px",
+                        padding: isMobile ? "1rem" : "1.25rem",
+                        marginBottom: "1rem",
                       }}
                     >
-                      <div style={{ display: "flex", alignItems: "baseline", gap: isCompactMobile ? "8px" : "12px", width: isCompactMobile ? "100%" : "auto", justifyContent: isCompactMobile ? "space-between" : "flex-start" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "flex-start",
+                          justifyContent: "space-between",
+                          gap: "1rem",
+                          marginBottom: "0.75rem",
+                        }}
+                      >
                         <div
                           style={{
                             fontSize: isMobile ? "0.8rem" : "0.9rem",
@@ -4719,385 +4944,550 @@ const Recommendations = () => {
                             color: "#0f172a",
                           }}
                         >
-                          Documents To Be Submitted
+                          About This Service
                         </div>
-                        <div
-                          style={{
-                            fontSize: "0.75rem",
-                            fontWeight: 600,
-                            color: "#64748b",
-                          }}
-                        >
-                          ({uploadedCount}/{required.length} Uploaded)
-                        </div>
-                      </div>
-                      {/* Progress */}
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px", width: isCompactMobile ? "100%" : "auto", justifyContent: isCompactMobile ? "flex-end" : "flex-start" }}>
-                        <div
-                          style={{
-                            width: isCompactMobile ? "68px" : isMobile ? "80px" : "100px",
-                            height: "5px",
-                            background: isLightMode ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.08)",
-                            borderRadius: "99px",
-                            overflow: "hidden",
-                          }}
-                        >
-                          <div
+                        {isAdmin && !isEditingAbout && (
+                          <button
+                            onClick={() => {
+                              setEditedAbout(selectedService.aboutInfo || selectedService.description || "");
+                              setIsEditingAbout(true);
+                            }}
                             style={{
-                              width: `${progressPct}%`,
-                              height: "100%",
-                              background: progressPct === 100
-                                ? (isLightMode ? "#6d4dff" : "#10b981")
-                                : (isLightMode ? "#8b5cf6" : "#4361ee"),
-                              borderRadius: "99px",
-                              transition: "width 0.4s ease",
+                              padding: "6px 12px",
+                              background: "#3b82f6",
+                              border: "none",
+                              color: "#fff",
+                              borderRadius: "8px",
+                              fontSize: "0.72rem",
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "4px",
+                              flexShrink: 0,
+                            }}
+                          >
+                            <Edit size={12} /> Edit Info
+                          </button>
+                        )}
+                      </div>
+
+                      {isEditingAbout ? (
+                        <>
+                          <textarea
+                            value={editedAbout}
+                            onChange={(e) => setEditedAbout(e.target.value)}
+                            rows={6}
+                            placeholder="Describe this service..."
+                            style={{
+                              width: "100%",
+                              padding: "0.75rem",
+                              border: "1px solid #cbd5e1",
+                              borderRadius: "10px",
+                              fontSize: "0.85rem",
+                              color: "#0f172a",
+                              resize: "vertical",
+                              outline: "none",
+                              fontFamily: "inherit",
+                              lineHeight: 1.6,
+                              boxSizing: "border-box",
                             }}
                           />
-                        </div>
-                        <span
+                          <div style={{ display: "flex", gap: "8px", marginTop: "0.75rem", justifyContent: "flex-end" }}>
+                            <button
+                              onClick={() => {
+                                setIsEditingAbout(false);
+                                setEditedAbout("");
+                              }}
+                              style={{ padding: "6px 14px", background: "transparent", border: "1px solid #10b981", color: "#10b981", borderRadius: "8px", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer" }}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={async () => {
+                                const trimmedDesc = String(editedAbout || "").trim();
+                                if (!trimmedDesc) {
+                                  toast.error("Please enter service information");
+                                  return;
+                                }
+                                try {
+                                  const apiUrl = import.meta.env.VITE_API_URL;
+                                  const token = JSON.parse(localStorage.getItem("user"))?.token;
+                                  await axios.patch(`${apiUrl}/services/${selectedService._id}`, { aboutInfo: trimmedDesc }, {
+                                    headers: { Authorization: `Bearer ${token}` }
+                                  });
+                                  toast.success("Service info updated successfully");
+                                  setIsEditingAbout(false);
+                                  setSelectedService({ ...selectedService, aboutInfo: trimmedDesc });
+                                  const refreshRes = await axios.get(`${apiUrl}/services`);
+                                  setAllDbServices(refreshRes.data);
+                                } catch (err) {
+                                  console.error("Update service info error:", err.response?.data || err.message);
+                                  toast.error(err.response?.data?.message || "Failed to update service info");
+                                }
+                              }}
+                              style={{ padding: "6px 14px", background: "#10b981", border: "none", color: "#fff", borderRadius: "8px", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer" }}
+                            >
+                              Save
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <p
                           style={{
-                            fontSize: "0.72rem",
-                            fontWeight: 700,
-                            color: progressPct === 100
-                              ? (isLightMode ? "#6d4dff" : "#10b981")
-                              : (isLightMode ? "#6d4dff" : "rgba(255,255,255,0.4)"),
+                            margin: 0,
+                            fontSize: isMobile ? "0.85rem" : "0.9rem",
+                            lineHeight: 1.6,
+                            color: "#334155",
+                            whiteSpace: "pre-wrap",
                           }}
                         >
-                          {progressPct}%
-                        </span>
-                      </div>
+                          {selectedService.aboutInfo || selectedService.description || "No information available for this service yet."}
+                        </p>
+                      )}
                     </div>
+                  }
 
-                    {/* PDF Notice */}
+                  {!isUserRole && leadsForThisService.length > 1 && (
                     <div
                       style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "6px",
-                        padding: "0 0.25rem",
-                        background: "none",
-                        border: "none",
-                        marginBottom: "0.85rem",
+                        background: "#ffffff",
+                        border: "1px solid #e2e8f0",
+                        borderRadius: "14px",
+                        padding: isMobile ? "1rem" : "1.25rem",
+                        marginBottom: "1rem",
                       }}
                     >
-                      <FileText size={12} color="#94a3b8" style={{ flexShrink: 0 }} />
-                      <span
+                      <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "#0f172a", marginBottom: 8 }}>
+                        Documents Required apply to
+                      </label>
+                      <select
+                        value={currentLeadForRequiredDocs?._id || ""}
+                        onChange={(e) => setSelectedDocsLeadId(e.target.value)}
                         style={{
-                          fontSize: "0.68rem",
-                          fontWeight: 500,
-                          color: "#64748b",
-                          lineHeight: 1.4,
+                          width: "100%",
+                          padding: "0.6rem 0.75rem",
+                          borderRadius: 10,
+                          border: "1px solid #cbd5e1",
+                          background: "#fff",
+                          color: "#0f172a",
+                          fontSize: "0.85rem",
+                          fontWeight: 600,
                         }}
                       >
-                        <strong>Note:</strong> Only PDF documents are accepted for upload
-                      </span>
+                        {leadsForThisService.map((l) => (
+                          <option key={l._id} value={l._id}>
+                            {(l.name || l.email || "Unknown user")}{l.email ? ` (${l.email})` : ""}
+                          </option>
+                        ))}
+                      </select>
+                      <p style={{ fontSize: "0.72rem", color: "#94a3b8", margin: "6px 0 0" }}>
+                        Multiple users have this service. Pick the specific user before adding or removing a required document — changes only apply to the selected user.
+                      </p>
                     </div>
+                  )}
 
-                    {/* Document List */}
-                    <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-                      {(() => {
-                        // True when the entire service was rejected by the executor and PR has notified the client.
-                        const isServiceLevelExecutorRejection =
-                          serviceRejectionState?.type === "executor" &&
-                          serviceRejectionState?.lead?.executorServiceRejected === true &&
-                          serviceRejectionState?.lead?.prNotifiedClientServiceRejection === true;
-                        // True when PR rejected the entire service (lead status = "Rejected").
-                        const isServiceLevelPRRejection =
-                          serviceRejectionState?.type === "pr" &&
-                          String(serviceRejectionState?.lead?.status || "").trim().toLowerCase() === "rejected";
-                        // True when executor rejected specific docs and PR notified the client
-                        // (lead status = "InformationRequired", per-doc prNotifiedClient flags set).
-                        const rejLeadDocs = Array.isArray(serviceRejectionState?.lead?.documents)
-                          ? serviceRejectionState.lead.documents
-                          : [];
-                        const isPerDocExecutorRejection =
-                          rejLeadDocs.some(d => d?.executorRejected === true && d?.prNotifiedClient === true) &&
-                          String(serviceRejectionState?.lead?.status || "").trim().toLowerCase() === "informationrequired";
+                  {(() => {
+                    const currentLead = currentLeadForRequiredDocs;
+                    const docRows = adminRequiredDocRows;
+                    // Admin manages the service-level list even without a lead, so
+                    // only bail out for the client (who needs a lead to upload) or
+                    // when there are genuinely no required documents to show.
+                    if (isUserRole && !currentLead) return null;
+                    if (docRows.length === 0) return null;
+                    // The editable name list is the one being displayed (service-level
+                    // for admin, lead-level for the client).
+                    const requiredNames = docRows.map((r) => r.name);
 
-                        return docs.map((doc, idx) => {
-                          const state = getDocumentState(selectedService.title, doc.name);
-                          const isDraftDoc = String(doc?.type || "").trim().toLowerCase() === "draft";
-                          const isFinalDoc = String(doc?.type || "").trim().toLowerCase() === "final"
-                            || String(doc?.name || "").trim().toLowerCase().startsWith("final");
-
-                          const docAlreadyReuploaded = state.message?.toLowerCase().includes("reuploaded");
-
-                          // Per-doc executor rejection: show Reupload ONLY for the specific docs
-                          // that were rejected by the executor and PR notified the client about.
-                          const isThisDocExecutorRejected = isPerDocExecutorRejection && !isDraftDoc && !isFinalDoc &&
-                            rejLeadDocs.some(d =>
-                              normalizeText(d?.name) === normalizeText(doc.name) &&
-                              d?.executorRejected === true && d?.prNotifiedClient === true
-                            );
-
-                          // Force reupload styling for full-service rejection (executor or PR),
-                          // or for the specific executor-rejected doc in per-doc rejection mode.
-                          const forceReupload = (
-                            (isServiceLevelExecutorRejection || isServiceLevelPRRejection || isThisDocExecutorRejected)
-                            && !isDraftDoc && !isFinalDoc
-                            && !state.reuploadRequired && state.uploaded && !docAlreadyReuploaded
-                          );
-                          const effectiveReuploadRequired = state.reuploadRequired || forceReupload;
-
-                          const cardBg = effectiveReuploadRequired
-                            ? "#fef2f2"
-                            : state.uploaded
-                              ? "#ffffff"
-                              : "#ffffff";
-                          const cardBorder = effectiveReuploadRequired
-                            ? "#fca5a5"
-                            : "#e2e8f0";
-
-                          return (
-                            <div
-                              key={idx}
+                    return (
+                      <div
+                        style={{
+                          background: "#ffffff",
+                          border: "1px solid #e2e8f0",
+                          borderRadius: "14px",
+                          padding: isMobile ? "1rem" : "1.25rem",
+                          marginBottom: "1rem",
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", marginBottom: "0.35rem" }}>
+                          <div
+                            style={{
+                              fontSize: isMobile ? "0.8rem" : "0.9rem",
+                              fontWeight: 700,
+                              textTransform: "uppercase",
+                              letterSpacing: "0.05em",
+                              color: "#0f172a",
+                            }}
+                          >
+                            Documents Required
+                          </div>
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsAddingServiceRequiredDoc((prev) => !prev);
+                                setNewServiceRequiredDocName("");
+                              }}
                               style={{
                                 display: "flex",
                                 alignItems: "center",
-                                gap: "0.9rem",
-                                padding: isMobile ? "0.8rem 0.9rem" : "0.9rem 1rem",
-                                background: cardBg,
-                                border: `1px solid ${cardBorder}`,
-                                borderRadius: "14px",
-                                transition: "all 0.2s",
-                                opacity: !doc.required && !state.uploaded ? 0.65 : 1,
+                                gap: "6px",
+                                padding: "5px 10px",
+                                background: isAddingServiceRequiredDoc ? "#0f172a" : "#3b82f6",
+                                border: "none",
+                                color: "#fff",
+                                borderRadius: "8px",
+                                fontSize: "0.72rem",
+                                fontWeight: 700,
+                                cursor: "pointer",
+                                flexShrink: 0,
                               }}
                             >
-                              {/* Doc Info */}
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-                                  <p
-                                    style={{
-                                      margin: 0,
-                                      fontSize: isMobile ? "0.8rem" : "0.84rem",
-                                      fontWeight: 800,
-                                      color: "#1e293b",
-                                      overflow: "hidden",
-                                      textOverflow: "ellipsis",
-                                      whiteSpace: "nowrap",
-                                    }}
-                                  >
-                                    {doc.name}
-                                  </p>
-                                </div>
-                                <p
-                                  style={{
-                                    margin: "2px 0 0",
-                                    fontSize: "0.67rem",
-                                    color: effectiveReuploadRequired
-                                      ? "#ef4444"
-                                      : state.uploaded
-                                        ? "#10b981"
-                                        : isLightMode ? "#475569" : "#ffffff",
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                    whiteSpace: "nowrap",
-                                    lineHeight: 1.4,
-                                  }}
-                                >
-                                  {effectiveReuploadRequired
-                                    ? (state.message || "Service rejected by executor. Please reupload this document.")
-                                    : state.uploaded
-                                      ? `✓ ${state.uploadedName}`
-                                      : doc.desc || "Upload this document to proceed"}
-                                </p>
-                              </div>
+                              {isAddingServiceRequiredDoc ? "Cancel" : (<><Upload size={12} /> Add New Document</>)}
+                            </button>
+                          )}
+                        </div>
+                        {isUserRole && (
+                          <p style={{ fontSize: "0.75rem", color: "#94a3b8", margin: "0 0 0.75rem" }}>
+                            Note: only PDF documents are accepted.
+                          </p>
+                        )}
 
-                              {/* Edit & Delete Buttons - Only Visible to Admins */}
-                              {isAdmin && (
-                                <div style={{ display: "flex", gap: "8px", flexShrink: 0 }}>
-                                  <button
-                                    onClick={() => {
-                                      setEditingDocName(doc.name);
-                                      setEditDocumentNameInput(doc.name);
-                                    }}
-                                    style={{
-                                      padding: "6px 12px",
-                                      background: "#3b82f6",
-                                      border: "none",
-                                      color: "#fff",
-                                      borderRadius: "8px",
-                                      fontSize: "0.72rem",
-                                      fontWeight: 700,
-                                      cursor: "pointer",
-                                      display: "flex",
-                                      alignItems: "center",
-                                      gap: "4px"
-                                    }}
-                                  >
-                                    <Edit size={12} /> Edit
-                                  </button>
-                                  <button
-                                    onClick={() => {
-                                      setDeleteConfirmDocName(doc.name);
-                                      setIsDeleteConfirmOpen(true);
-                                    }}
-                                    style={{
-                                      padding: "6px 12px",
-                                      background: "#ef4444",
-                                      border: "none",
-                                      color: "#fff",
-                                      borderRadius: "8px",
-                                      fontSize: "0.72rem",
-                                      fontWeight: 700,
-                                      cursor: "pointer",
-                                      display: "flex",
-                                      alignItems: "center",
-                                      gap: "4px"
-                                    }}
-                                  >
-                                    <Trash2 size={12} /> Delete
-                                  </button>
-                                </div>
-                              )}
+                        {isAdmin && isAddingServiceRequiredDoc && (
+                          <div
+                            style={{
+                              background: "#f8fafc",
+                              border: "1px solid #e2e8f0",
+                              borderRadius: "10px",
+                              padding: "0.75rem",
+                              marginBottom: "0.75rem",
+                              display: "flex",
+                              gap: 8,
+                            }}
+                          >
+                            <input
+                              type="text"
+                              value={newServiceRequiredDocName}
+                              onChange={(e) => setNewServiceRequiredDocName(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  handleAddServiceRequiredDoc(selectedService, currentLead, requiredNames, newServiceRequiredDocName);
+                                  setIsAddingServiceRequiredDoc(false);
+                                }
+                              }}
+                              placeholder="e.g. Bank Statement"
+                              autoFocus
+                              style={{
+                                flex: 1,
+                                padding: "0.5rem 0.75rem",
+                                borderRadius: 8,
+                                border: "1px solid #cbd5e1",
+                                background: "#fff",
+                                color: "#0f172a",
+                                outline: "none",
+                                fontSize: "0.8rem",
+                              }}
+                            />
+                            <button
+                              type="button"
+                              disabled={isSavingServiceRequiredDocs || !newServiceRequiredDocName.trim()}
+                              onClick={() => {
+                                handleAddServiceRequiredDoc(selectedService, currentLead, requiredNames, newServiceRequiredDocName);
+                                setIsAddingServiceRequiredDoc(false);
+                              }}
+                              style={{
+                                padding: "0.5rem 0.9rem",
+                                borderRadius: 8,
+                                border: "none",
+                                background: !newServiceRequiredDocName.trim() ? "#e5e7eb" : "#0f172a",
+                                color: !newServiceRequiredDocName.trim() ? "#9ca3af" : "#fff",
+                                fontWeight: 700,
+                                fontSize: "0.78rem",
+                                cursor: !newServiceRequiredDocName.trim() ? "not-allowed" : "pointer",
+                              }}
+                            >
+                              Add
+                            </button>
+                          </div>
+                        )}
 
-                              {/* Upload Button - Only Visible to Users */}
-                              {isUserRole && (
-                                <label
-                                  style={{
-                                    cursor: uploadingDoc ? "not-allowed" : "pointer",
-                                    padding: isMobile ? "6px 12px" : "7px 14px",
-                                    background: effectiveReuploadRequired
-                                      ? "#ef4444"
-                                      : state.uploaded
-                                        ? "#f1f5f9"
-                                        : "#10b981",
-                                    color: state.uploaded && !effectiveReuploadRequired
-                                      ? "#334155"
-                                      : "#fff",
-                                    borderRadius: "9px",
-                                    fontSize: "0.72rem",
-                                    fontWeight: 700,
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: "5px",
-                                    transition: "all 0.2s",
-                                    flexShrink: 0,
-                                    border: state.uploaded && !effectiveReuploadRequired
-                                      ? "1px solid #e2e8f0"
-                                      : "1px solid transparent",
-                                    opacity: (uploadingDoc && uploadingDoc !== doc.name) ? 0.4 : 1,
-                                    pointerEvents: uploadingDoc ? "none" : "auto",
-                                    whiteSpace: "nowrap",
-                                  }}
-                                >
-                                  {uploadingDoc === doc.name ? (
-                                    <Loader2 size={11} className="animate-spin" />
-                                  ) : (
-                                    <Upload size={11} />
-                                  )}
-                                  {uploadingDoc === doc.name
-                                    ? "Uploading"
-                                    : effectiveReuploadRequired
-                                      ? "Reupload"
-                                      : state.uploaded
-                                        ? "Change"
-                                        : "Upload"}
+                        <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+                          {docRows.map((row) => {
+                            const inputId = `required-doc-upload-${row.key}`;
+                            const isUploading = uploadingDocKey === row.name;
+                            const isEditingThisRow = editingServiceDocRowKey === row.key;
+                            return (
+                              <div
+                                key={row.key}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "space-between",
+                                  gap: "0.75rem",
+                                  padding: "0.65rem 0.85rem",
+                                  background: "#f8fafc",
+                                  border: "1px solid #e2e8f0",
+                                  borderRadius: "10px",
+                                }}
+                              >
+                                {isEditingThisRow ? (
                                   <input
-                                    type="file"
-                                    accept=".pdf"
-                                    multiple
-                                    hidden
-                                    disabled={!!uploadingDoc}
-                                    onChange={async (e) => {
-                                      const files = Array.from(e.target.files || []);
-                                      // Allow selecting the same file again later
-                                      e.target.value = "";
-                                      if (files.length === 0) return;
-
-                                      const nonPdf = files.find(
-                                        (f) => f?.type !== "application/pdf",
-                                      );
-                                      if (nonPdf) {
-                                        toast.error("Please upload only PDF documents");
-                                        return;
+                                    type="text"
+                                    value={editingServiceDocRowValue}
+                                    autoFocus
+                                    onChange={(e) => setEditingServiceDocRowValue(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") {
+                                        e.preventDefault();
+                                        handleRenameServiceRequiredDoc(selectedService, currentLead, requiredNames, row.name, editingServiceDocRowValue);
+                                      } else if (e.key === "Escape") {
+                                        setEditingServiceDocRowKey(null);
                                       }
-
-                                      setUploadingDoc(doc.name);
-                                      const loadingToast = toast.loading(
-                                        `Uploading ${doc.name}...`,
-                                      );
-
-                                      try {
-                                        const apiUrl = import.meta.env.VITE_API_URL;
-                                        const user = JSON.parse(
-                                          localStorage.getItem("user"),
-                                        );
-                                        const token = user?.token;
-                                        if (!token) {
-                                          toast.error(
-                                            "Please log in to upload documents",
-                                            { id: loadingToast },
-                                          );
-                                          return;
-                                        }
-
-                                        for (const file of files) {
-                                          const formData = new FormData();
-                                          formData.append("file", file);
-                                          const uploadRes = await axios.post(
-                                            `${apiUrl}/leads/upload`,
-                                            formData,
-                                            {
-                                              headers: {
-                                                Authorization: `Bearer ${token}`,
-                                              },
-                                            },
-                                          );
-
-                                          if (uploadRes.data.success) {
-                                            setUploadedDocs((prev) => {
-                                              const prevSvc =
-                                                prev[selectedService.title] ||
-                                                {};
-                                              const existing =
-                                                prevSvc[doc.name] || [];
-                                              const existingArr = Array.isArray(
-                                                existing,
-                                              )
-                                                ? existing
-                                                : [existing];
-
-                                              return {
-                                                ...prev,
-                                                [selectedService.title]: {
-                                                  ...prevSvc,
-                                                  [doc.name]: [
-                                                    ...existingArr,
-                                                    {
-                                                      name: file.name,
-                                                      url: uploadRes.data.url,
-                                                      publicId: uploadRes.data.filename,
-                                                    },
-                                                  ],
-                                                },
-                                              };
-                                            });
-                                          }
-                                        }
-
-                                        toast.success(
-                                          `Uploaded ${files.length} file(s) for ${doc.name}`,
-                                          { id: loadingToast },
-                                        );
-                                      } catch (error) {
-                                        console.error("Upload error:", error);
-                                        toast.error(`Upload failed for ${doc.name}`, {
-                                          id: loadingToast,
-                                        });
-                                      } finally {
-                                        setUploadingDoc(null);
-                                      }
+                                    }}
+                                    style={{
+                                      flex: 1,
+                                      padding: "0.4rem 0.6rem",
+                                      borderRadius: 8,
+                                      border: "1px solid #cbd5e1",
+                                      background: "#fff",
+                                      color: "#0f172a",
+                                      outline: "none",
+                                      fontSize: "0.85rem",
                                     }}
                                   />
-                                </label>
-                              )}
+                                ) : (
+                                  <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                                    <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "#0f172a" }}>{row.name}</span>
+                                    {row.rejected && (
+                                      <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "#ef4444" }}>
+                                        Rejected by {row.rejectedBy || "PR"} - please reupload
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                                <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
+                                  {isUserRole && (
+                                    <>
+                                      <input
+                                        id={inputId}
+                                        type="file"
+                                        accept="application/pdf,.pdf"
+                                        multiple
+                                        style={{ display: "none" }}
+                                        onChange={(e) => {
+                                          const files = e.target.files;
+                                          if (currentLead?._id) handleRequiredDocumentUpload(currentLead._id, row.name, files);
+                                          e.target.value = "";
+                                        }}
+                                      />
+                                      <button
+                                        type="button"
+                                        disabled={isUploading}
+                                        onClick={() => document.getElementById(inputId)?.click()}
+                                        style={
+                                          row.rejected
+                                            ? {
+                                                display: "flex",
+                                                alignItems: "center",
+                                                gap: "6px",
+                                                padding: "6px 12px",
+                                                background: isUploading ? "#94a3b8" : "#ef4444",
+                                                border: "none",
+                                                color: "#fff",
+                                                borderRadius: "8px",
+                                                fontSize: "0.75rem",
+                                                fontWeight: 700,
+                                                cursor: isUploading ? "not-allowed" : "pointer",
+                                              }
+                                            : row.uploaded
+                                            ? {
+                                                display: "flex",
+                                                alignItems: "center",
+                                                gap: "6px",
+                                                padding: "6px 12px",
+                                                background: "#fff",
+                                                border: "1px solid #16a34a",
+                                                color: isUploading ? "#94a3b8" : "#16a34a",
+                                                borderRadius: "8px",
+                                                fontSize: "0.75rem",
+                                                fontWeight: 700,
+                                                cursor: isUploading ? "not-allowed" : "pointer",
+                                              }
+                                            : {
+                                                display: "flex",
+                                                alignItems: "center",
+                                                gap: "6px",
+                                                padding: "6px 12px",
+                                                background: isUploading ? "#94a3b8" : "#16a34a",
+                                                border: "none",
+                                                color: "#fff",
+                                                borderRadius: "8px",
+                                                fontSize: "0.75rem",
+                                                fontWeight: 700,
+                                                cursor: isUploading ? "not-allowed" : "pointer",
+                                              }
+                                        }
+                                      >
+                                        {isUploading ? (
+                                          <Loader2 size={12} className="animate-spin" />
+                                        ) : row.rejected ? (
+                                          <RefreshCw size={12} />
+                                        ) : row.uploaded ? (
+                                          <RefreshCw size={12} />
+                                        ) : (
+                                          <Upload size={12} />
+                                        )}
+                                        {isUploading ? "Uploading..." : row.rejected ? "Reupload" : row.uploaded ? "Change" : "Upload"}
+                                      </button>
+                                    </>
+                                  )}
+                                  {isAdmin && (
+                                    isEditingThisRow ? (
+                                      <>
+                                        <button
+                                          type="button"
+                                          disabled={isSavingServiceRequiredDocs}
+                                          onClick={() => handleRenameServiceRequiredDoc(selectedService, currentLead, requiredNames, row.name, editingServiceDocRowValue)}
+                                          style={{ display: "flex", alignItems: "center", padding: "6px 10px", background: "#16a34a", border: "none", color: "#fff", borderRadius: "8px", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer" }}
+                                        >
+                                          <Check size={12} />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setEditingServiceDocRowKey(null)}
+                                          style={{ display: "flex", alignItems: "center", padding: "6px 10px", background: "#fff", border: "1px solid #cbd5e1", color: "#64748b", borderRadius: "8px", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer" }}
+                                        >
+                                          <X size={12} />
+                                        </button>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setEditingServiceDocRowKey(row.key);
+                                            setEditingServiceDocRowValue(row.name);
+                                          }}
+                                          style={{ display: "flex", alignItems: "center", padding: "6px 10px", background: "#fff", border: "1px solid #3b82f6", color: "#3b82f6", borderRadius: "8px", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer" }}
+                                        >
+                                          <Edit size={12} />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          disabled={isSavingServiceRequiredDocs}
+                                          onClick={() => handleRemoveServiceRequiredDoc(selectedService, currentLead, requiredNames, row.name)}
+                                          style={{ display: "flex", alignItems: "center", padding: "6px 10px", background: "#fff", border: "1px solid #ef4444", color: "#ef4444", borderRadius: "8px", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer" }}
+                                        >
+                                          <Trash2 size={12} />
+                                        </button>
+                                      </>
+                                    )
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {showPaymentConfirmationContainer && (() => {
+                    const leadId = currentLeadForRequiredDocs?._id;
+                    const isPaid = currentLeadForRequiredDocs?.paymentStatus === "Paid";
+                    const isPaying = payingLeadId === leadId;
+                    const toggleOn = !!paymentConfirmedByLead[leadId];
+
+                    return (
+                      <div
+                        style={{
+                          background: "#ffffff",
+                          border: "1px solid #e2e8f0",
+                          borderRadius: "14px",
+                          padding: isMobile ? "1rem" : "1.25rem",
+                          marginBottom: "1rem",
+                        }}
+                      >
+                        <div style={{ fontSize: isMobile ? "0.8rem" : "0.9rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "#0f172a", marginBottom: 6 }}>
+                          Payment Confirmation
+                        </div>
+                        <p style={{ fontSize: "0.8rem", color: "#64748b", marginBottom: 14 }}>
+                          Complete the service fee payment, then confirm below to enable submission.
+                        </p>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            disabled={isPaid || isPaying || !leadId}
+                            onClick={() => {
+                              setPayingLeadId(leadId);
+                              payForLead(
+                                leadId,
+                                { name: storedUser?.name, email: storedUser?.email },
+                                {
+                                  onSuccess: async () => {
+                                    await refreshUserLeadsList();
+                                    setPaymentConfirmedByLead((prev) => ({ ...prev, [leadId]: true }));
+                                    setPayingLeadId(null);
+                                  },
+                                  onFailure: () => setPayingLeadId(null),
+                                },
+                              );
+                            }}
+                            style={{
+                              padding: "0.65rem 1.2rem",
+                              borderRadius: 10,
+                              border: "none",
+                              background: isPaid ? "#e5e7eb" : "#0f172a",
+                              color: isPaid ? "#6b7280" : "#fff",
+                              fontWeight: 700,
+                              fontSize: "0.85rem",
+                              cursor: isPaid || isPaying ? "not-allowed" : "pointer",
+                            }}
+                          >
+                            {isPaid ? "Payment Completed" : isPaying ? "Processing..." : "Make Payment"}
+                          </button>
+
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, opacity: isPaid ? 1 : 0.5 }}>
+                            <span style={{ fontSize: "0.82rem", fontWeight: 600, color: "#0f172a" }}>Confirm Payment</span>
+                            <div
+                              role="switch"
+                              aria-checked={toggleOn}
+                              onClick={() => {
+                                if (!isPaid || !leadId) return;
+                                setPaymentConfirmedByLead((prev) => ({ ...prev, [leadId]: !prev[leadId] }));
+                              }}
+                              style={{
+                                width: 42,
+                                height: 24,
+                                borderRadius: 999,
+                                position: "relative",
+                                background: toggleOn ? "#16a34a" : "#cbd5e1",
+                                cursor: isPaid ? "pointer" : "not-allowed",
+                                transition: "background 0.2s",
+                                flexShrink: 0,
+                              }}
+                            >
+                              <div
+                                style={{
+                                  position: "absolute",
+                                  top: 2,
+                                  left: toggleOn ? 20 : 2,
+                                  width: 20,
+                                  height: 20,
+                                  borderRadius: "50%",
+                                  background: "#fff",
+                                  transition: "left 0.2s",
+                                  boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
+                                }}
+                              />
                             </div>
-                          );
-                        });
-                      })()}
-                    </div>
-                  </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                 </div>
 
                 {/* -- STICKY FOOTER -- */}
@@ -5148,6 +5538,13 @@ const Recommendations = () => {
                           const user = JSON.parse(localStorage.getItem("user"));
                           const apiUrl = import.meta.env.VITE_API_URL;
                           const existingLead = getLatestLeadForService(selectedService.title);
+                          // All admin-requested documents are uploaded and the lead is still
+                          // sitting in the admin-only "Open" stage — this stays Open/admin-only
+                          // (not forwarded to PR); it just now displays as "Admin Reviewing".
+                          const isReadyForReviewSubmit =
+                            String(existingLead?.status || "").trim() === "Open" &&
+                            adminRequiredDocRows.length > 0 &&
+                            allAdminRequiredDocsUploaded;
                           const docList = docs
                             .flatMap((doc) => {
                               const state = getDocumentState(
@@ -5203,11 +5600,20 @@ const Recommendations = () => {
 
                             const patchPayload = {
                               reuploadedDocumentNames,
-                              // If it was rejected (by PR or Executor), move back to PendingReview
+                              // Marks this exact set of admin-required documents as confirmed —
+                              // the Submit button stays disabled afterwards until a new
+                              // upload/reupload resets this flag back to false.
+                              ...(adminRequiredDocRows.length > 0 ? { initialSubmissionConfirmed: true } : {}),
+                              // If it was rejected (by PR or Executor), move back to PendingReview.
+                              // This only runs on an explicit Submit click — reuploading individual
+                              // documents earlier never advances the status on its own.
                               ...(isServiceRejected ? {
                                 status: "PendingReview",
                                 executorMessage: "",
-                                prFeedback: ""
+                                prFeedback: "",
+                                adminMessage: "",
+                                executorServiceRejected: false,
+                                prNotifiedClientServiceRejection: false,
                               } : {})
                             };
                             if (updatedDocuments.length > 0) {
@@ -5224,7 +5630,7 @@ const Recommendations = () => {
                                 serviceName: selectedService.title,
                                 cost: selectedServiceRecommendedFeeAmount,
                                 recommendedFeeAmount: selectedServiceRecommendedFeeAmount,
-                                recommendedFees: "Rs. 1",
+                                recommendedFees: String(selectedService?.recommendedFees || "").trim(),
                                 marketFees: String(selectedService?.marketFees || "").trim(),
                                 documents: docList,
                                 status: docList.length > 0 ? "PendingReview" : "Open",
@@ -5238,7 +5644,14 @@ const Recommendations = () => {
                           const refreshStamp = String(Date.now());
                           localStorage.setItem("pr-dashboard-refresh", refreshStamp);
                           window.dispatchEvent(new Event("pr-dashboard-refresh"));
-                          toast.success(existingLead?._id ? "Documents resubmitted for PR review." : "Interest recorded! Check your dashboard for updates.", { id: "service-confirmation" });
+                          toast.success(
+                            !existingLead?._id
+                              ? "Interest recorded! Check your dashboard for updates."
+                              : isReadyForReviewSubmit
+                                ? "Documents submitted to Admin"
+                                : "Documents resubmitted for PR review.",
+                            { id: "service-confirmation" },
+                          );
                           setSelectedService(null);
                           navigate("/dashboard");
                         } catch (error) {
@@ -5247,45 +5660,30 @@ const Recommendations = () => {
                           setIsSubmitting(false);
                         }
                       }}
-                      disabled={(() => {
-                        if (!isComplete || isSubmitting) return true;
-                        const existingLead = getLatestLeadForService(selectedService.title);
-                        if (!existingLead?._id) return false;
-                        const localUploadsForService = uploadedDocs[selectedService.title] || {};
-                        return Object.keys(localUploadsForService).length === 0;
-                      })()}
+                      disabled={isConfirmDisabled}
                       style={{
                         flex: isMobile ? 1 : "none",
                         minWidth: isMobile ? "0" : "140px",
                         padding: isMobile ? "0.85rem" : "0.75rem 2rem",
-                        background: isComplete
+                        background: !isConfirmDisabled
                           ? "linear-gradient(135deg, #059669, #10b981)"
                           : "#f8fafc",
-                        color: isComplete ? "#fff" : "#64748b",
-                        border: `1px solid ${isComplete ? "transparent" : "#e2e8f0"}`,
+                        color: !isConfirmDisabled ? "#fff" : "#64748b",
+                        border: `1px solid ${!isConfirmDisabled ? "transparent" : "#e2e8f0"}`,
                         borderRadius: "12px",
                         fontWeight: 700,
                         fontSize: "0.88rem",
-                        cursor: (() => {
-                          const disabled = (() => {
-                            if (!isComplete || isSubmitting) return true;
-                            const existingLead = getLatestLeadForService(selectedService.title);
-                            if (!existingLead?._id) return false;
-                            const localUploadsForService = uploadedDocs[selectedService.title] || {};
-                            return Object.keys(localUploadsForService).length === 0;
-                          })();
-                          return disabled ? "not-allowed" : "pointer";
-                        })(),
+                        cursor: isConfirmDisabled ? "not-allowed" : "pointer",
                         transition: "all 0.3s",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
                         gap: "8px",
-                        boxShadow: isComplete ? "0 4px 20px rgba(16,185,129,0.3)" : "none",
+                        boxShadow: !isConfirmDisabled ? "0 4px 20px rgba(16,185,129,0.3)" : "none",
                         letterSpacing: "-0.01em",
                       }}
                       onMouseEnter={(e) => {
-                        if (isComplete) e.currentTarget.style.transform = "translateY(-1px)";
+                        if (!isConfirmDisabled) e.currentTarget.style.transform = "translateY(-1px)";
                       }}
                       onMouseLeave={(e) => {
                         e.currentTarget.style.transform = "none";
@@ -5293,13 +5691,33 @@ const Recommendations = () => {
                     >
                       {isSubmitting ? (
                         <><Loader2 size={16} className="animate-spin" /> Submitting...</>
-                      ) : !isComplete ? (
+                      ) : adminRequiredDocRows.length > 0 && hasRejectedRequiredDocs ? (
+                        <>Reupload Rejected Documents</>
+                      ) : !isComplete || (adminRequiredDocRows.length > 0 && !allAdminRequiredDocsUploaded) ? (
                         <>Upload Required Files to Submit</>
                       ) : (() => {
                         const existingLead = getLatestLeadForService(selectedService.title);
+                        if (!existingLead?._id) {
+                          return <>Confirm & Submit <ArrowRight size={16} /></>;
+                        }
+                        if (adminRequiredDocRows.length > 0) {
+                          const existingLeadStatus = String(existingLead.status || "").trim().toLowerCase();
+                          // By this point hasRejectedRequiredDocs is already false (that case is
+                          // handled by the earlier "Reupload Rejected Documents" branch), so a
+                          // lead still sitting in "Rejected"/"InformationRequired" here means every
+                          // required document has just been reuploaded but the user hasn't
+                          // explicitly resubmitted yet — show "Submit", not "Submitted".
+                          const needsExplicitSubmit =
+                            (existingLeadStatus === "open" && !existingLead?.initialSubmissionConfirmed) ||
+                            existingLeadStatus === "rejected" ||
+                            existingLeadStatus === "informationrequired";
+                          return needsExplicitSubmit
+                            ? <>Submit <ArrowRight size={16} /></>
+                            : <>Submitted <ArrowRight size={16} /></>;
+                        }
                         const localUploadsForService = uploadedDocs[selectedService.title] || {};
                         const hasLocalReupload = Object.keys(localUploadsForService).length > 0;
-                        if (existingLead?._id && !hasLocalReupload) {
+                        if (!hasLocalReupload) {
                           return <>Submitted <ArrowRight size={16} /></>;
                         }
                         return <>Confirm & Submit <ArrowRight size={16} /></>;
@@ -5310,201 +5728,10 @@ const Recommendations = () => {
               </motion.div>
             </motion.div>
 
-            {/* Add Document Modal */}
-            {isAddingDocument && (
-              <div
-                style={{
-                  position: "fixed",
-                  inset: 0,
-                  zIndex: 3000,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  background: "rgba(0, 0, 0, 0.6)",
-                  backdropFilter: "blur(8px)",
-                  padding: "1rem"
-                }}
-              >
-                <div
-                  style={{
-                    width: "100%",
-                    maxWidth: "400px",
-                    background: "#ffffff",
-                    borderRadius: "16px",
-                    padding: "1.5rem",
-                    boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
-                    border: "1px solid #e2e8f0"
-                  }}
-                >
-                  <h3 style={{ margin: "0 0 1rem 0", fontSize: "1.1rem", fontWeight: 700, color: "#0f172a" }}>
-                    Add Required Document
-                  </h3>
-                  <div style={{ marginBottom: "1.25rem" }}>
-                    <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "#475569", marginBottom: "6px" }}>
-                      Document Name
-                    </label>
-                    <input
-                      type="text"
-                      value={newDocumentName}
-                      onChange={(e) => setNewDocumentName(e.target.value)}
-                      placeholder="e.g. Partnership Deed"
-                      style={{
-                        width: "100%",
-                        padding: "0.75rem 0.9rem",
-                        background: "#ffffff",
-                        border: "1px solid #cbd5e1",
-                        borderRadius: "10px",
-                        color: "#0f172a",
-                        fontSize: "0.85rem",
-                        outline: "none"
-                      }}
-                      autoFocus
-                    />
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
-                    <button
-                      onClick={() => {
-                        setIsAddingDocument(false);
-                        setNewDocumentName("");
-                      }}
-                      style={{
-                        padding: "8px 16px",
-                        background: "#f1f5f9",
-                        border: "1px solid #cbd5e1",
-                        borderRadius: "8px",
-                        color: "#475569",
-                        fontSize: "0.8rem",
-                        fontWeight: 700,
-                        cursor: "pointer"
-                      }}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={handleAddDocument}
-                      style={{
-                        padding: "8px 16px",
-                        background: "linear-gradient(135deg, #8b5cf6, #6d4dff)",
-                        border: "none",
-                        borderRadius: "8px",
-                        color: "#ffffff",
-                        fontSize: "0.8rem",
-                        fontWeight: 700,
-                        cursor: "pointer"
-                      }}
-                    >
-                      Add Document
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Edit Document Modal */}
-            {editingDocName && (
-              <div
-                style={{
-                  position: "fixed",
-                  inset: 0,
-                  zIndex: 3000,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  background: "rgba(0, 0, 0, 0.6)",
-                  backdropFilter: "blur(8px)",
-                  padding: "1rem"
-                }}
-              >
-                <div
-                  style={{
-                    width: "100%",
-                    maxWidth: "400px",
-                    background: "#ffffff",
-                    borderRadius: "16px",
-                    padding: "1.5rem",
-                    boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
-                    border: "1px solid #e2e8f0"
-                  }}
-                >
-                  <h3 style={{ margin: "0 0 1rem 0", fontSize: "1.1rem", fontWeight: 700, color: "#0f172a" }}>
-                    Edit Document Name
-                  </h3>
-                  <div style={{ marginBottom: "1.25rem" }}>
-                    <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "#475569", marginBottom: "6px" }}>
-                      Document Name
-                    </label>
-                    <input
-                      type="text"
-                      value={editDocumentNameInput}
-                      onChange={(e) => setEditDocumentNameInput(e.target.value)}
-                      placeholder="Enter document name"
-                      style={{
-                        width: "100%",
-                        padding: "0.75rem 0.9rem",
-                        background: "#ffffff",
-                        border: "1px solid #cbd5e1",
-                        borderRadius: "10px",
-                        color: "#0f172a",
-                        fontSize: "0.85rem",
-                        outline: "none"
-                      }}
-                      autoFocus
-                    />
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
-                    <button
-                      onClick={() => {
-                        setEditingDocName(null);
-                        setEditDocumentNameInput("");
-                      }}
-                      style={{
-                        padding: "8px 16px",
-                        background: "#f1f5f9",
-                        border: "1px solid #cbd5e1",
-                        borderRadius: "8px",
-                        color: "#475569",
-                        fontSize: "0.8rem",
-                        fontWeight: 700,
-                        cursor: "pointer"
-                      }}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={handleEditDocument}
-                      style={{
-                        padding: "8px 16px",
-                        background: "linear-gradient(135deg, #8b5cf6, #6d4dff)",
-                        border: "none",
-                        borderRadius: "8px",
-                        color: "#ffffff",
-                        fontSize: "0.8rem",
-                        fontWeight: 700,
-                        cursor: "pointer"
-                      }}
-                    >
-                      Save Changes
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </>
-        );
+          </>,
+            document.body
+          );
         })()}
-      </AnimatePresence>
-
-      <ConfirmationModal
-        isOpen={isDeleteConfirmOpen}
-        title="Delete Document"
-        message={`Are you sure you want to remove "${deleteConfirmDocName}" from the required documents list? This action cannot be undone.`}
-        onConfirm={() => handleDeleteDocument(deleteConfirmDocName)}
-        onCancel={() => {
-          setIsDeleteConfirmOpen(false);
-          setDeleteConfirmDocName(null);
-        }}
-        isLoading={isDeleting}
-      />
 
       <ConfirmationModal
         isOpen={isServiceDeleteConfirmOpen}
@@ -5522,7 +5749,7 @@ const Recommendations = () => {
       {isAddingService && (
         <>
           <div
-            onClick={() => { setIsAddingService(false); setCustomCategoryInput(""); }}
+            onClick={() => setIsAddingService(false)}
             style={{
               position: "fixed",
               top: 0, left: 0, right: 0, bottom: 0,
@@ -5564,7 +5791,7 @@ const Recommendations = () => {
                   Add New Service
                 </h2>
                 <button
-                  onClick={() => { setIsAddingService(false); setCustomCategoryInput(""); }}
+                  onClick={() => setIsAddingService(false)}
                   style={{ background: "none", border: "none", cursor: "pointer", color: "#64748b", padding: "4px" }}
                 >
                   <X size={20} />
@@ -5572,7 +5799,7 @@ const Recommendations = () => {
               </div>
               </div>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: "12px", overflowY: "auto", flex: 1, padding: "0 28px 24px", scrollbarWidth: "thin" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px", overflowY: "auto", overscrollBehavior: "contain", flex: 1, padding: "0 28px 24px", scrollbarWidth: "thin" }}>
                 <div>
                   <label style={{ fontSize: "0.75rem", fontWeight: 700, color: "#475569", display: "block", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                      Service Name <span style={{ color: "#ef4444", marginLeft: "2px" }}>*</span>
@@ -5623,69 +5850,27 @@ const Recommendations = () => {
 
                 <div>
                   <label style={{ fontSize: "0.75rem", fontWeight: 700, color: "#475569", display: "block", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                     Category <span style={{ color: "#ef4444", marginLeft: "2px" }}>*</span>
+                     About The Service <span style={{ color: "#ef4444", marginLeft: "2px" }}>*</span>
                   </label>
-                  <select
-                    value={customCategoryInput ? "" : newServiceForm.category}
-                    onChange={(e) => {
-                      setCustomCategoryInput("");
-                      setNewServiceForm({ ...newServiceForm, category: e.target.value });
-                    }}
+                  <textarea
+                    value={newServiceForm.aboutInfo}
+                    onChange={(e) => setNewServiceForm({ ...newServiceForm, aboutInfo: e.target.value })}
+                    placeholder="Detailed information shown in the About The Service tab (e.g. process, eligibility, benefits)..."
+                    rows={3}
                     style={{
                       width: "100%",
                       padding: "10px 14px",
-                      border: `1px solid ${customCategoryInput ? "#cbd5e1" : "#10b981"}`,
-                      borderRadius: "10px",
-                      fontSize: "0.85rem",
-                      color: customCategoryInput ? "#94a3b8" : "#000000",
-                      outline: "none",
-                      background: "#f8fafc",
-                      boxSizing: "border-box",
-                      opacity: customCategoryInput ? 0.5 : 1,
-                    }}
-                  >
-                    {FINAL_CATEGORY_ORDER.map((cat) => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                  </select>
-
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px", margin: "8px 0" }}>
-                    <div style={{ flex: 1, height: "1px", background: "#e2e8f0" }} />
-                    <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", whiteSpace: "nowrap" }}>or enter custom</span>
-                    <div style={{ flex: 1, height: "1px", background: "#e2e8f0" }} />
-                  </div>
-
-                  <input
-                    type="text"
-                    value={customCategoryInput}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setCustomCategoryInput(val);
-                      if (val.trim()) {
-                        setNewServiceForm((prev) => ({ ...prev, category: val.trim() }));
-                      } else {
-                        setNewServiceForm((prev) => ({ ...prev, category: FINAL_CATEGORY_ORDER?.[0] || "Advisory" }));
-                      }
-                    }}
-                    placeholder="e.g. Insurance Services"
-                    style={{
-                      width: "100%",
-                      padding: "10px 14px",
-                      border: `1px solid ${customCategoryInput ? "#10b981" : "#cbd5e1"}`,
+                      border: "1px solid #cbd5e1",
                       borderRadius: "10px",
                       fontSize: "0.85rem",
                       color: "#000000",
                       outline: "none",
-                      background: customCategoryInput ? "rgba(16,185,129,0.04)" : "#f8fafc",
+                      background: "#f8fafc",
+                      resize: "vertical",
+                      fontFamily: "inherit",
                       boxSizing: "border-box",
-                      transition: "border-color 0.2s, background 0.2s",
                     }}
                   />
-                  {customCategoryInput.trim() && (
-                    <div style={{ marginTop: "5px", fontSize: "0.72rem", color: "#10b981", fontWeight: 600 }}>
-                      New category: "{customCategoryInput.trim()}"
-                    </div>
-                  )}
                 </div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
@@ -5741,90 +5926,11 @@ const Recommendations = () => {
                   </div>
                 </div>
 
-                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                  <label style={{ fontSize: "0.75rem", fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap" }}>
-                    Working Days:
-                  </label>
-                  <input
-                    type="number"
-                    value={newServiceForm.workingDays}
-                    onChange={(e) => setNewServiceForm({ ...newServiceForm, workingDays: Number(e.target.value) })}
-                    min={1}
-                    style={{
-                      width: "60px",
-                      padding: "6px 10px",
-                      border: "1px solid #cbd5e1",
-                      borderRadius: "8px",
-                      fontSize: "0.85rem",
-                      color: "#000000",
-                      outline: "none",
-                      background: "#f8fafc",
-                      textAlign: "center",
-                      fontWeight: 700,
-                    }}
-                  />
-                  <span style={{ fontSize: "0.75rem", color: "#64748b" }}>Days</span>
-                </div>
-
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
-                    <label style={{ fontSize: "0.75rem", fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                       Required Documents <span style={{ color: "#ef4444", marginLeft: "2px" }}>*</span>
-                    </label>
-                    <button
-                      onClick={() => {
-                        setAddDocInput("");
-                        setIsAddDocModalOpen(true);
-                      }}
-                      style={{
-                        padding: "4px 12px",
-                        background: "transparent",
-                        border: "1px solid #10b981",
-                        color: "#10b981",
-                        borderRadius: "6px",
-                        fontSize: "0.7rem",
-                        fontWeight: 700,
-                        cursor: "pointer",
-                      }}
-                    >
-                      + Add Document
-                    </button>
-                  </div>
-                  {newServiceForm.documentsRequired.length > 0 && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                      {newServiceForm.documentsRequired.map((doc, i) => (
-                        <div
-                          key={i}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            padding: "6px 12px",
-                            background: "#f8fafc",
-                            border: "1px solid #e2e8f0",
-                            borderRadius: "8px",
-                          }}
-                        >
-                          <span style={{ fontSize: "0.8rem", color: "#334155", fontWeight: 600 }}>{doc}</span>
-                          <button
-                            onClick={() => {
-                              const updated = newServiceForm.documentsRequired.filter((_, idx) => idx !== i);
-                              setNewServiceForm({ ...newServiceForm, documentsRequired: updated });
-                            }}
-                            style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", padding: "2px" }}
-                          >
-                            <X size={14} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
               </div>
               <div style={{ padding: "12px 28px 12px", borderTop: "1px solid #e2e8f0" }}>
               <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
                 <button
-                  onClick={() => { setIsAddingService(false); setCustomCategoryInput(""); }}
+                  onClick={() => { setIsAddingService(false); }}
                   style={{
                     padding: "10px 22px",
                     borderRadius: "12px",
@@ -5842,11 +5948,9 @@ const Recommendations = () => {
                   const isFormValid =
                     newServiceForm.title.trim() &&
                     newServiceForm.description.trim() &&
-                    newServiceForm.category.trim() &&
+                    newServiceForm.aboutInfo.trim() &&
                     newServiceForm.recommendedFees.trim() &&
-                    newServiceForm.marketFees.trim() &&
-                    Array.isArray(newServiceForm.documentsRequired) &&
-                    newServiceForm.documentsRequired.length > 0;
+                    newServiceForm.marketFees.trim();
 
                   return (
                     <button
@@ -5876,123 +5980,6 @@ const Recommendations = () => {
         </>
       )}
 
-      {isAddDocModalOpen && (
-        <>
-          <div
-            onClick={() => setIsAddDocModalOpen(false)}
-            style={{
-              position: "fixed",
-              top: 0, left: 0, right: 0, bottom: 0,
-              background: "rgba(17,24,39,0.3)",
-              zIndex: 100001,
-            }}
-          />
-          <div
-            style={{
-              position: "fixed",
-              top: 0, left: 0, right: 0, bottom: 0,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              zIndex: 100002,
-              pointerEvents: "none",
-            }}
-          >
-            <div
-              style={{
-                width: "360px",
-                maxWidth: "90%",
-                pointerEvents: "auto",
-                background: "#ffffff",
-                borderRadius: "20px",
-                boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25)",
-                padding: "24px",
-              }}
-            >
-              <h3 style={{ margin: "0 0 16px", fontSize: "16px", fontWeight: 700, color: "#111111" }}>
-                Add Document
-              </h3>
-              <input
-                type="text"
-                value={addDocInput}
-                onChange={(e) => setAddDocInput(e.target.value)}
-                placeholder="Enter document name"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && addDocInput.trim()) {
-                    const canonical = addDocInput.trim().replace(/^pan\b/i, "PAN Card").replace(/^(aadhar|aadhaar|adhar|adhaar)\b/i, "Aadhaar Card");
-                    const alreadyExists = newServiceForm.documentsRequired.some(
-                      (d) => d.trim().toLowerCase() === canonical.trim().toLowerCase()
-                    );
-                    if (alreadyExists) { toast.error("This document is already added"); return; }
-                    setNewServiceForm({ ...newServiceForm, documentsRequired: [...newServiceForm.documentsRequired, canonical.trim()] });
-                    setIsAddDocModalOpen(false);
-                    setAddDocInput("");
-                  }
-                }}
-                style={{
-                  width: "100%",
-                  padding: "10px 14px",
-                  border: "1px solid #cbd5e1",
-                  borderRadius: "10px",
-                  fontSize: "0.85rem",
-                  color: "#000000",
-                  outline: "none",
-                  background: "#f8fafc",
-                  boxSizing: "border-box",
-                  marginBottom: "16px",
-                }}
-                autoFocus
-              />
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
-                <button
-                  onClick={() => {
-                    setIsAddDocModalOpen(false);
-                    setAddDocInput("");
-                  }}
-                  style={{
-                    padding: "8px 18px",
-                    borderRadius: "10px",
-                    border: "1px solid #e2e8f0",
-                    background: "#f9fafb",
-                    color: "#111111",
-                    cursor: "pointer",
-                    fontSize: "13px",
-                    fontWeight: 700,
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => {
-                    if (addDocInput.trim()) {
-                      const canonical = addDocInput.trim().replace(/^pan\b/i, "PAN Card").replace(/^(aadhar|aadhaar|adhar|adhaar)\b/i, "Aadhaar Card");
-                      const alreadyExists = newServiceForm.documentsRequired.some(
-                        (d) => d.trim().toLowerCase() === canonical.trim().toLowerCase()
-                      );
-                      if (alreadyExists) { toast.error("This document is already added"); return; }
-                      setNewServiceForm({ ...newServiceForm, documentsRequired: [...newServiceForm.documentsRequired, canonical.trim()] });
-                      setIsAddDocModalOpen(false);
-                      setAddDocInput("");
-                    }
-                  }}
-                  style={{
-                    padding: "8px 18px",
-                    borderRadius: "10px",
-                    border: "none",
-                    background: "#10b981",
-                    color: "#ffffff",
-                    cursor: "pointer",
-                    fontSize: "13px",
-                    fontWeight: 800,
-                  }}
-                >
-                  Add
-                </button>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
     </div>
   );
 };

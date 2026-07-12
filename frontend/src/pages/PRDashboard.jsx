@@ -55,6 +55,7 @@ const PRDashboard = () => {
   const [rejectingLeadId, setRejectingLeadId] = useState(null);
   const [docRejectDrafts, setDocRejectDrafts] = useState({});
   const [rejectingDocKey, setRejectingDocKey] = useState(null);
+  const [additionalDetailsDrafts, setAdditionalDetailsDrafts] = useState({});
   const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
   const currentUserId = storedUser?._id || storedUser?.id || "";
   const [hiddenLeads, setHiddenLeads] = useState(() => loadHiddenServiceIds("pr-dashboard", currentUserId));
@@ -376,26 +377,36 @@ const PRDashboard = () => {
   const hydrateLeadsWithDocuments = (leadList, servicesList = []) => {
     const list = Array.isArray(leadList) ? leadList : [];
     return list.map((lead) => {
-      const serviceKey = normalizeServiceKey(lead?.serviceName);
-
-      const matchedService = Array.isArray(servicesList)
-        ? servicesList.find((s) => normalizeServiceKey(s?.title) === serviceKey)
-        : null;
+      // Required-document placeholders are sourced from THIS lead's own
+      // documentsRequired field only — never the shared Service catalog.
+      // A document admin requested for one user must never appear as
+      // "required"/"Pending" on another user's lead for the same service.
+      const leadRequiredDocNames = Array.isArray(lead?.documentsRequired) ? lead.documentsRequired : [];
 
       let requiredDocs = [];
-      if (matchedService && Array.isArray(matchedService.documentsRequired)) {
+      if (leadRequiredDocNames.length > 0) {
         // Identify which document names have admin-added placeholders (to preserve the flag after dedupe)
         const adminAddedDocNames = new Set(
           (Array.isArray(lead?.documents) ? lead.documents : [])
             .filter(d => d?.adminAdded === true && !d?.url && !d?.publicId && !d?.secure_url && !d?.uploadedUrl)
             .map(d => String(d?.name || "").trim().toLowerCase())
         );
-        requiredDocs = matchedService.documentsRequired.map((docName) => ({
-          name: docName,
-          status: "Pending",
-          type: "Client",
-          adminAdded: adminAddedDocNames.has(String(docName || "").trim().toLowerCase())
-        }));
+        // Don't synthesize a "Pending" placeholder for a name that already has a
+        // real uploaded file — otherwise it competes with the real entry for the
+        // same name once merged.
+        const namesWithRealUpload = new Set(
+          (Array.isArray(lead?.documents) ? lead.documents : [])
+            .filter(d => !!(d?.url || d?.publicId || d?.secure_url || d?.uploadedUrl))
+            .map(d => String(d?.name || "").trim().toLowerCase())
+        );
+        requiredDocs = leadRequiredDocNames
+          .filter((docName) => !namesWithRealUpload.has(String(docName || "").trim().toLowerCase()))
+          .map((docName) => ({
+            name: docName,
+            status: "Pending",
+            type: "Client",
+            adminAdded: adminAddedDocNames.has(String(docName || "").trim().toLowerCase())
+          }));
       }
 
       const pendingDocs = getPendingUploadsForService(lead?.serviceName);
@@ -405,9 +416,16 @@ const PRDashboard = () => {
       const realCurrentDocs = currentDocs.filter(
         (d) => !(d?.adminAdded === true && !d?.url && !d?.publicId && !d?.secure_url && !d?.uploadedUrl)
       );
-      const mergedDocs = dedupeDocumentsByName([...realCurrentDocs, ...pendingDocs, ...requiredDocs], {
+      const mergedDocsRaw = dedupeDocumentsByName([...realCurrentDocs, ...pendingDocs, ...requiredDocs], {
         reuploadedDocumentNames: lead?.reuploadedDocumentNames,
       });
+      // requiredDocs (sourced from the service catalog) never carry a URL, so an
+      // unresolved admin-requested one would otherwise slip through the merge above
+      // (only realCurrentDocs was filtered) and show up as a "Pending" document
+      // before the client has uploaded anything.
+      const mergedDocs = mergedDocsRaw.filter(
+        (d) => !(d?.adminAdded === true && !d?.url && !d?.publicId && !d?.secure_url && !d?.uploadedUrl)
+      );
 
       const executorRejected = (lead) => {
         if (!lead || lead?.status !== "Rejected") return false;
@@ -459,10 +477,10 @@ const PRDashboard = () => {
   };
 
   const getRequiredServiceDocumentNames = (lead) => {
-    const matchedService = getMatchedService(lead);
-    const requiredDocs = Array.isArray(matchedService?.documentsRequired)
-      ? matchedService.documentsRequired
-      : [];
+    // Sourced from this specific lead's own documentsRequired — not the shared
+    // Service catalog — so a document requested for one user never counts as
+    // "required" for another user's lead on the same service.
+    const requiredDocs = Array.isArray(lead?.documentsRequired) ? lead.documentsRequired : [];
 
     return new Set(
       requiredDocs
@@ -814,6 +832,28 @@ const PRDashboard = () => {
       fetchData();
     } catch (error) {
       toast.error(error.response?.data?.message || "Failed to reject service");
+    }
+  };
+
+  const handleNotifyAdminAdditionalDetails = async (leadId) => {
+    const message = String(additionalDetailsDrafts[leadId] || "").trim();
+    if (!message) {
+      toast.error("Please enter additional details before notifying admin");
+      return;
+    }
+
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL;
+      const response = await axios.patch(
+        `${apiUrl}/leads/${leadId}`,
+        { prAdditionalDetailsMessage: message },
+        { headers: { Authorization: `Bearer ${storedUser.token}` } }
+      );
+      mergeUpdatedLead(leadId, response.data?.lead);
+      setAdditionalDetailsDrafts((prev) => ({ ...prev, [leadId]: "" }));
+      toast.success("Admin notified");
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to notify admin");
     }
   };
 
@@ -1242,6 +1282,9 @@ const PRDashboard = () => {
       handleSendMessage={handleSendMessage}
       handleRejectDocumentWithMessage={handleRejectDocumentWithMessage}
       handleRejectService={handleRejectService}
+      handleNotifyAdminAdditionalDetails={handleNotifyAdminAdditionalDetails}
+      additionalDetailsDrafts={additionalDetailsDrafts}
+      setAdditionalDetailsDrafts={setAdditionalDetailsDrafts}
       uploadingId={uploadingId}
       messageDrafts={messageDrafts}
       setMessageDrafts={setMessageDrafts}

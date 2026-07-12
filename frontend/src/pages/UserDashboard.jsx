@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import { getStatusLabel, resolveExecutorLabel } from "../utils/statusLabels";
+import { getStatusLabel, resolveExecutorLabel, areAllRequiredDocumentsUploaded, hasAdminRejectedDocuments } from "../utils/statusLabels";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import { motion, AnimatePresence } from "framer-motion";
@@ -24,7 +24,7 @@ import {
   Loader2,
   Upload,
 } from "lucide-react";
-import { viewDocument } from "../utils/documentViewer";
+import { viewDocument, downloadDocument } from "../utils/documentViewer";
 import ConfirmationModal from "../components/ConfirmationModal";
 import UserDashboardModern from "./UserDashboardModern";
 import {
@@ -117,6 +117,28 @@ const UserDashboard = () => {
       return {};
     }
   });
+
+  // Keyed by leadId -> the exact note text that was dismissed, so the note
+  // reappears automatically if admin later changes it to something new.
+  const [dismissedNoteSignatureByLead, setDismissedNoteSignatureByLead] = useState(() => {
+    try {
+      const saved = localStorage.getItem("dismissedDocumentsRequiredNoteByLead");
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const handleDismissDocumentsRequiredNote = (lead, e) => {
+    if (e) e.stopPropagation();
+    const leadId = lead?._id;
+    if (!leadId) return;
+    setDismissedNoteSignatureByLead((prev) => {
+      const updated = { ...prev, [leadId]: String(lead?.documentsRequiredNote || "") };
+      localStorage.setItem("dismissedDocumentsRequiredNoteByLead", JSON.stringify(updated));
+      return updated;
+    });
+  };
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, lead: null, isLoading: false });
   const uploadInputRef = useRef(null);
   const navigate = useNavigate();
@@ -336,29 +358,47 @@ const UserDashboard = () => {
     return [...collapsed, ...appendedDocs];
   };
 
-  const hydrateLeadsWithDocuments = (leadList, servicesList = services) => {
+  // Note: required documents are now sourced per-lead (lead.documentsRequired),
+  // so the services catalog is no longer needed here. The second argument is kept
+  // for call-site compatibility but intentionally unused.
+  const hydrateLeadsWithDocuments = (leadList) => {
     const list = Array.isArray(leadList) ? leadList : [];
     return list.map((lead) => {
-      const serviceKey = normalizeServiceKey(lead?.serviceName);
-
-      const matchedService = servicesList.find(
-        (s) => normalizeServiceKey(s?.title) === serviceKey
-      );
-
       let requiredDocs = [];
-      if (matchedService && Array.isArray(matchedService.documentsRequired)) {
-        // Identify which document names have admin-added placeholders (to preserve the flag after dedupe)
-        const adminAddedDocNames = new Set(
+      // Source required documents from the LEAD's own documentsRequired (per-user,
+      // per-service, set by the admin for this specific request) — NOT the shared
+      // Service catalog. The catalog accumulates document names across every user's
+      // request for a service, so reading from it would leak documents the admin
+      // requested for other users/services into this user's dashboard.
+      const leadRequiredNames = lead?.documentsSentToUser && Array.isArray(lead?.documentsRequired)
+        ? lead.documentsRequired
+        : [];
+      if (leadRequiredNames.length > 0) {
+        // Don't synthesize a "Pending" placeholder for a name that already has a
+        // real uploaded file — otherwise it competes with the real entry for the
+        // same name once merged.
+        const namesWithRealUpload = new Set(
           (Array.isArray(lead?.documents) ? lead.documents : [])
-            .filter(d => d?.adminAdded === true && !d?.url && !d?.publicId && !d?.secure_url && !d?.uploadedUrl)
+            .filter(d => !!(d?.url || d?.publicId || d?.secure_url || d?.uploadedUrl))
             .map(d => String(d?.name || "").trim().toLowerCase())
         );
-        requiredDocs = matchedService.documentsRequired.map(docName => ({
-          name: docName,
-          status: "Pending",
-          type: "Client",
-          adminAdded: adminAddedDocNames.has(String(docName || "").trim().toLowerCase())
-        }));
+        // Every name here comes from lead.documentsRequired (admin-managed, gated
+        // by documentsSentToUser), so it is ALWAYS an admin-requested requirement —
+        // mark it adminAdded unconditionally. Previously this only got set when a
+        // matching placeholder subdocument happened to already exist in
+        // lead.documents; a name can be added to documentsRequired without one
+        // (e.g. via the Admin Dashboard before "Notify" is clicked again), which
+        // let the synthesized entry slip past the adminAdded filter below and show
+        // up as a second, duplicate row next to the dedicated "pending admin
+        // documents" section.
+        requiredDocs = leadRequiredNames
+          .filter(docName => !namesWithRealUpload.has(String(docName || "").trim().toLowerCase()))
+          .map(docName => ({
+            name: docName,
+            status: "Pending",
+            type: "Client",
+            adminAdded: true,
+          }));
       }
 
       const pendingDocs = getPendingUploadsForService(lead?.serviceName);
@@ -369,11 +409,19 @@ const UserDashboard = () => {
       const realCurrentDocs = currentDocs.filter(
         (d) => !(d?.adminAdded === true && !d?.url && !d?.publicId && !d?.secure_url && !d?.uploadedUrl)
       );
-      const mergedDocs = dedupeDocumentsByName(
+      const mergedDocsRaw = dedupeDocumentsByName(
         [...realCurrentDocs, ...pendingDocs, ...requiredDocs],
         {
           reuploadedDocumentNames: lead?.reuploadedDocumentNames,
         },
+      );
+      // requiredDocs (sourced from the service catalog) never carry a URL, so an
+      // unresolved admin-requested one would otherwise slip through the merge above
+      // (only realCurrentDocs was filtered) and show up as a duplicate "Pending" row
+      // alongside the dedicated admin-requested-documents section, before the user
+      // has uploaded anything.
+      const mergedDocs = mergedDocsRaw.filter(
+        (d) => !(d?.adminAdded === true && !d?.url && !d?.publicId && !d?.secure_url && !d?.uploadedUrl)
       );
 
       const executorRejected = isExecutorRejectedState(lead);
@@ -455,7 +503,20 @@ const UserDashboard = () => {
       fetchUserServices();
     } else {
       setLoading(false);
+      return;
     }
+
+    // Keep this dashboard in sync with admin-side actions (e.g. sending a
+    // document request) that happen in a different tab/session — without
+    // this, a page left open would keep showing stale data until reloaded.
+    const refreshTimer = setInterval(fetchUserServices, 15000);
+    const handleFocus = () => fetchUserServices();
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      clearInterval(refreshTimer);
+      window.removeEventListener("focus", handleFocus);
+    };
   }, []);
 
   useEffect(() => {
@@ -825,21 +886,19 @@ const UserDashboard = () => {
     return String(doc?.rejectionReason || "").trim() || "Document rejected due to quality issues.";
   };
 
-  // Get the list of new admin-added documents that the user has not yet uploaded.
-  // These docs have an admin-added placeholder entry in the lead's documents (adminAdded: true, no URL).
+  // Get the list of admin-requested documents the user has not yet uploaded.
+  // Sourced from documentsRequired/documentsSentToUser (stable, admin-controlled
+  // fields) rather than the "adminAdded" flag on individual document entries —
+  // that flag lives on the same subdocument that reuploads replace, so relying
+  // on it would make a required document silently disappear from this list the
+  // moment it's uploaded or changed.
   const getPendingAdminAddedDocuments = (lead) => {
-    if (!lead) return [];
+    if (!lead?.documentsSentToUser) return [];
     const currentDocs = Array.isArray(lead?.documents) ? lead.documents : [];
+    const requiredNames = Array.isArray(lead?.documentsRequired) ? lead.documentsRequired : [];
 
-    // Find documents that have an admin-added placeholder (adminAdded: true, no URL)
-    const adminAddedPlaceholders = currentDocs.filter((d) => {
-      return d?.adminAdded === true && !d?.url && !d?.publicId && !d?.secure_url && !d?.uploadedUrl;
-    });
-
-    // Return the names of those placeholders that the user hasn't uploaded yet
-    // (the placeholder itself has no URL, so check if there's no other entry with a URL for the same name)
-    return adminAddedPlaceholders
-      .map((d) => String(d?.name || "").trim())
+    return requiredNames
+      .map((name) => String(name || "").trim())
       .filter((name) => name)
       .filter((name) => {
         const target = name.toLowerCase();
@@ -922,6 +981,12 @@ const UserDashboard = () => {
     const hasPendingExecutorRejection = Array.isArray(lead?.documents) &&
       lead.documents.some((d) => d?.executorRejected && !d?.prNotifiedClient);
     if (hasPendingExecutorRejection) return false;
+
+    // While the lead is still in the admin's own "Open" pre-review stage, an
+    // admin document rejection has its own dedicated "Documents Rejected by
+    // Admin" label/theme (see hasAdminRejectedDocuments) — don't let it be
+    // mislabeled as "Rejected by PR" here.
+    if (String(lead?.status || "").trim().toLowerCase() === "open") return false;
 
     return (
       !isExecutorRejectedState(lead) &&
@@ -1162,11 +1227,6 @@ const UserDashboard = () => {
 
   const getDisplayStatus = (lead) => {
     const status = getEffectiveLeadStatus(lead);
-    const docs = getLeadDocumentsToDisplay(lead);
-    const hasUploaded = Array.isArray(docs) && docs.some(d => {
-      const s = String(d?.status || "").trim().toLowerCase();
-      return ["uploaded", "accepted", "verified", "approved", "completed", "reuploaded"].includes(s) || !!d?.url || !!d?.publicId;
-    });
 
     if (status === "DraftRejected") return "Draft Rejected by User";
 
@@ -1193,7 +1253,7 @@ const UserDashboard = () => {
       if (!hasRejectedDoc) return "PR Reviewing";
       return "Service rejected by PR. Action required.";
     }
-    if (status === "PendingReview" || (status === "Open" && hasUploaded)) return "PR Reviewing";
+    if (status === "PendingReview") return "PR Reviewing";
     // When executor is reviewing the service — don't show "Rejected" yet if not notified
     if (status === "AssignedToExecutor" || status === "PR_Accepted") {
       const hasPendingExecutorRejection = Array.isArray(lead?.documents) &&
@@ -1256,6 +1316,9 @@ const UserDashboard = () => {
     }
     if (status === "PR_Accepted" || status === "DraftAccepted") {
       return { color: "#10b981", bg: "rgba(16,185,129,0.1)" };
+    }
+    if (status === "Open" && hasAdminRejectedDocuments(lead)) {
+      return { color: "#ef4444", bg: "rgba(239,68,68,0.12)" };
     }
     return { color: "#f59e0b", bg: "rgba(245,158,11,0.1)" };
   };
@@ -1359,6 +1422,8 @@ const UserDashboard = () => {
     if (status === "DraftRejected") return 70;
 
     if (isDetailsMissingState(lead)) return 20;
+    if (status === "Open" && hasAdminRejectedDocuments(lead)) return 12;
+    if (status === "Open" && areAllRequiredDocumentsUploaded(lead)) return 15;
     const progressByStatus = {
       Open: 10,
       PendingReview: 20,
@@ -1482,6 +1547,8 @@ const UserDashboard = () => {
       getDetailsMissingSignature={getDetailsMissingSignature}
       getDetailsMissingMessage={getDetailsMissingMessage}
       handleDismissDetailsMissingMessage={handleDismissDetailsMissingMessage}
+      dismissedNoteSignatureByLead={dismissedNoteSignatureByLead}
+      handleDismissDocumentsRequiredNote={handleDismissDocumentsRequiredNote}
       handleDeleteRejectionMessage={handleDeleteRejectionMessage}
       isExecutorRejectedState={isExecutorRejectedState}
       isPrRejectedState={isPrRejectedState}
@@ -1509,6 +1576,7 @@ const UserDashboard = () => {
       handleConfirmDelete={handleConfirmDelete}
       setDeleteConfirm={setDeleteConfirm}
       viewDocument={viewDocument}
+      downloadDocument={downloadDocument}
     />
   );
 

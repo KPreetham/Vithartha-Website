@@ -4,14 +4,13 @@ const serviceSchema = new mongoose.Schema({
   id: { type: String, required: true, unique: true },
   title: { type: String, required: true },
   description: { type: String, required: true },
+  aboutInfo: { type: String, default: "" },
   icon: { type: String, default: "FileText" },
-  category: { type: String, required: true },
   trigger: { type: String, required: false },
   tags: [String],
   documentsRequired: [String],
   marketFees: { type: String, default: "" },
   recommendedFees: { type: String, default: "" },
-  workingDays: { type: Number, default: 2 },
   createdAt: { type: Date, default: Date.now },
 });
 

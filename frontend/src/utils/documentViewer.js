@@ -144,6 +144,38 @@ export const getSecureDocumentUrl = async (publicId, url, leadId) => {
   throw new Error("Failed to generate secure view token");
 };
 
+export const downloadDocument = async (publicId, url, leadId, fileName) => {
+  const loadingToast = toast.loading("Preparing download...");
+
+  try {
+    const streamUrl = await getSecureDocumentUrl(publicId, url, leadId);
+    const response = await axios.get(streamUrl, { responseType: "blob" });
+
+    const resolvedName = String(fileName || "document").trim() || "document";
+    const hasExtension = /\.[a-z0-9]{2,5}$/i.test(resolvedName);
+    const downloadName = hasExtension ? resolvedName : `${resolvedName}.pdf`;
+
+    const blobUrl = window.URL.createObjectURL(response.data);
+    const link = document.createElement("a");
+    link.href = blobUrl;
+    link.download = downloadName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(blobUrl);
+
+    toast.dismiss(loadingToast);
+  } catch (error) {
+    console.error("[DocumentViewer] Error downloading document:", error);
+    toast.error(
+      error.response?.status === 401
+        ? "This document link expired. Please try again."
+        : error.response?.data?.message || error.message || "Failed to download document. Please try again.",
+      { id: loadingToast },
+    );
+  }
+};
+
 export const viewDocument = async (publicId, url, leadId) => {
   const loadingToast = toast.loading("Preparing document...");
   const previewTab = window.open("about:blank", "_blank");

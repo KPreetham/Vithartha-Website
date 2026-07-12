@@ -23,6 +23,7 @@ import {
 import ConfirmationModal from "../components/ConfirmationModal";
 import { getServicePricing } from "../utils/servicePricing";
 import { normalizeRole } from "../utils/roleRouting";
+import { areAllRequiredDocumentsUploaded } from "../utils/statusLabels";
 
 const PremiumCard = ({ children, style = {}, className = "", onClick }) => (
   <div
@@ -104,6 +105,9 @@ const PRDashboardModern = ({
   handleSendMessage,
   handleRejectDocumentWithMessage,
   handleRejectService,
+  handleNotifyAdminAdditionalDetails,
+  additionalDetailsDrafts,
+  setAdditionalDetailsDrafts,
   uploadingId,
   messageDrafts,
   setMessageDrafts,
@@ -187,6 +191,16 @@ const PRDashboardModern = ({
     setDocumentsOpen(false);
   }, [activeLead?._id]);
 
+  // If the newly selected lead has no assigned executor, "executor" is not a
+  // valid recipient — fall back to messaging the client instead of leaving a
+  // message staged for a non-existent recipient.
+  React.useEffect(() => {
+    if (messageTarget === "executor" && !activeLead?.assignedExecutor) {
+      setMessageTarget("user");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeLead?._id]);
+
   React.useEffect(() => {
     const handleResize = () => setIsCompactMobile(window.innerWidth <= 480);
     window.addEventListener("resize", handleResize);
@@ -260,8 +274,16 @@ const PRDashboardModern = ({
   // Any status that is not "Open", "PendingReview", or "InformationRequired" means
   // the PR has already made a decision (accept or reject), so hide action buttons.
   const PENDING_DECISION_STATUSES = new Set(["open", "pendingreview", "informationrequired"]);
+  // Once PR has accepted the service and assigned an executor, the lead can fall
+  // back to "InformationRequired" later — e.g. when PR clicks "Notify Client" on
+  // a document the EXECUTOR rejected post-acceptance. That status reuse must not
+  // resurface the initial Accept/Reject Service controls: PR already made that
+  // call, so having an assigned executor means the decision stays finalized
+  // regardless of the current status string.
+  const hasBeenAssignedToExecutor = !!(lead?.assignedExecutor || lead?.executorId);
   const serviceDecisionFinalized = lead
-    ? !PENDING_DECISION_STATUSES.has(normalizedRawStatus)
+    ? (!PENDING_DECISION_STATUSES.has(normalizedRawStatus) ||
+        (normalizedRawStatus === "informationrequired" && hasBeenAssignedToExecutor))
     : false;
 
   // PR_Accepted with no executor yet: decision is made (hide accept/reject btns)
@@ -334,6 +356,7 @@ const PRDashboardModern = ({
     if (effectiveServiceStatus === "InformationRequired") return 20;
 
     const status = String(effectiveServiceStatus || "").trim();
+    if (status === "Open" && areAllRequiredDocumentsUploaded(lead)) return 15;
     const progressByStatus = {
       Open: 10,
       PendingReview: 20,
@@ -352,8 +375,10 @@ const PRDashboardModern = ({
     return progressByStatus[status] ?? 0;
   })();
   const serviceProgressMessage = lead
-    ? {
-        Open: "Pending verification and initial review.",
+    ? (String(effectiveServiceStatus || "").trim() === "Open" && lead?.documentsSentToUser)
+      ? (areAllRequiredDocumentsUploaded(lead) ? "All documents uploaded. Pending admin review." : "Pending client documents upload.")
+      : {
+        Open: "Pending admin review and documents upload.",
         PendingReview: "Documents are being reviewed by PR.",
         InformationRequired: "Service rejected by PR. Action required.",
         PR_Accepted: "Documents verified. Awaiting executor assignment.",
@@ -1377,9 +1402,9 @@ const PRDashboardModern = ({
                                 <table className="dashboard-table">
                                   <thead>
                                     <tr>
-                                      <th style={{ width: isCompactMobile ? "52%" : "54%" }}>Document</th>
-                                      <th>Status</th>
-                                      <th style={{ width: isCompactMobile ? 180 : 220, textAlign: "right" }}>Action</th>
+                                      <th style={{ width: isCompactMobile ? "32%" : "34%" }}>Document</th>
+                                      <th style={{ width: isCompactMobile ? "24%" : "22%", paddingLeft: 20 }}>Status</th>
+                                      <th style={{ width: isCompactMobile ? 150 : 180, textAlign: "center", paddingLeft: 20 }}>Action</th>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -1465,15 +1490,15 @@ const PRDashboardModern = ({
                                                   </div>
                                                 </div>
                                               </td>
-                                              <td>
+                                              <td style={{ paddingLeft: 20 }}>
                                                 <span style={{ display: "flex", alignItems: "center", color: isDone || isDraftSentState ? "#16a34a" : (isError || isPendingPrNotification) ? "#ef4444" : "#f59e0b", fontSize: isCompactMobile ? "0.74rem" : "0.84rem", fontWeight: 700 }}>
                                                   {isPendingPrNotification ? "Flagged by Executor" : docStatus}
                                                 </span>
                                               </td>
-                                              <td style={{ textAlign: "right" }}>
-                                                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                                                    <button 
-                                                      type="button" 
+                                              <td style={{ textAlign: "center", paddingLeft: 20 }}>
+                                                  <div style={{ display: "flex", justifyContent: "center", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                                                    <button
+                                                      type="button"
                                                       onClick={() => viewDocument(doc.publicId, doc.url || doc.secure_url || doc.uploadedUrl || doc.viewUrl, lead._id)}
                                                       style={{ 
                                                         height: isCompactMobile ? 30 : 32,
@@ -1909,6 +1934,57 @@ const PRDashboardModern = ({
                         )}
                       </PremiumCard>
 
+                      {/* Additional Details — notify admin about this specific service */}
+                      <PremiumCard style={{ padding: "18px 22px", background: "#ffffff", border: "1px solid rgba(17,24,39,0.12)", borderRadius: 20 }}>
+                        <h3 style={{ fontSize: "1.1rem", fontWeight: 800, marginBottom: 2, color: "#111111" }}>Additional Details</h3>
+                        <p style={{ color: "#6b7280", fontSize: "0.82rem", marginBottom: 14 }}>
+                          Share any extra context about this service with the admin.
+                        </p>
+                        <div style={{ position: "relative", width: "100%" }}>
+                          <textarea
+                            value={additionalDetailsDrafts?.[lead._id] || ""}
+                            onChange={(e) => setAdditionalDetailsDrafts((prev) => ({ ...prev, [lead._id]: e.target.value }))}
+                            placeholder="Add any additional details for the admin about this service..."
+                            style={{
+                              width: "100%",
+                              minHeight: 140,
+                              padding: "16px",
+                              paddingBottom: 56,
+                              borderRadius: 14,
+                              border: "1px solid rgba(17,24,39,0.12)",
+                              background: "#fafafa",
+                              color: "#111111",
+                              fontSize: "0.9rem",
+                              outline: "none",
+                              resize: "vertical",
+                              fontFamily: "inherit",
+                              boxSizing: "border-box",
+                            }}
+                          />
+                          <button
+                            onClick={() => handleNotifyAdminAdditionalDetails(lead._id)}
+                            style={{
+                              position: "absolute",
+                              right: 12,
+                              bottom: 12,
+                              padding: "10px 18px",
+                              borderRadius: 12,
+                              background: "#111111",
+                              color: "#fff",
+                              border: "none",
+                              fontWeight: 700,
+                              fontSize: "0.82rem",
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 6,
+                            }}
+                          >
+                            <Send size={14} /> Notify Admin
+                          </button>
+                        </div>
+                      </PremiumCard>
+
                       {/* Communication Hub */}
                       {showCommunicationBox && (
                         <PremiumCard style={{ padding: "18px 22px", background: "#ffffff", border: "1px solid rgba(17,24,39,0.12)", borderRadius: 20, overflow: "visible", position: "relative" }}>
@@ -1919,10 +1995,23 @@ const PRDashboardModern = ({
                             </div>
                           </div>
 
+                          {(() => {
+                            // Only the executor actually assigned to THIS lead (a real DB-stored
+                            // executor account) can ever see adminToExecutorMessage-style content
+                            // relayed through this lead — so the "Executor" recipient must show
+                            // that real, named executor and must not appear at all until one is
+                            // assigned to this specific lead.
+                            const assignedExecutorRoleKey = String(lead?.assignedExecutor || "").trim().toLowerCase();
+                            const hasAssignedExecutorForHub = !!assignedExecutorRoleKey;
+                            const assignedExecutorLabelForHub = hasAssignedExecutorForHub
+                              ? getExecutorLabel(assignedExecutorRoleKey)
+                              : "Executor";
+
+                            return (
                           <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
                           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                             <label style={{ fontSize: "0.75rem", fontWeight: 800, color: "#111111", textTransform: "uppercase", letterSpacing: "0.05em" }}>Message Recipient</label>
-                            <div 
+                            <div
                               onClick={() => setIsMessageTargetOpen(!isMessageTargetOpen)}
                               style={{ 
                                 width: "100%",
@@ -1941,7 +2030,7 @@ const PRDashboardModern = ({
                                 userSelect: "none" 
                               }}
                             >
-                              <span>{messageTarget === "user" ? "Client" : messageTarget === "admin" ? "Admin" : "Executor"}</span>
+                              <span>{messageTarget === "user" ? "Client" : messageTarget === "admin" ? "Admin" : assignedExecutorLabelForHub}</span>
                               <ChevronDown size={18} style={{ color: "#6b7280", transform: isMessageTargetOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
                               
                               {isMessageTargetOpen && (
@@ -1960,7 +2049,7 @@ const PRDashboardModern = ({
                                   {[
                                     { value: "user", label: "Client" },
                                     { value: "admin", label: "Admin" },
-                                    { value: "executor", label: "Executor" }
+                                    ...(hasAssignedExecutorForHub ? [{ value: "executor", label: assignedExecutorLabelForHub }] : []),
                                   ].map((opt) => (
                                     <div 
                                       key={opt.value}
@@ -1995,7 +2084,7 @@ const PRDashboardModern = ({
                             <textarea 
                               value={messageDrafts[lead._id] || ""} 
                               onChange={(e) => setMessageDrafts((prev) => ({ ...prev, [lead._id]: e.target.value }))} 
-                              placeholder={`Send a message to the ${messageTarget === "user" ? "client" : messageTarget}...`}
+                              placeholder={`Send a message to the ${messageTarget === "user" ? "client" : messageTarget === "admin" ? "admin" : assignedExecutorLabelForHub}...`}
                               style={{ 
                                 minHeight: 140, 
                                 resize: "vertical", 
@@ -2044,6 +2133,8 @@ const PRDashboardModern = ({
                             </button>
                           </div>
                           </div>
+                            );
+                          })()}
                         </PremiumCard>
                       )}
                     </div>

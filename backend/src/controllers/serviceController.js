@@ -47,12 +47,12 @@ const dedupeDocsPreservingNames = (docs) => {
 
 export const createService = async (req, res) => {
   try {
-    const { title, description, category, marketFees, recommendedFees, workingDays, documentsRequired } = req.body;
+    const { title, description, aboutInfo, marketFees, recommendedFees, documentsRequired } = req.body;
 
-    if (!title || !description || !category) {
+    if (!title || !description || !aboutInfo) {
       return res
         .status(400)
-        .json({ success: false, message: "Title, description, and category are required" });
+        .json({ success: false, message: "Title, description, and about the service are required" });
     }
 
     const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") + "-" + Date.now();
@@ -61,14 +61,96 @@ export const createService = async (req, res) => {
       id: slug,
       title,
       description,
-      category,
+      aboutInfo,
       marketFees: marketFees || "",
       recommendedFees: recommendedFees || "",
-      workingDays: workingDays || 2,
       documentsRequired: deduplicateDocs(documentsRequired),
     });
 
     res.status(201).json({ success: true, service });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const bulkImportServices = async (req, res) => {
+  try {
+    const services = Array.isArray(req.body) ? req.body : req.body?.services;
+
+    if (!Array.isArray(services) || services.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Request body must be a non-empty array of services",
+      });
+    }
+
+    const docs = [];
+    const rejected = [];
+
+    services.forEach((raw, index) => {
+      const title = String(raw?.title || "").trim();
+      const description = String(raw?.description || "").trim();
+
+      if (!title || !description) {
+        rejected.push({
+          index,
+          title: title || undefined,
+          reason: "Missing required field: title and description are required",
+        });
+        return;
+      }
+
+      const slug =
+        String(raw?.id || "").trim() ||
+        `${title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}-${Date.now()}-${index}`;
+
+      docs.push({
+        id: slug,
+        title,
+        description,
+        aboutInfo: raw?.aboutInfo || "",
+        icon: raw?.icon || "FileText",
+        trigger: raw?.trigger || undefined,
+        tags: Array.isArray(raw?.tags) ? raw.tags : [],
+        documentsRequired: deduplicateDocs(raw?.documentsRequired),
+        marketFees: raw?.marketFees || "",
+        recommendedFees: raw?.recommendedFees || "",
+      });
+    });
+
+    if (docs.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No valid services to import",
+        rejected,
+      });
+    }
+
+    let inserted = [];
+    const failed = [...rejected];
+
+    try {
+      inserted = await Service.insertMany(docs, { ordered: false });
+    } catch (bulkError) {
+      inserted = bulkError.insertedDocs || [];
+      const writeErrors = bulkError.writeErrors || [];
+      writeErrors.forEach((writeError) => {
+        const docIndex = writeError.index;
+        failed.push({
+          index: docIndex,
+          title: docs[docIndex]?.title,
+          reason: writeError.errmsg || "Insert failed (possibly a duplicate id)",
+        });
+      });
+    }
+
+    res.status(201).json({
+      success: true,
+      insertedCount: inserted.length,
+      failedCount: failed.length,
+      services: inserted,
+      failed,
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -99,10 +181,6 @@ export const getServiceById = async (req, res) => {
 export const updateService = async (req, res) => {
   try {
     const { id } = req.params;
-    const workingDaysRaw = req.body?.workingDays;
-    const workingDays = Number.isFinite(Number(workingDaysRaw)) && Number(workingDaysRaw) > 0
-      ? Math.round(Number(workingDaysRaw))
-      : undefined;
 
     const updateData = { ...req.body };
     delete updateData._id;
@@ -110,9 +188,6 @@ export const updateService = async (req, res) => {
     delete updateData.__v;
     delete updateData.createdAt;
 
-    if (workingDays !== undefined) {
-      updateData.workingDays = workingDays;
-    }
     if (Array.isArray(updateData.documentsRequired)) {
       updateData.documentsRequired = dedupeDocsPreservingNames(updateData.documentsRequired);
     }
@@ -129,7 +204,7 @@ export const updateService = async (req, res) => {
         .json({ success: false, message: "Service not found" });
     }
 
-    // Propagate fee and working-days changes to all matching leads immediately
+    // Propagate fee changes to all matching leads immediately
     const leadUpdate = {};
     if (service.recommendedFees != null) {
       leadUpdate.recommendedFees = service.recommendedFees;
@@ -138,7 +213,6 @@ export const updateService = async (req, res) => {
       if (parsed != null && parsed > 0) leadUpdate.recommendedFeeAmount = parsed;
     }
     if (service.marketFees != null) leadUpdate.marketFees = service.marketFees;
-    if (service.workingDays != null) leadUpdate.workingDays = service.workingDays;
 
     if (Object.keys(leadUpdate).length > 0) {
       await Lead.updateMany(
@@ -278,7 +352,7 @@ export const addDocumentToService = async (req, res) => {
 export const updateServiceFeesForAllLeads = async (req, res) => {
   try {
     const { id } = req.params;
-    const { marketFees = "", recommendedFees = "", workingDays } = req.body || {};
+    const { marketFees = "", recommendedFees = "" } = req.body || {};
     const normalizeFee = (value) => {
       const raw = String(value || "").trim();
       if (!raw) return "";
@@ -286,13 +360,8 @@ export const updateServiceFeesForAllLeads = async (req, res) => {
         ? raw.replace(/^rs\.?\s*/i, "Rs. ").trim()
         : `Rs. ${raw}`;
     };
-    const normalizeDays = (value) => {
-      const parsed = Number(value);
-      return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : undefined;
-    };
     const nextMarketFee = normalizeFee(marketFees);
     const nextRecommendedFee = normalizeFee(recommendedFees);
-    const nextWorkingDays = normalizeDays(workingDays);
 
     const service = await Service.findByIdAndUpdate(
       id,
@@ -300,7 +369,6 @@ export const updateServiceFeesForAllLeads = async (req, res) => {
         $set: {
           marketFees: nextMarketFee,
           recommendedFees: nextRecommendedFee,
-          ...(nextWorkingDays !== undefined ? { workingDays: nextWorkingDays } : {}),
         },
       },
       {

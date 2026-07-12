@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { getStatusLabel, resolveExecutorLabel } from "../utils/statusLabels";
+import { getStatusLabel, resolveExecutorLabel, areAllRequiredDocumentsUploaded } from "../utils/statusLabels";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "react-hot-toast";
@@ -769,6 +769,7 @@ const ExecutorDashboardModern = () => {
     if (lead.status === "InformationRequired") return 20;
 
     const status = getEffectiveServiceStatus(lead);
+    if (status === "Open" && areAllRequiredDocumentsUploaded(lead)) return 15;
     const progressByStatus = {
       Open: 10,
       PendingReview: 20,
@@ -794,8 +795,11 @@ const ExecutorDashboardModern = () => {
   const getProgressMessage = (lead) => {
     if (!lead) return "";
     const status = getEffectiveServiceStatus(lead);
+    if (status === "Open" && lead?.documentsSentToUser) {
+      return areAllRequiredDocumentsUploaded(lead) ? "All documents uploaded. Pending admin review." : "Pending client documents upload.";
+    }
     const statusMap = {
-      Open: "Pending verification and initial review.",
+      Open: "Pending admin review and documents upload.",
       PendingReview: "Documents are being reviewed by PR.",
       InformationRequired: "Service rejected by PR. Action required.",
       PR_Accepted: "Documents verified. Awaiting executor assignment.",
@@ -1289,9 +1293,9 @@ const ExecutorDashboardModern = () => {
                               <table className="dashboard-table">
                                 <thead>
                                   <tr>
-                                    <th style={{ width: isMobile ? "50%" : "auto" }}>Document Name</th>
-                                    <th>Status</th>
-                                    <th style={{ width: isMobile ? 96 : "auto", textAlign: "right" }}>Action</th>
+                                    <th style={{ width: isMobile ? "42%" : "48%" }}>Document Name</th>
+                                    <th style={{ width: isMobile ? "34%" : "32%" }}>Status</th>
+                                    <th style={{ width: isMobile ? 220 : 260, textAlign: "center", whiteSpace: "nowrap" }}>Action</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -1358,11 +1362,11 @@ const ExecutorDashboardModern = () => {
                                         <td>
                                           <span style={{ fontSize: isMobile ? "0.74rem" : "0.82rem", fontWeight: 700, color: statusColor }}>{displayStatus}</span>
                                         </td>
-                                        <td style={{ textAlign: "right" }}>
-                                          <div style={{ display: "inline-flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                                        <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
+                                          <div style={{ display: "inline-flex", gap: 8, alignItems: "center", flexWrap: "nowrap", justifyContent: "center" }}>
                                             <button
                                               onClick={() => viewDocument(doc.publicId, doc.url || doc.secure_url || doc.uploadedUrl || doc.viewUrl, activeLead._id)}
-                                              style={{ padding: isMobile ? "6px 10px" : "7px 14px", borderRadius: 10, background: "#ffffff", color: "#111111", border: "1px solid rgba(17,24,39,0.12)", cursor: "pointer", fontSize: isMobile ? "0.7rem" : "0.78rem", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 6, transition: "all 0.2s" }}
+                                              style={{ padding: isMobile ? "6px 10px" : "7px 14px", borderRadius: 10, background: "#ffffff", color: "#111111", border: "1px solid rgba(17,24,39,0.12)", cursor: "pointer", fontSize: isMobile ? "0.7rem" : "0.78rem", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 6, transition: "all 0.2s", whiteSpace: "nowrap" }}
                                               className="inner-card"
                                             >
                                               VIEW <Eye size={14} />
@@ -1371,13 +1375,13 @@ const ExecutorDashboardModern = () => {
                                               <>
                                                 <button
                                                   onClick={() => handleDocumentStatus(activeLead._id, doc._id, "Accepted")}
-                                                  style={{ padding: isMobile ? "6px 10px" : "7px 14px", borderRadius: 10, background: "#16a34a", color: "#fff", border: "none", cursor: "pointer", fontSize: isMobile ? "0.7rem" : "0.78rem", fontWeight: 800, display: "inline-flex", alignItems: "center", gap: 6 }}
+                                                  style={{ padding: isMobile ? "6px 10px" : "7px 14px", borderRadius: 10, background: "#16a34a", color: "#fff", border: "none", cursor: "pointer", fontSize: isMobile ? "0.7rem" : "0.78rem", fontWeight: 800, display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}
                                                 >
                                                   ACCEPT
                                                 </button>
                                                 <button
                                                   onClick={() => setRejectingDocKey(rejectingDocKey === docKey ? null : docKey)}
-                                                  style={{ padding: isMobile ? "6px 10px" : "7px 14px", borderRadius: 10, background: "rgba(239,68,68,0.08)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.2)", cursor: "pointer", fontSize: isMobile ? "0.7rem" : "0.78rem", fontWeight: 800, display: "inline-flex", alignItems: "center", gap: 6 }}
+                                                  style={{ padding: isMobile ? "6px 10px" : "7px 14px", borderRadius: 10, background: "rgba(239,68,68,0.08)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.2)", cursor: "pointer", fontSize: isMobile ? "0.7rem" : "0.78rem", fontWeight: 800, display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}
                                                 >
                                                   REJECT
                                                 </button>

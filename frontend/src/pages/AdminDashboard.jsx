@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import { getStatusLabel, resolveExecutorLabel } from "../utils/statusLabels";
+import { getStatusLabel, resolveExecutorLabel, hasAdminRejectedDocuments } from "../utils/statusLabels";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Users,
@@ -83,6 +83,12 @@ const AdminDashboard = () => {
   const [messageTarget, setMessageTarget] = useState("client");
   const [messageText, setMessageText] = useState("");
   const [uploadingId, setUploadingId] = useState(null);
+  const [newDocName, setNewDocName] = useState("");
+  const [isSavingRequiredDocuments, setIsSavingRequiredDocuments] = useState(false);
+  const [isSendingDocuments, setIsSendingDocuments] = useState(false);
+  const [updatingDocStatusId, setUpdatingDocStatusId] = useState(null);
+  const [isUpdatingServiceStatus, setIsUpdatingServiceStatus] = useState(false);
+  const [executors, setExecutors] = useState([]);
   const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
   const currentUserId = storedUser?._id || storedUser?.id || "";
   const [hiddenLeads, setHiddenLeads] = useState(() => loadHiddenServiceIds("admin-dashboard", currentUserId));
@@ -233,6 +239,20 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleDeletePrAdditionalDetailsMessage = async (leadId, e) => {
+    if (e) e.stopPropagation();
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL;
+      const user = JSON.parse(localStorage.getItem("user"));
+      await axios.patch(`${apiUrl}/leads/${leadId}`, { prAdditionalDetailsMessage: "" }, {
+        headers: { Authorization: `Bearer ${user.token}` },
+      });
+      fetchLeads();
+    } catch (error) {
+      toast.error("Failed to remove PR notification");
+    }
+  };
+
   const handleDeleteExecutorMessage = async (leadId, e) => {
     if (e) e.stopPropagation();
     try {
@@ -338,15 +358,24 @@ const AdminDashboard = () => {
     try {
       const apiUrl = import.meta.env.VITE_API_URL;
       const user = JSON.parse(localStorage.getItem("user"));
-      const [leadsRes, servicesRes] = await Promise.all([
+      const [leadsRes, servicesRes, executorsRes] = await Promise.all([
         axios.get(`${apiUrl}/leads`, {
           headers: { Authorization: `Bearer ${user.token}` },
         }),
         axios.get(`${apiUrl}/services`).catch(() => ({ data: [] })),
+        axios.get(`${apiUrl}/auth/pr-executors`, {
+          headers: { Authorization: `Bearer ${user.token}` },
+        }).catch(() => ({ data: [] })),
       ]);
       const fetchedServices = Array.isArray(servicesRes.data) ? servicesRes.data : [];
       setServices(fetchedServices);
       setLeads(hydrateLeadsWithDocuments(leadsRes.data, fetchedServices));
+      // pr-executors returns both PR and executor accounts — keep only the
+      // actual named executors currently stored in the DB for the message
+      // recipient dropdown.
+      if (Array.isArray(executorsRes.data)) {
+        setExecutors(executorsRes.data.filter((u) => /^executor\d+$/i.test(String(u?.role || "").trim())));
+      }
       setLoading(false);
     } catch (error) {
       toast.error("Failed to fetch services");
@@ -370,6 +399,8 @@ const AdminDashboard = () => {
 
   useEffect(() => {
     fetchLeads();
+    const intervalId = setInterval(fetchLeads, 30000);
+    return () => clearInterval(intervalId);
   }, []);
 
   useEffect(() => {
@@ -471,6 +502,153 @@ const AdminDashboard = () => {
       fetchLeads();
     } catch (error) {
       toast.error("Failed to complete service");
+    }
+  };
+
+  const handleAddRequiredDocument = async (leadId, docName) => {
+    const trimmedName = String(docName || "").trim();
+    if (!trimmedName) return;
+    const lead = leads.find((l) => l._id === leadId);
+    const existingNames = Array.isArray(lead?.documentsRequired) ? lead.documentsRequired : [];
+    if (existingNames.some((n) => String(n).trim().toLowerCase() === trimmedName.toLowerCase())) {
+      setNewDocName("");
+      return;
+    }
+    setIsSavingRequiredDocuments(true);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL;
+      const user = JSON.parse(localStorage.getItem("user"));
+      await axios.patch(
+        `${apiUrl}/leads/${leadId}/documents-required`,
+        { documentsRequired: [...existingNames, trimmedName] },
+        { headers: { Authorization: `Bearer ${user.token}` } },
+      );
+      setNewDocName("");
+      fetchLeads();
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to add document");
+    } finally {
+      setIsSavingRequiredDocuments(false);
+    }
+  };
+
+  const handleRemoveRequiredDocument = async (leadId, docName) => {
+    const lead = leads.find((l) => l._id === leadId);
+    const existingNames = Array.isArray(lead?.documentsRequired) ? lead.documentsRequired : [];
+    setIsSavingRequiredDocuments(true);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL;
+      const user = JSON.parse(localStorage.getItem("user"));
+      await axios.patch(
+        `${apiUrl}/leads/${leadId}/documents-required`,
+        { documentsRequired: existingNames.filter((n) => n !== docName) },
+        { headers: { Authorization: `Bearer ${user.token}` } },
+      );
+      fetchLeads();
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to remove document");
+    } finally {
+      setIsSavingRequiredDocuments(false);
+    }
+  };
+
+  const handleSendDocumentsToUser = async (leadId, note) => {
+    setIsSendingDocuments(true);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL;
+      const user = JSON.parse(localStorage.getItem("user"));
+      await axios.patch(
+        `${apiUrl}/leads/${leadId}/send-documents`,
+        typeof note === "string" ? { note } : {},
+        { headers: { Authorization: `Bearer ${user.token}` } },
+      );
+      toast.success("Client notified");
+      fetchLeads();
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to notify client");
+    } finally {
+      setIsSendingDocuments(false);
+    }
+  };
+
+  const handleUpdateWorkingDays = async (leadId, days) => {
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL;
+      const user = JSON.parse(localStorage.getItem("user"));
+      await axios.patch(
+        `${apiUrl}/leads/${leadId}`,
+        { workingDays: days },
+        { headers: { Authorization: `Bearer ${user.token}` } },
+      );
+      fetchLeads();
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to update working days");
+    }
+  };
+
+  const handleUpdateDocumentStatus = async (leadId, docId, status) => {
+    setUpdatingDocStatusId(docId);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL;
+      const user = JSON.parse(localStorage.getItem("user"));
+      await axios.patch(
+        `${apiUrl}/leads/${leadId}/documents/${docId}/status`,
+        { status, rejectionMessage: status === "Rejected" ? "Rejected by admin. Please reupload." : "" },
+        { headers: { Authorization: `Bearer ${user.token}` } },
+      );
+      toast.success(`Document ${status.toLowerCase()}`);
+      fetchLeads();
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to update document status");
+    } finally {
+      setUpdatingDocStatusId(null);
+    }
+  };
+
+  const handleAcceptService = async (leadId) => {
+    setIsUpdatingServiceStatus(true);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL;
+      const user = JSON.parse(localStorage.getItem("user"));
+      await axios.patch(
+        `${apiUrl}/leads/${leadId}`,
+        { status: "PendingReview" },
+        { headers: { Authorization: `Bearer ${user.token}` } },
+      );
+      toast.success("Service accepted and sent to PR");
+      fetchLeads();
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to accept service");
+    } finally {
+      setIsUpdatingServiceStatus(false);
+    }
+  };
+
+  const handleRejectService = async (leadId, docs) => {
+    setIsUpdatingServiceStatus(true);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL;
+      const user = JSON.parse(localStorage.getItem("user"));
+      const rejectableDocs = (Array.isArray(docs) ? docs : []).filter((doc) => {
+        const type = String(doc?.type || "").trim().toLowerCase();
+        const hasFile = !!(doc?.url || doc?.publicId || doc?.secure_url || doc?.uploadedUrl);
+        return hasFile && type !== "draft" && type !== "final";
+      });
+      await Promise.all(
+        rejectableDocs.map((doc) =>
+          axios.patch(
+            `${apiUrl}/leads/${leadId}/documents/${doc._id}/status`,
+            { status: "Rejected", rejectionMessage: "Rejected by admin. Please reupload." },
+            { headers: { Authorization: `Bearer ${user.token}` } },
+          ),
+        ),
+      );
+      toast.success("All documents rejected");
+      fetchLeads();
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to reject service");
+    } finally {
+      setIsUpdatingServiceStatus(false);
     }
   };
 
@@ -952,26 +1130,37 @@ const AdminDashboard = () => {
   const hydrateLeadsWithDocuments = (leadList, servicesList = []) => {
     const list = Array.isArray(leadList) ? leadList : [];
     return list.map((lead) => {
-      const serviceKey = normalizeServiceKey(lead?.serviceName);
-
-      const matchedService = Array.isArray(servicesList)
-        ? servicesList.find((s) => normalizeServiceKey(s?.title) === serviceKey)
-        : null;
+      // Required-document placeholders are sourced from THIS lead's own
+      // documentsRequired field only — never the shared Service catalog.
+      // A document admin requested for one user must never appear as
+      // "required"/"Pending" on another user's lead for the same service,
+      // including any names that leaked into the catalog before this fix.
+      const leadRequiredDocNames = Array.isArray(lead?.documentsRequired) ? lead.documentsRequired : [];
 
       let requiredDocs = [];
-      if (matchedService && Array.isArray(matchedService.documentsRequired)) {
+      if (leadRequiredDocNames.length > 0) {
         // Identify which document names have admin-added placeholders (to preserve the flag after dedupe)
         const adminAddedDocNames = new Set(
           (Array.isArray(lead?.documents) ? lead.documents : [])
             .filter(d => d?.adminAdded === true && !d?.url && !d?.publicId && !d?.secure_url && !d?.uploadedUrl)
             .map(d => String(d?.name || "").trim().toLowerCase())
         );
-        requiredDocs = matchedService.documentsRequired.map((docName) => ({
-          name: docName,
-          status: "Pending",
-          type: "Client",
-          adminAdded: adminAddedDocNames.has(String(docName || "").trim().toLowerCase())
-        }));
+        // Don't synthesize a "Pending" placeholder for a name that already has a
+        // real uploaded file — otherwise it competes with the real entry for the
+        // same name once merged.
+        const namesWithRealUpload = new Set(
+          (Array.isArray(lead?.documents) ? lead.documents : [])
+            .filter(d => !!(d?.url || d?.publicId || d?.secure_url || d?.uploadedUrl))
+            .map(d => String(d?.name || "").trim().toLowerCase())
+        );
+        requiredDocs = leadRequiredDocNames
+          .filter((docName) => !namesWithRealUpload.has(String(docName || "").trim().toLowerCase()))
+          .map((docName) => ({
+            name: docName,
+            status: "Pending",
+            type: "Client",
+            adminAdded: adminAddedDocNames.has(String(docName || "").trim().toLowerCase())
+          }));
       }
 
       const pendingDocs = getPendingUploadsForService(lead?.serviceName);
@@ -981,9 +1170,16 @@ const AdminDashboard = () => {
       const realCurrentDocs = currentDocs.filter(
         (d) => !(d?.adminAdded === true && !d?.url && !d?.publicId && !d?.secure_url && !d?.uploadedUrl)
       );
-      const mergedDocs = dedupeDocumentsByName([...realCurrentDocs, ...pendingDocs, ...requiredDocs], {
+      const mergedDocsRaw = dedupeDocumentsByName([...realCurrentDocs, ...pendingDocs, ...requiredDocs], {
         reuploadedDocumentNames: lead?.reuploadedDocumentNames,
       });
+      // requiredDocs (sourced from the service catalog) never carry a URL, so an
+      // unresolved admin-requested one would otherwise slip through the merge above
+      // (only realCurrentDocs was filtered) and show up as a "Pending" document
+      // before the client has uploaded anything.
+      const mergedDocs = mergedDocsRaw.filter(
+        (d) => !(d?.adminAdded === true && !d?.url && !d?.publicId && !d?.secure_url && !d?.uploadedUrl)
+      );
 
       const executorRejected = isExecutorRejectedState(lead);
       const serviceRejected = String(lead?.status || "").trim().toLowerCase() === "rejected";
@@ -1024,9 +1220,18 @@ const AdminDashboard = () => {
         finalDocs = finalDocs.filter(doc => String(doc?.type || "").trim().toLowerCase() !== "draft");
       }
 
+      // Names that have ANY entry in the lead's raw documents array (placeholder
+      // or real file) — used by the "Send to User" button to know which
+      // requested document names have already been communicated to the client,
+      // since `documents` above deliberately strips out unresolved placeholders.
+      const rawDocumentNames = (Array.isArray(lead?.documents) ? lead.documents : [])
+        .map((d) => String(d?.name || "").trim().toLowerCase())
+        .filter(Boolean);
+
       return {
         ...lead,
         documents: finalDocs,
+        rawDocumentNames,
       };
     });
   };
@@ -1326,7 +1531,6 @@ const AdminDashboard = () => {
     }
     if (status === "PendingReview") return "PR Reviewing";
     if (status === "InformationRequired") return "Rejected by PR";
-    if (status === "Open") return "PR Reviewing";
     return getStatusLabel(status, lead, "admin");
   };
 
@@ -1372,6 +1576,9 @@ const AdminDashboard = () => {
     }
     if (status === "PR_Accepted" || status === "DraftAccepted") {
       return { color: "#10b981", bg: "rgba(16,185,129,0.1)" };
+    }
+    if (status === "Open" && hasAdminRejectedDocuments(lead)) {
+      return { color: "#ef4444", bg: "rgba(239,68,68,0.1)" };
     }
     return { color: "#f59e0b", bg: "rgba(245,158,11,0.1)" };
   };
@@ -1499,6 +1706,7 @@ const AdminDashboard = () => {
       handleUpdateLead={handleUpdateLead}
       handleDeleteUserMessage={handleDeleteRejectionMessage}
       handleDeletePrMessage={handleDeletePrMessage}
+      handleDeletePrAdditionalDetailsMessage={handleDeletePrAdditionalDetailsMessage}
       handleDeleteExecutorMessage={handleDeleteExecutorMessage}
       handleDeleteAdminMessage={handleDeleteAdminMessage}
       messageTarget={messageTarget}
@@ -1506,6 +1714,7 @@ const AdminDashboard = () => {
       messageText={messageText}
       setMessageText={setMessageText}
       getMessageTextByTarget={getMessageTextByTarget}
+      executors={executors}
       uploadingId={uploadingId}
       handleUploadDraft={handleUploadDraft}
       viewDocument={viewDocument}
@@ -1526,6 +1735,19 @@ const AdminDashboard = () => {
       getDetailsMissingMessage={getDetailsMissingMessage}
       handleDismissDetailsMissingMessage={handleDismissDetailsMissingMessage}
       handleDeleteRejectionMessage={handleDeleteRejectionMessage}
+      newDocName={newDocName}
+      setNewDocName={setNewDocName}
+      isSavingRequiredDocuments={isSavingRequiredDocuments}
+      isSendingDocuments={isSendingDocuments}
+      handleAddRequiredDocument={handleAddRequiredDocument}
+      handleRemoveRequiredDocument={handleRemoveRequiredDocument}
+      handleSendDocumentsToUser={handleSendDocumentsToUser}
+      handleUpdateWorkingDays={handleUpdateWorkingDays}
+      handleUpdateDocumentStatus={handleUpdateDocumentStatus}
+      updatingDocStatusId={updatingDocStatusId}
+      handleAcceptService={handleAcceptService}
+      handleRejectService={handleRejectService}
+      isUpdatingServiceStatus={isUpdatingServiceStatus}
     />
   );
 };

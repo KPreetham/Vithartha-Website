@@ -10,6 +10,7 @@ import authRoutes from "./src/routes/authRoutes.js";
 import leadRoutes from "./src/routes/leadRoutes.js";
 import aiRoutes from "./src/routes/aiRoutes.js";
 import serviceRoutes from "./src/routes/serviceRoutes.js";
+import paymentRoutes from "./src/routes/paymentRoutes.js";
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -101,6 +102,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/leads", leadRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/services", serviceRoutes);
+app.use("/api/payments", paymentRoutes);
 
 app.get("/", (req, res) => {
   const states = {
