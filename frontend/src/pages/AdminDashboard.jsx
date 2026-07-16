@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import { getStatusLabel, resolveExecutorLabel, hasAdminRejectedDocuments } from "../utils/statusLabels";
+import { getStatusLabel, resolveExecutorLabel, hasAdminRejectedDocuments, isPreSubmissionStage } from "../utils/statusLabels";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Users,
@@ -849,9 +849,34 @@ const AdminDashboard = () => {
 
     // Filter out admin-added placeholder entries (adminAdded: true with no URL) so the document
     // only appears in the dashboard once the user has actually uploaded a file.
-    const filteredDocs = lead.documents.filter(
+    let filteredDocs = lead.documents.filter(
       (d) => !(d?.adminAdded === true && !d?.url && !d?.publicId && !d?.secure_url && !d?.uploadedUrl)
     );
+
+    // When admin has requested specific documents, each file the user picks is written straight
+    // onto that same required-document subdocument (the backend fills in the placeholder's url
+    // rather than pushing a new entry, so it keeps adminAdded: true even after a real file lands
+    // on it) — well before the user has paid and clicked "Submit". So `adminAdded` alone can't
+    // tell an unfulfilled request apart from an already-uploaded one; only the presence of a file
+    // can. Until submission, mask every document that HAS a file back down to a "pending client
+    // payment/submission" placeholder (no file link, no real status, flagged via
+    // pendingSubmission) so the admin can't View/Accept/Reject it yet.
+    if (isPreSubmissionStage(lead)) {
+      filteredDocs = filteredDocs.map((d) => {
+        const hasFile = !!(d?.url || d?.publicId || d?.secure_url || d?.uploadedUrl || d?.viewUrl);
+        if (!hasFile) return d;
+        return {
+          ...d,
+          url: null,
+          secure_url: null,
+          uploadedUrl: null,
+          viewUrl: null,
+          publicId: null,
+          status: "Pending",
+          pendingSubmission: true,
+        };
+      });
+    }
 
     const sorted = [...filteredDocs].sort((a, b) => {
       const aTime = new Date(a?.uploadedAt || a?.createdAt || 0).getTime();

@@ -72,6 +72,25 @@ export const allAdminRequiredDocumentsRejected = (lead) => {
 };
 
 /**
+ * True while a lead with admin-required documents is still in its very first,
+ * still-"Open" submission cycle — the user has been uploading files (each one
+ * is written to the lead as soon as it's picked, so the "Confirm & Submit"
+ * payment gate can validate the full set) but hasn't yet completed payment and
+ * clicked "Submit" (initialSubmissionConfirmed). Used to keep those client
+ * uploads out of both the User and Admin dashboards until that happens; later
+ * reupload cycles after the lead has been forwarded past "Open" are never
+ * re-hidden by this check.
+ */
+export const isPreSubmissionStage = (lead) => {
+  const hasAdminRequiredDocs = Array.isArray(lead?.documentsRequired) && lead.documentsRequired.length > 0;
+  return (
+    hasAdminRequiredDocs &&
+    String(lead?.status || "").trim().toLowerCase() === "open" &&
+    lead?.initialSubmissionConfirmed !== true
+  );
+};
+
+/**
  * Returns a human-readable display label for a given status + lead.
  * Role-specific overrides can be applied via the `role` parameter:
  *   "admin" | "pr" | "user" | "executor"
@@ -101,7 +120,12 @@ export const getStatusLabel = (status, lead, role = "user") => {
                                ? "All Documents Rejected by Admin"
                                : hasAdminRejectedDocuments(lead)
                                  ? "Documents Rejected by Admin"
-                                 : areAllRequiredDocumentsUploaded(lead) ? "Admin Reviewing" : "Pending Client Documents Upload")
+                                 // Only flip to "Admin Reviewing" once the user has completed
+                                 // payment and clicked Submit (initialSubmissionConfirmed) —
+                                 // uploading every required file isn't submission by itself.
+                                 : (areAllRequiredDocumentsUploaded(lead) && lead?.initialSubmissionConfirmed === true)
+                                   ? "Admin Reviewing"
+                                   : "Pending Client Documents Upload")
                            : role === "pr" ? "New Request" : "Pending Admin Review",
     pendingreview:      role === "pr" ? "PR Reviewing"           : "PR Reviewing",
     informationrequired: role === "pr" ? "Rejected by PR"         : "Rejected by PR",

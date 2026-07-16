@@ -360,7 +360,9 @@ const AdminDashboardModern = ({
     ).trim();
     if (status === "Open" && allAdminRequiredDocumentsRejected(lead)) return 5;
     if (status === "Open" && hasAdminRejectedDocuments(lead)) return 12;
-    if (status === "Open" && areAllRequiredDocumentsUploaded(lead)) return 15;
+    // Only bump progress once the user has paid and clicked Submit — uploading
+    // every required file isn't submission by itself.
+    if (status === "Open" && areAllRequiredDocumentsUploaded(lead) && lead?.initialSubmissionConfirmed === true) return 15;
     const progressByStatus = {
       Open: 10,
       PendingReview: 20,
@@ -1435,11 +1437,14 @@ const AdminDashboardModern = ({
                                 const explicitReuploaded = !serviceRejectedByExecutor && (!!doc?.displayReuploaded || !!doc?.reuploaded);
                                 const documentRejected = !isStagedRejection && (docStatusLower.includes("rejected") || !!doc?.executorRejected);
                                 const requiresReupload = serviceRejectedByExecutor || (documentRejected && !explicitReuploaded);
-                                const documentNotice = serviceRejectedByExecutor || documentRejected
-                                  ? "Reupload required"
-                                  : explicitReuploaded
-                                    ? "Reuploaded"
-                                    : "";
+                                const isPendingSubmission = !!doc?.pendingSubmission;
+                                const documentNotice = isPendingSubmission
+                                  ? "Pending Client Payment and Submission of Service"
+                                  : serviceRejectedByExecutor || documentRejected
+                                    ? "Reupload required"
+                                    : explicitReuploaded
+                                      ? "Reuploaded"
+                                      : "";
                                 const draftRejected = leadStatusLower === "draftrejected";
                                 const draftAccepted = leadStatusLower === "draftaccepted" || leadStatusLower === "useraccepted" || leadStatusLower === "completed";
                                 const draftShared = leadStatusLower === "draftsent" || leadStatusLower === "draftrejected" || leadStatusLower === "draftaccepted" || leadStatusLower === "useraccepted";
@@ -1502,6 +1507,12 @@ const AdminDashboardModern = ({
                                     </td>
                                     <td style={{ textAlign: "center" }}>
                                       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, flexWrap: "nowrap" }}>
+                                        {isPendingSubmission ? (
+                                          <span style={{ color: "#f59e0b", fontSize: isCompactMobile ? "0.72rem" : "0.78rem", fontWeight: 700 }}>
+                                            Pending
+                                          </span>
+                                        ) : (
+                                          <>
                                         {(isDone || isUserRole || hasFile) && (
                                           <button
                                             type="button"
@@ -1609,6 +1620,8 @@ const AdminDashboardModern = ({
                                                 <XCircle size={16} />
                                               </button>
                                             )}
+                                          </>
+                                        )}
                                           </>
                                         )}
                                       </div>

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import { getStatusLabel, resolveExecutorLabel, areAllRequiredDocumentsUploaded, hasAdminRejectedDocuments } from "../utils/statusLabels";
+import { getStatusLabel, resolveExecutorLabel, areAllRequiredDocumentsUploaded, hasAdminRejectedDocuments, isPreSubmissionStage } from "../utils/statusLabels";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import { motion, AnimatePresence } from "framer-motion";
@@ -897,17 +897,25 @@ const UserDashboard = () => {
     const currentDocs = Array.isArray(lead?.documents) ? lead.documents : [];
     const requiredNames = Array.isArray(lead?.documentsRequired) ? lead.documentsRequired : [];
 
+    // Before the user has paid and clicked Submit, every required document stays in this
+    // placeholder list — even after it's actually been uploaded — so nothing moves into the
+    // real "Admin Reviewing" document list until they've submitted. `uploaded` lets the caller
+    // show "please pay and submit" instead of "upload this document" once the file is in.
+    const preSubmission = isPreSubmissionStage(lead);
+
     return requiredNames
       .map((name) => String(name || "").trim())
       .filter((name) => name)
-      .filter((name) => {
+      .map((name) => {
         const target = name.toLowerCase();
-        return !currentDocs.some((d) => {
+        const uploaded = currentDocs.some((d) => {
           const docName = String(d?.name || "").trim().toLowerCase();
           const hasUrl = d?.url || d?.publicId || d?.secure_url || d?.uploadedUrl;
           return docName === target && hasUrl;
         });
-      });
+        return { name, uploaded };
+      })
+      .filter((doc) => preSubmission || !doc.uploaded);
   };
 
   const getLeadDocumentsToDisplay = (lead) => {
@@ -915,12 +923,25 @@ const UserDashboard = () => {
     // We utilize the centralized hydration logic to ensure consistency across the dashboard.
     // This merges backend docs, pending localStorage uploads, and required placeholders.
     const hydratedLeads = hydrateLeadsWithDocuments([lead], services);
-    const docs = hydratedLeads[0]?.documents || [];
+    let docs = hydratedLeads[0]?.documents || [];
     // Filter out admin-added placeholder entries (adminAdded: true with no URL) so the document
     // only appears in the dashboard once the user has actually uploaded a file.
-    return docs.filter(
+    docs = docs.filter(
       (d) => !(d?.adminAdded === true && !d?.url && !d?.publicId && !d?.secure_url && !d?.uploadedUrl)
     );
+    // Each file the user picks is written to the lead immediately (so the "Confirm & Submit"
+    // payment gate can validate the full set) — well before payment/submit. Keep those uploads
+    // out of the user's own dashboard list too until they've actually completed payment and
+    // clicked "Submit" — they stay visible only in the getPendingAdminAddedDocuments placeholder
+    // list instead, so each document renders exactly once.
+    if (isPreSubmissionStage(lead)) {
+      const requiredKeys = new Set(
+        (Array.isArray(lead.documentsRequired) ? lead.documentsRequired : [])
+          .map((name) => String(name || "").trim().toLowerCase())
+      );
+      docs = docs.filter((d) => !requiredKeys.has(String(d?.name || "").trim().toLowerCase()));
+    }
+    return docs;
   };
 
   const isAdminRejectedState = (lead) =>
@@ -1423,7 +1444,9 @@ const UserDashboard = () => {
 
     if (isDetailsMissingState(lead)) return 20;
     if (status === "Open" && hasAdminRejectedDocuments(lead)) return 12;
-    if (status === "Open" && areAllRequiredDocumentsUploaded(lead)) return 15;
+    // Only bump progress once the user has paid and clicked Submit — uploading
+    // every required file isn't submission by itself.
+    if (status === "Open" && areAllRequiredDocumentsUploaded(lead) && lead?.initialSubmissionConfirmed === true) return 15;
     const progressByStatus = {
       Open: 10,
       PendingReview: 20,

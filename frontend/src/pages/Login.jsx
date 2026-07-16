@@ -347,7 +347,7 @@ const Login = () => {
             </div>
 
             {/* Forgot password */}
-            <div
+            {/* <div
               style={{
                 display: "flex",
                 justifyContent: "flex-end",
@@ -368,7 +368,7 @@ const Login = () => {
               >
                 Forgot password?
               </button>
-            </div>
+            </div> */}
 
             {/* Sign In Button */}
             <button

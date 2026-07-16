@@ -1258,27 +1258,27 @@ const UserDashboardModern = ({
                                 </tr>
                               </thead>
                               <tbody>
-                                {Array.isArray(selectedLeadPendingAdminDocs) && selectedLeadPendingAdminDocs.map((docName) => (
-                                  <tr key={`pending-admin-doc-${docName}`}>
+                                {Array.isArray(selectedLeadPendingAdminDocs) && selectedLeadPendingAdminDocs.map((doc) => (
+                                  <tr key={`pending-admin-doc-${doc.name}`}>
                                     <td>
                                       <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0, flexWrap: isCompactMobile ? "wrap" : "nowrap" }}>
                                         <FileText size={18} color="#f59e0b" style={{ flexShrink: 0 }} />
                                         <div style={{ minWidth: 0 }}>
-                                          <div style={{ fontSize: isCompactMobile ? "0.86rem" : "0.92rem", fontWeight: 600, whiteSpace: isCompactMobile ? "normal" : "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{docName}</div>
+                                          <div style={{ fontSize: isCompactMobile ? "0.86rem" : "0.92rem", fontWeight: 600, whiteSpace: isCompactMobile ? "normal" : "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.name}</div>
                                           <div style={{ marginTop: 4, color: "#b45309", fontSize: "0.76rem", fontWeight: 700 }}>
-                                            Upload the document from the Services page
+                                            {doc.uploaded ? "Please make the payment and submit the service" : "Upload the document from the Services page"}
                                           </div>
                                         </div>
                                       </div>
                                     </td>
                                     <td style={{ verticalAlign: "middle" }}>
                                       <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "#d97706", fontSize: isCompactMobile ? "0.74rem" : "0.82rem", fontWeight: 700, whiteSpace: "nowrap" }}>
-                                        Pending
+                                        {doc.uploaded ? "Pending Submission" : "Pending"}
                                       </span>
                                     </td>
                                     <td style={{ textAlign: "left" }}>
                                       <span style={{ color: "#b45309", fontSize: isCompactMobile ? "0.7rem" : "0.75rem", fontWeight: 700, whiteSpace: "nowrap" }}>
-                                        Upload
+                                        {doc.uploaded ? "Submit" : "Upload"}
                                       </span>
                                     </td>
                                   </tr>
