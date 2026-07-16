@@ -28,7 +28,7 @@ import {
 import ConfirmationModal from "../components/ConfirmationModal";
 import { viewDocument } from "../utils/documentViewer";
 import { normalizeRole } from "../utils/roleRouting";
-import { resolveExecutorLabel, areAllRequiredDocumentsUploaded, hasAdminRejectedDocuments, allAdminRequiredDocumentsRejected } from "../utils/statusLabels";
+import { resolveExecutorLabel, areAllRequiredDocumentsUploaded, hasAdminRejectedDocuments, allAdminRequiredDocumentsRejected, isPreSubmissionStage } from "../utils/statusLabels";
 
 const PremiumCard = ({ children, style = {}, className = "", onClick }) => (
   <div
@@ -1702,7 +1702,17 @@ const AdminDashboardModern = ({
                           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                             {(() => {
                               const leadStatusLower = String(activeLead?.status || "").trim().toLowerCase();
-                              if (leadStatusLower !== "open" || !activeLead?.documentsSentToUser || !areAllRequiredDocumentsUploaded(activeLead) || clientOnlyDocs.length === 0) {
+                              // Don't show Accept/Reject Service until the user has actually paid
+                              // and clicked Submit — uploading every required file isn't submission
+                              // by itself (isPreSubmissionStage mirrors the same gate used to mask
+                              // the per-document View/Accept/Reject controls above).
+                              if (
+                                leadStatusLower !== "open" ||
+                                !activeLead?.documentsSentToUser ||
+                                !areAllRequiredDocumentsUploaded(activeLead) ||
+                                clientOnlyDocs.length === 0 ||
+                                isPreSubmissionStage(activeLead)
+                              ) {
                                 return null;
                               }
                               const allDocsAccepted = clientOnlyDocs.every((doc) => {
