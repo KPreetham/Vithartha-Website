@@ -120,3 +120,69 @@ export const verifyPayment = async (req, res) => {
     res.status(500).json({ success: false, message: "Failed to verify payment" });
   }
 };
+
+// Server-to-server notification from Razorpay (configured in the Razorpay
+// dashboard under Webhooks). This is the durable source of truth for
+// paymentStatus — unlike verifyPayment above, it does not depend on the
+// user's browser surviving long enough to call our API after checkout.
+export const handleRazorpayWebhook = async (req, res) => {
+  try {
+    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+    if (!webhookSecret) {
+      console.error("RAZORPAY_WEBHOOK_SECRET is not configured");
+      return res.status(500).json({ success: false, message: "Webhook not configured" });
+    }
+
+    const signature = req.headers["x-razorpay-signature"];
+    if (!signature || !req.rawBody) {
+      return res.status(400).json({ success: false, message: "Missing signature or body" });
+    }
+
+    const expectedSignature = crypto
+      .createHmac("sha256", webhookSecret)
+      .update(req.rawBody)
+      .digest("hex");
+
+    const signatureBuffer = Buffer.from(signature, "hex");
+    const expectedBuffer = Buffer.from(expectedSignature, "hex");
+    const isValid =
+      signatureBuffer.length === expectedBuffer.length &&
+      crypto.timingSafeEqual(signatureBuffer, expectedBuffer);
+
+    if (!isValid) {
+      console.error("Razorpay webhook signature mismatch");
+      return res.status(400).json({ success: false, message: "Invalid signature" });
+    }
+
+    const event = req.body?.event;
+    const paymentEntity = req.body?.payload?.payment?.entity;
+    const orderEntity = req.body?.payload?.order?.entity;
+
+    const razorpayOrderId = paymentEntity?.order_id || orderEntity?.id;
+    const razorpayPaymentId = paymentEntity?.id;
+
+    // Acknowledge events we don't act on so Razorpay stops retrying them.
+    if (!["payment.captured", "order.paid"].includes(event) || !razorpayOrderId) {
+      return res.status(200).json({ success: true, ignored: true });
+    }
+
+    const lead = await Lead.findOne({ razorpayOrderId });
+    if (!lead) {
+      console.error(`Webhook: no lead found for razorpayOrderId ${razorpayOrderId}`);
+      // Still 200 — this is not a signature problem, retrying won't help.
+      return res.status(200).json({ success: true, matched: false });
+    }
+
+    if (lead.paymentStatus !== "Paid") {
+      lead.paymentStatus = "Paid";
+      if (razorpayPaymentId) lead.razorpayPaymentId = razorpayPaymentId;
+      lead.paymentVerifiedAt = new Date();
+      await lead.save();
+    }
+
+    res.status(200).json({ success: true });
+  } catch (error) {
+    console.error("Error handling Razorpay webhook:", error);
+    res.status(500).json({ success: false, message: "Webhook processing failed" });
+  }
+};

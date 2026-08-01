@@ -55,7 +55,16 @@ app.use(
     optionsSuccessStatus: 204,
   }),
 );
-app.use(express.json({ limit: "50mb" }));
+app.use(
+  express.json({
+    limit: "50mb",
+    // Razorpay webhook signatures are computed over the exact raw request
+    // bytes — capture them here since body-parsing would otherwise be lossy.
+    verify: (req, res, buf) => {
+      req.rawBody = buf;
+    },
+  }),
+);
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use(morgan("dev"));
 
