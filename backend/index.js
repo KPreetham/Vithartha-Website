@@ -11,6 +11,7 @@ import leadRoutes from "./src/routes/leadRoutes.js";
 import aiRoutes from "./src/routes/aiRoutes.js";
 import serviceRoutes from "./src/routes/serviceRoutes.js";
 import paymentRoutes from "./src/routes/paymentRoutes.js";
+import { runDocumentEmailSweep } from "./src/services/documentEmailService.js";
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -157,6 +158,25 @@ app.listen(PORT, "0.0.0.0", () => {
         console.error(`[Keep-Alive] Ping error: ${err.message}`);
       }
     }, PING_INTERVAL);
+  }
+
+  // Periodically check which users are due for their recurring documents
+  // digest (every DOCUMENT_EMAIL_INTERVAL_HOURS since their last one) and,
+  // for each, email all documents for services completed since then — or a
+  // "nothing completed" notice if none were. Disable with
+  // AUTO_EMAIL_DOCUMENTS_ENABLED=false.
+  if (process.env.AUTO_EMAIL_DOCUMENTS_ENABLED !== "false") {
+    const CHECK_INTERVAL =
+      (Number(process.env.AUTO_EMAIL_CHECK_INTERVAL_MINUTES) || 15) * 60 * 1000;
+
+    const runSweep = () => {
+      runDocumentEmailSweep().catch((err) => {
+        console.error(`[DocumentEmail] Sweep error: ${err.message}`);
+      });
+    };
+
+    runSweep();
+    setInterval(runSweep, CHECK_INTERVAL);
   }
 });
 

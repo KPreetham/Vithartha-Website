@@ -98,6 +98,10 @@ const leadSchema = new mongoose.Schema({
   isDeleted: { type: Boolean, default: false },
   updatedAt: { type: Date, default: Date.now },
   createdAt: { type: Date, default: Date.now },
+  // Set the moment status transitions into "Completed"; used by the
+  // recurring documents-digest sweep (see services/documentEmailService.js)
+  // to know which completed services fall inside a user's digest window.
+  completedAt: { type: Date },
 });
 
 export default mongoose.model("Lead", leadSchema);
