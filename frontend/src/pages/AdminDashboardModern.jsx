@@ -27,8 +27,8 @@ import {
 } from "lucide-react";
 import ConfirmationModal from "../components/ConfirmationModal";
 import { viewDocument } from "../utils/documentViewer";
-import { normalizeRole } from "../utils/roleRouting";
-import { resolveExecutorLabel, areAllRequiredDocumentsUploaded, hasAdminRejectedDocuments, allAdminRequiredDocumentsRejected, isPreSubmissionStage } from "../utils/statusLabels";
+import { normalizeRole, getAssignableRoleError } from "../utils/roleRouting";
+import { resolvePrLabel, resolveExecutorLabel, areAllRequiredDocumentsUploaded, hasAdminRejectedDocuments, allAdminRequiredDocumentsRejected, isPreSubmissionStage } from "../utils/statusLabels";
 
 const PremiumCard = ({ children, style = {}, className = "", onClick }) => (
   <div
@@ -124,6 +124,7 @@ const AdminDashboardModern = ({
   setMessageText,
   getMessageTextByTarget,
   executors,
+  prUsers = [],
   uploadingId,
   handleUploadDraft,
   deleteConfirm,
@@ -158,6 +159,11 @@ const AdminDashboardModern = ({
   isUpdatingServiceStatus,
 }) => {
   const [serviceListModal, setServiceListModal] = React.useState(null);
+  const [selectedPrId, setSelectedPrId] = React.useState("");
+  React.useEffect(() => {
+    const existing = activeLead?.prId?._id || activeLead?.prId || "";
+    setSelectedPrId(String(existing || ""));
+  }, [activeLead?._id]);
   const [revenuePopup, setRevenuePopup] = React.useState(null);
   const [managePRModal, setManagePRModal] = React.useState(false);
   const [assignEmail, setAssignEmail] = React.useState("");
@@ -169,7 +175,7 @@ const AdminDashboardModern = ({
   const [prListLoading, setPRListLoading] = React.useState(false);
   const [prListError, setPRListError] = React.useState("");
   const [editingUser, setEditingUser] = React.useState(null);
-  const [editRole, setEditRole] = React.useState("PR");
+  const [editRole, setEditRole] = React.useState("");
   const [editLoading, setEditLoading] = React.useState(false);
   const [editError, setEditError] = React.useState("");
   const [documentsOpen, setDocumentsOpen] = React.useState(false);
@@ -221,6 +227,12 @@ const AdminDashboardModern = ({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeLead?._id]);
+
+  const selectedPrTargetLabel = React.useMemo(() => {
+    if (!String(messageTarget || "").startsWith("pr:")) return "";
+    const pr = prUsers.find((u) => `pr:${u._id}` === messageTarget);
+    return pr ? `${pr.name || pr.email} (${String(pr.role || "").toUpperCase()})` : "";
+  }, [messageTarget, prUsers]);
 
   const fetchPRExecutorList = React.useCallback(() => {
     const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
@@ -332,6 +344,12 @@ const AdminDashboardModern = ({
     : activeLeadStatus;
   const activeLeadForDisplay = activeLead ? { ...activeLead, status: effectiveServiceStatus } : null;
   const isPendingPrReviewStatus = effectiveServiceStatus === "PendingReview";
+  // "Pending PR Review" becomes "PR 1 (Name) Reviewing" once the admin has
+  // forwarded the lead to a specific PR.
+  const pendingPrText = (lead) => {
+    const prLabel = resolvePrLabel(lead);
+    return prLabel ? `${prLabel} Reviewing` : "Pending PR Review";
+  };
   const displayStatusLabel = (lead) => {
     const rawLabel = getDisplayStatus(lead);
     return ["Open", "PendingReview"].includes(String(rawLabel || "")) ? "Pending PR Review" : rawLabel;
@@ -341,7 +359,7 @@ const AdminDashboardModern = ({
     : effectiveServiceStatus === "Completed"
       ? "Completed"
       : isPendingPrReviewStatus
-        ? "Pending PR Review"
+        ? pendingPrText(activeLeadForDisplay)
         : serviceOutcomeLabel;
   const pendingReviewTextColor = "#16a34a";
   const getServiceProgressPercent = (lead) => {
@@ -837,7 +855,7 @@ const AdminDashboardModern = ({
               {/* Manage PR & Executor card */}
               <PremiumCard
                 className="stat-card"
-                onClick={() => { setManagePRModal(true); setAssignEmail(""); setAssignRole("PR"); setAssignError(""); setAssignSuccess(""); }}
+                onClick={() => { setManagePRModal(true); setAssignEmail(""); setAssignRole(""); setAssignError(""); setAssignSuccess(""); }}
                 style={{
                   padding: 12,
                   minHeight: 92,
@@ -979,9 +997,9 @@ const AdminDashboardModern = ({
                             <div style={{ display: "flex", flexDirection: "column", alignItems: isCompactMobile ? "flex-start" : "flex-end", gap: 4, flexShrink: 0, textAlign: isCompactMobile ? "left" : "right" }}>
                               <span style={{ color: statusLabel === "Pending PR Review" ? pendingReviewTextColor : theme.color, padding: 0, fontSize: "0.86rem", fontWeight: 700, display: "flex", alignItems: "center", gap: 6, lineHeight: 1.2, textAlign: "right" }}>
                                 {getDisplayStatus(lead) === "Completed" && <CheckCircle size={14} />}
-                                {statusLabel}
+                                {statusLabel === "Pending PR Review" ? pendingPrText(lead) : statusLabel}
                               </span>
-                              {displayStatusLabel(lead) === "Pending PR Review" ? (
+                              {displayStatusLabel(lead) === "Pending PR Review" && !lead?.prId ? (
                                 <span style={{ color: "#6b7280", fontSize: "0.73rem", fontWeight: 500, lineHeight: 1.3, maxWidth: 190 }}>
                                   Pending admin review and documents upload.
                                 </span>
@@ -1069,7 +1087,7 @@ const AdminDashboardModern = ({
                     <span style={{ color: displayStatusLabel(activeLeadForDisplay) === "Pending PR Review" ? pendingReviewTextColor : getStatusTheme(activeLead).color, fontWeight: 700, fontSize: "1rem", display: "flex", alignItems: "center", gap: 8 }}>
                       {effectiveServiceStatus === "Completed" && <CheckCircle size={16} />}
                       {displayStatusLabel(activeLeadForDisplay) === "Pending PR Review"
-                        ? "Pending PR Review"
+                        ? pendingPrText(activeLeadForDisplay)
                         : topRightStatusLabel || getDisplayStatus(activeLeadForDisplay)}
                     </span>
                   </div>
@@ -1722,19 +1740,31 @@ const AdminDashboardModern = ({
                               });
                               return (
                                 <>
+                                  <select
+                                    value={selectedPrId}
+                                    onChange={(e) => setSelectedPrId(e.target.value)}
+                                    disabled={isUpdatingServiceStatus}
+                                    aria-label="Select PR"
+                                    style={{ padding: "8px 12px", borderRadius: 12, border: "1px solid rgba(17,24,39,0.2)", background: "#ffffff", color: "#111111", fontSize: "0.78rem", fontWeight: 700, minWidth: 180 }}
+                                  >
+                                    <option value="">{prUsers.length ? "Select PR" : "No PRs available"}</option>
+                                    {prUsers.map((pr) => (
+                                      <option key={pr._id} value={pr._id}>{pr.name} ({pr.email})</option>
+                                    ))}
+                                  </select>
                                   <button
                                     type="button"
-                                    disabled={!allDocsAccepted || isUpdatingServiceStatus}
-                                    onClick={() => handleAcceptService(activeLead._id)}
+                                    disabled={!allDocsAccepted || isUpdatingServiceStatus || !selectedPrId}
+                                    onClick={() => handleAcceptService(activeLead._id, selectedPrId)}
                                     style={{
                                       padding: "8px 16px",
                                       borderRadius: 12,
                                       border: "none",
-                                      background: allDocsAccepted ? "#16a34a" : "rgba(22,163,74,0.25)",
+                                      background: allDocsAccepted && selectedPrId ? "#16a34a" : "rgba(22,163,74,0.25)",
                                       color: "#ffffff",
                                       fontSize: "0.78rem",
                                       fontWeight: 800,
-                                      cursor: allDocsAccepted && !isUpdatingServiceStatus ? "pointer" : "not-allowed",
+                                      cursor: allDocsAccepted && selectedPrId && !isUpdatingServiceStatus ? "pointer" : "not-allowed",
                                       display: "inline-flex",
                                       alignItems: "center",
                                       justifyContent: "center",
@@ -1742,7 +1772,7 @@ const AdminDashboardModern = ({
                                       whiteSpace: "nowrap",
                                     }}
                                   >
-                                    <Check size={14} /> Accept Service &amp; Send to PR
+                                    <Check size={14} /> Send to PR
                                   </button>
                                   <button
                                     type="button"
@@ -1791,7 +1821,7 @@ const AdminDashboardModern = ({
                             <span style={{ color: displayStatusLabel(activeLeadForDisplay) === "Pending PR Review" ? pendingReviewTextColor : getStatusTheme(activeLead).color, fontWeight: 700, fontSize: "0.95rem", display: "flex", alignItems: "center", gap: 8 }}>
                               {effectiveServiceStatus === "Completed" && <CheckCircle size={16} />}
                               {displayStatusLabel(activeLeadForDisplay) === "Pending PR Review"
-                                ? "Pending PR Review"
+                                ? pendingPrText(activeLeadForDisplay)
                                 : getDisplayStatus(activeLeadForDisplay)}
                             </span>
                           </div>
@@ -1830,7 +1860,7 @@ const AdminDashboardModern = ({
                                   userSelect: "none" 
                                 }}
                               >
-                                <span>{messageTarget === "client" ? "Client" : messageTarget === "pr" ? "PR" : (assignedExecutorLabel || "Executor")}</span>
+                                <span>{messageTarget === "client" ? "Client" : messageTarget.startsWith("pr:") ? (selectedPrTargetLabel || "Select PR") : (assignedExecutorLabel || "Executor")}</span>
                                 <ChevronDown size={18} style={{ color: "#6b7280", transform: isMessageTargetOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
 
                                 {isMessageTargetOpen && (
@@ -1848,7 +1878,12 @@ const AdminDashboardModern = ({
                                   }}>
                                     {[
                                       { value: "client", label: "Client" },
-                                      { value: "pr", label: "PR" },
+                                      // One option per PR account stored in the DB — the message goes
+                                      // only to the PR picked here.
+                                      ...prUsers.map((pr) => ({
+                                        value: `pr:${pr._id}`,
+                                        label: `${pr.name || pr.email} (${String(pr.role || "").toUpperCase()})`,
+                                      })),
                                       // Only the executor actually assigned to this lead (a real DB-stored
                                       // executor account) can ever see this message — never a generic
                                       // "Executor" placeholder, and never shown before one is assigned.
@@ -1892,7 +1927,7 @@ const AdminDashboardModern = ({
                               placeholder={
                                 messageTarget === "client" 
                                   ? "Share an update or request information from the client..." 
-                                  : `Share an update or request information from the ${messageTarget === "pr" ? "PR" : "Executor"}...`
+                                  : `Share an update or request information from the ${messageTarget.startsWith("pr:") ? (selectedPrTargetLabel || "PR") : "Executor"}...`
                               } 
                               style={{ 
                                 minHeight: 140, 
@@ -2101,10 +2136,10 @@ const AdminDashboardModern = ({
                     type="text"
                     value={assignRole}
                     onChange={(e) => { setAssignRole(e.target.value); setAssignError(""); setAssignSuccess(""); }}
-                    placeholder="e.g. pr  or  executor1, executor2, executor3 …"
+                    placeholder="e.g. pr1, pr2  or  executor1, executor2 …"
                     style={{ width: "100%", padding: "10px 14px", borderRadius: 10, border: "1.5px solid rgba(17,24,39,0.12)", fontSize: "0.88rem", color: "#111", background: "#fafafa", outline: "none", boxSizing: "border-box" }}
                   />
-                  <div style={{ fontSize: "0.72rem", color: "#6b7280", marginTop: 4 }}>PR role: enter exactly <strong>pr</strong> &nbsp;|&nbsp; Executor role: <strong>executor1</strong>, <strong>executor2</strong>, <strong>executor3</strong> … (number required)</div>
+                  <div style={{ fontSize: "0.72rem", color: "#6b7280", marginTop: 4 }}>PR role: <strong>pr1</strong>, <strong>pr2</strong>, <strong>pr3</strong> … &nbsp;|&nbsp; Executor role: <strong>executor1</strong>, <strong>executor2</strong>, <strong>executor3</strong> … (number required)</div>
                 </div>
                 {assignError && <div style={{ fontSize: "0.82rem", color: "#ef4444", fontWeight: 600, marginBottom: 10, padding: "8px 12px", background: "rgba(239,68,68,0.06)", borderRadius: 8 }}>{assignError}</div>}
                 {assignSuccess && <div style={{ fontSize: "0.82rem", color: "#16a34a", fontWeight: 600, marginBottom: 10, padding: "8px 12px", background: "rgba(22,163,74,0.06)", borderRadius: 8 }}>{assignSuccess}</div>}
@@ -2114,17 +2149,9 @@ const AdminDashboardModern = ({
                     onClick={async () => {
                       setAssignError(""); setAssignSuccess("");
                       const normalizedRole = assignRole.trim().toLowerCase();
-                      const isPR = normalizedRole === "pr";
-                      const isExecutorWithNum = /^executor\d+$/.test(normalizedRole);
-                      if (!isPR && !isExecutorWithNum) {
-                        let msg;
-                        if (normalizedRole === "executor") {
-                          msg = "Executor role must include a number, e.g. executor1, executor2, executor3 …";
-                        } else if (/^pr\d+$/.test(normalizedRole)) {
-                          msg = "PR role must be entered as exactly \"pr\" with no number.";
-                        } else {
-                          msg = "Invalid role. Enter \"pr\" for PR role, or \"executor1\", \"executor2\" … for Executor role.";
-                        }
+                      const roleError = getAssignableRoleError(normalizedRole);
+                      if (roleError) {
+                        const msg = roleError;
                         setAssignError(msg);
                         toast.error(msg);
                         return;
@@ -2226,7 +2253,7 @@ const AdminDashboardModern = ({
                                 type="text"
                                 value={editRole}
                                 onChange={(e) => setEditRole(e.target.value)}
-                                placeholder="pr  or  executor1, executor2 …"
+                                placeholder="pr1, pr2  or  executor1, executor2 …"
                                 style={{ flex: 1, minWidth: 110, padding: "5px 8px", borderRadius: 7, border: "1px solid rgba(17,24,39,0.12)", fontSize: "0.82rem", color: "#111", background: "#fff", outline: "none" }}
                               />
                               {editError && <span style={{ fontSize: "0.75rem", color: "#ef4444", width: "100%" }}>{editError}</span>}
@@ -2234,17 +2261,9 @@ const AdminDashboardModern = ({
                                 disabled={editLoading}
                                 onClick={async () => {
                                   const normalizedEditRole = editRole.trim().toLowerCase();
-                                  const isEditPR = normalizedEditRole === "pr";
-                                  const isEditExecutorWithNum = /^executor\d+$/.test(normalizedEditRole);
-                                  if (!isEditPR && !isEditExecutorWithNum) {
-                                    let msg;
-                                    if (normalizedEditRole === "executor") {
-                                      msg = "Executor role must include a number, e.g. executor1, executor2 …";
-                                    } else if (/^pr\d+$/.test(normalizedEditRole)) {
-                                      msg = "PR role must be exactly \"pr\" with no number.";
-                                    } else {
-                                      msg = "Invalid role. Enter \"pr\" for PR role, or \"executor1\", \"executor2\" … for Executor role.";
-                                    }
+                                  const editRoleError = getAssignableRoleError(normalizedEditRole);
+                                  if (editRoleError) {
+                                    const msg = editRoleError;
                                     setEditError(msg);
                                     toast.error(msg);
                                     return;

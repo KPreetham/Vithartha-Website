@@ -16,6 +16,26 @@ export const resolveExecutorLabel = (lead) => {
 };
 
 /**
+ * Describes the PR account the admin forwarded this lead to, e.g.
+ * "PR 1 (Asha Rao)". Needs lead.prId populated ({ name, role }); returns ""
+ * when no PR has been assigned yet.
+ */
+export const resolvePrLabel = (lead) => {
+  const pr = lead?.prId;
+  if (!pr || typeof pr !== "object") return "";
+  const match = String(pr.role || "").trim().toLowerCase().match(/^pr(\d+)$/);
+  const roleLabel = match ? `PR ${match[1]}` : "PR";
+  const name = String(pr.name || "").trim();
+  return name ? `${roleLabel} (${name})` : roleLabel;
+};
+
+/** "PR 1 (Name) Reviewing" once a specific PR is assigned, else "PR Reviewing". */
+export const getPrReviewingLabel = (lead) => {
+  const label = resolvePrLabel(lead);
+  return label ? `${label} Reviewing` : "PR Reviewing";
+};
+
+/**
  * True once every document name in lead.documentsRequired has a matching
  * uploaded (url-bearing) entry in lead.documents. Used to distinguish
  * "client still uploading" from "ready for admin to review" while the lead
@@ -127,7 +147,7 @@ export const getStatusLabel = (status, lead, role = "user") => {
                                    ? "Admin Reviewing"
                                    : "Pending Client Documents Upload")
                            : role === "pr" ? "New Request" : "Pending Admin Review",
-    pendingreview:      role === "pr" ? "PR Reviewing"           : "PR Reviewing",
+    pendingreview:      role === "admin" ? getPrReviewingLabel(lead) : "PR Reviewing",
     informationrequired: role === "pr" ? "Rejected by PR"         : "Rejected by PR",
     pr_accepted:        "Pending Executor Assignment",
     assignedtoexecutor: `Assigned to ${executorLabel}`,

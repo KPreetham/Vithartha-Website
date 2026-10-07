@@ -22,6 +22,6 @@ router.get("/profile", protect, getUserProfile);
 router.put("/profile", protect, updateUserProfile);
 router.get("/users", protect, authorize("admin", "PR"), getAllUsers);
 router.patch("/assign-role", protect, authorize("admin"), assignUserRole);
-router.get("/pr-executors", protect, authorize("admin", "PR"), getPRAndExecutors);
+router.get("/pr-executors", protect, authorize("admin", "PR", "executor", "executorN"), getPRAndExecutors);
 
 export default router;

@@ -464,7 +464,7 @@ const Navbar = () => {
                           letterSpacing: "0.05em",
                         }}
                       >
-                        {normalizeRole(user.role) === "pr" ? "PR" : user.role}
+                        {normalizeRole(user.role) === "pr" ? String(user.role).toUpperCase() : user.role}
                       </span>
                     </div>
                   </div>

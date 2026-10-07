@@ -100,6 +100,9 @@ const ExecutorDashboardModern = () => {
   const [sentToPRLeads, setSentToPRLeads] = useState({});
   const [localDeleteConfirm, setLocalDeleteConfirm] = useState({ isOpen: false, lead: null });
   const [uploadingDraftId, setUploadingDraftId] = useState(null);
+  // PR accounts from the DB (message recipients) and the PR picked per lead.
+  const [prRecipients, setPrRecipients] = useState([]);
+  const [selectedPrByLead, setSelectedPrByLead] = useState({});
   const draftInputRef = useRef(null);
   const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
   const currentUserId = storedUser?._id || storedUser?.id || "";
@@ -124,6 +127,11 @@ const ExecutorDashboardModern = () => {
 
   useEffect(() => {
     fetchLeads();
+    const apiUrl = import.meta.env.VITE_API_URL;
+    axios
+      .get(`${apiUrl}/auth/pr-executors`, { headers: { Authorization: `Bearer ${storedUser.token}` } })
+      .then((res) => setPrRecipients(Array.isArray(res.data) ? res.data : []))
+      .catch(() => setPrRecipients([]));
   }, []);
 
   useEffect(() => {
@@ -233,20 +241,24 @@ const ExecutorDashboardModern = () => {
     }
   };
 
-  const handleSendMessageToPR = async (leadId, message) => {
+  const handleSendMessageToPR = async (leadId, message, prId) => {
     if (!message) return;
+    if (!prId) {
+      toast.error("Please select a PR to send the message to");
+      return;
+    }
     try {
       const apiUrl = import.meta.env.VITE_API_URL;
       await axios.patch(
         `${apiUrl}/leads/${leadId}`,
-        { executorMessage: message },
+        { executorMessage: message, executorMessageTo: prId },
         { headers: { Authorization: `Bearer ${storedUser.token}` } }
       );
       toast.success("Message sent to PR");
       setMessageDrafts({ ...messageDrafts, [leadId]: "" });
       fetchLeads();
     } catch (error) {
-      toast.error("Failed to send message");
+      toast.error(error.response?.data?.message || "Failed to send message");
     }
   };
 
@@ -1659,6 +1671,17 @@ const ExecutorDashboardModern = () => {
                           <MessageSquare size={16} /> Message to PR
                         </h4>
                         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                          <select
+                            value={selectedPrByLead[activeLead._id] ?? (prRecipients.some((p) => p._id === (activeLead.prId?._id || activeLead.prId)) ? (activeLead.prId?._id || activeLead.prId) : "")}
+                            onChange={(e) => setSelectedPrByLead({ ...selectedPrByLead, [activeLead._id]: e.target.value })}
+                            className="dashboard-input"
+                            style={{ width: "100%", background: "#f9fafb", border: "1px solid rgba(17,24,39,0.12)", borderRadius: 12, padding: "10px 14px", color: "#111111", fontSize: "0.88rem", fontWeight: 600, outline: "none", boxSizing: "border-box" }}
+                          >
+                            <option value="">{prRecipients.length ? "Select PR" : "No PRs available"}</option>
+                            {prRecipients.map((pr) => (
+                              <option key={pr._id} value={pr._id}>{pr.name} ({String(pr.role || "").toUpperCase()})</option>
+                            ))}
+                          </select>
                           <textarea
                             value={messageDrafts[activeLead._id] || ""}
                             onChange={(e) => setMessageDrafts({...messageDrafts, [activeLead._id]: e.target.value})}
@@ -1667,7 +1690,7 @@ const ExecutorDashboardModern = () => {
                             rows={4}
                             style={{ width: "100%", background: "#ffffff", border: "1px solid rgba(17,24,39,0.12)", borderRadius: 12, padding: "12px 16px", color: "#111111", outline: "none", resize: "vertical", minHeight: 90, fontSize: "0.88rem", fontFamily: "inherit", boxSizing: "border-box" }}
                           />
-                          <button onClick={() => handleSendMessageToPR(activeLead._id, messageDrafts[activeLead._id])} style={{ width: "100%", padding: "11px", borderRadius: 12, background: "#16a34a", color: "#fff", border: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer", fontWeight: 700, fontSize: "0.88rem", transition: "all 0.2s" }}>
+                          <button onClick={() => handleSendMessageToPR(activeLead._id, messageDrafts[activeLead._id], selectedPrByLead[activeLead._id] ?? (prRecipients.some((p) => p._id === (activeLead.prId?._id || activeLead.prId)) ? (activeLead.prId?._id || activeLead.prId) : ""))} style={{ width: "100%", padding: "11px", borderRadius: 12, background: "#16a34a", color: "#fff", border: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer", fontWeight: 700, fontSize: "0.88rem", transition: "all 0.2s" }}>
                             <Send size={16} /> Send
                           </button>
                         </div>

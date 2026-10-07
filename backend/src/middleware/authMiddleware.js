@@ -2,7 +2,11 @@ import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 import Session from "../models/Session.js";
 
-const normalizeRole = (role) => String(role || "").trim().toLowerCase();
+// Numbered PR accounts (pr1, pr2, ...) all act as the "pr" role.
+const normalizeRole = (role) => {
+  const normalized = String(role || "").trim().toLowerCase();
+  return /^pr\d+$/.test(normalized) ? "pr" : normalized;
+};
 
 export const protect = async (req, res, next) => {
   let token;

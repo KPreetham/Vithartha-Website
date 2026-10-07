@@ -1,6 +1,7 @@
 import Lead from "../models/Lead.js";
 import ReuploadedDocument from "../models/ReuploadedDocument.js";
 import Service from "../models/Service.js";
+import User from "../models/User.js";
 import { parseFeeAmount, resolveLeadCost } from "../utils/servicePricing.js";
 import jwt from "jsonwebtoken";
 import axios from "axios";
@@ -11,10 +12,26 @@ import {
   buildCloudinarySignedUrl,
   tryCloudinaryResourceLookup,
 } from "../utils/cloudinaryDocuments.js";
+import {
+  notifyUserOfStatusChange,
+  describeStatusTransition,
+  describeActor,
+} from "../services/statusNotificationService.js";
 
 const escapeRegExp = (value) =>
   String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-const normalizeRole = (role) => String(role || "").trim().toLowerCase();
+// Numbered PR accounts (pr1, pr2, ...) all act as the "pr" role.
+const normalizeRole = (role) => {
+  const normalized = String(role || "").trim().toLowerCase();
+  return /^pr\d+$/.test(normalized) ? "pr" : normalized;
+};
+
+// Emails the client (with the service's documents as PDFs) when a reviewer
+// moves the lead to a new status. Never throws.
+const emailStatusChange = async (lead, actor) => {
+  const content = describeStatusTransition(lead, actor);
+  if (content) await notifyUserOfStatusChange(lead, { actor, ...content });
+};
 
 const isDraftSentStatus = (status) => {
   return ["ExecutionFinished", "DraftSent", "DraftAccepted", "DraftRejected", "UserAccepted", "Completed"].includes(status);
@@ -276,12 +293,17 @@ export const getLeads = async (req, res) => {
       // PR should see all user services so newly submitted requests are always visible,
       // except brand-new "Open" leads — those stay admin-only until the admin has
       // collected the required documents and forwarded the lead for PR review.
-      query = { status: { $ne: "Open" } };
+      // Once the admin forwards a lead to a specific PR (prId set), only that PR sees it.
+      // Legacy leads that predate PR selection (no prId) stay visible to all PRs.
+      query = {
+        status: { $ne: "Open" },
+        $or: [{ prId: req.user._id }, { prId: null }, { adminToPrMessageTo: req.user._id }, { executorMessageTo: req.user._id }],
+      };
     } else if (userRole === "executor") {
       // Generic "executor" role: sees leads assigned to them by executorId ObjectId
       query = {
         status: { $ne: "Open" },
-        executorId: req.user._id,
+        $or: [{ executorId: req.user._id }, { prToExecutorMessageTo: req.user._id }],
       };
     } else if (/^executor\d+$/.test(userRole)) {
       // Named executor roles (executor1, executor2, …): see leads where assignedExecutor
@@ -291,6 +313,7 @@ export const getLeads = async (req, res) => {
         $or: [
           { assignedExecutor: { $regex: new RegExp(`^${escapeRegExp(userRole)}$`, "i") } },
           { executorId: req.user._id },
+          { prToExecutorMessageTo: req.user._id },
         ],
       };
     } else {
@@ -303,7 +326,7 @@ export const getLeads = async (req, res) => {
 
     const leads = await Lead.find(query)
       .populate("user", "name email profile")
-      .populate("prId", "name email")
+      .populate("prId", "name email role")
       .populate("executorId", "name email")
       .sort({ createdAt: -1 });
 
@@ -334,6 +357,21 @@ export const getLeads = async (req, res) => {
       return obj;
     });
 
+    // Messages addressed to a specific PR/executor are visible to that account only.
+    const isExecutorViewer = userRole === "executor" || /^executor\d+$/.test(userRole);
+    if (userRole === "pr" || isExecutorViewer) {
+      const me = String(req.user._id);
+      const hiddenFromMe = (target) => !!target && String(target) !== me;
+      for (const obj of enrichedLeads) {
+        if (userRole === "pr") {
+          if (hiddenFromMe(obj.adminToPrMessageTo)) obj.adminToPrMessage = "";
+          if (hiddenFromMe(obj.executorMessageTo)) obj.executorMessage = "";
+        } else if (hiddenFromMe(obj.prToExecutorMessageTo)) {
+          obj.prToExecutorMessage = "";
+        }
+      }
+    }
+
     const hydratedLeads = await attachReuploadMetadata(enrichedLeads);
     const filteredLeads = filterUnsentDraftsForResponse(hydratedLeads, req.user.role);
     res.status(200).json(filteredLeads);
@@ -350,6 +388,7 @@ export const assignLead = async (req, res) => {
     const lead = await Lead.findById(id);
     if (!lead) return res.status(404).json({ message: "Lead not found" });
 
+    const previousStatus = lead.status;
     if (prId) lead.prId = prId;
     if (executorId) lead.executorId = executorId;
     if (status) lead.status = status;
@@ -357,6 +396,8 @@ export const assignLead = async (req, res) => {
 
     lead.updatedAt = Date.now();
     await lead.save();
+
+    if (lead.status !== previousStatus) await emailStatusChange(lead, req.user);
 
     res.status(200).json({ success: true, lead });
   } catch (error) {
@@ -372,11 +413,13 @@ export const updatePrFeedback = async (req, res) => {
     const lead = await Lead.findById(id);
     if (!lead) return res.status(404).json({ message: "Lead not found" });
 
+    const previousStatus = lead.status;
     lead.prFeedback = feedback;
     if (status) lead.status = status;
     lead.updatedAt = Date.now();
 
     await lead.save();
+    if (lead.status !== previousStatus) await emailStatusChange(lead, req.user);
     res.status(200).json({ success: true, lead });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -460,6 +503,14 @@ export const sendDocumentsToUser = async (req, res) => {
     lead.updatedAt = Date.now();
     await lead.save();
 
+    await notifyUserOfStatusChange(lead, {
+      actor: req.user,
+      outcome: "update",
+      headline: "Admin has requested documents for your service. Please upload them to continue.",
+      detail: lead.documentsRequiredNote,
+      requestedDocuments: lead.documentsRequired,
+    });
+
     // Deliberately NOT propagated to the Service catalog: documents requested
     // for one user's lead must stay scoped to that lead only. Writing them onto
     // the shared Service.documentsRequired list would leak this specific
@@ -478,7 +529,7 @@ export const getLeadById = async (req, res) => {
     const { id } = req.params;
     const lead = await Lead.findById(id)
       .populate("user", "name email profile")
-      .populate("prId", "name email")
+      .populate("prId", "name email role")
       .populate("executorId", "name email");
 
     if (!lead)
@@ -541,6 +592,22 @@ export const updateLead = async (req, res) => {
       });
     }
 
+    // Admin forwarding a lead to PR must pick a specific PR account that exists in the DB.
+    if (isAdmin && req.body.status === "PendingReview" && lead.status === "Open") {
+      const selectedPrId = req.body.prId || lead.prId;
+      const selectedPr = selectedPrId ? await User.findById(selectedPrId).select("role") : null;
+      if (!selectedPr || !/^pr\d*$/i.test(String(selectedPr.role || "").trim())) {
+        return res.status(400).json({
+          success: false,
+          message: "Please select a valid PR to send this service to.",
+        });
+      }
+      req.body.prId = selectedPr._id;
+    } else if (isAdmin) {
+      // prId may only be changed through the Open -> PendingReview forwarding step.
+      delete req.body.prId;
+    }
+
     // If a PR is accepting/updating an 'Open' or 'PendingReview' lead, assign them as the prId automatically
     if (isPR && !lead.prId) {
       req.body.prId = req.user._id;
@@ -578,6 +645,46 @@ export const updateLead = async (req, res) => {
       );
     };
 
+    // Admin-to-PR messages must name the PR account they are addressed to.
+    // Only the admin may address one; clearing the message clears the address.
+    if (!isAdmin) delete req.body.adminToPrMessageTo;
+    if (typeof req.body.adminToPrMessage === "string") {
+      if (req.body.adminToPrMessage.trim() === "") {
+        req.body.adminToPrMessageTo = null;
+      } else if (isAdmin) {
+        const targetPr = req.body.adminToPrMessageTo
+          ? await User.findById(req.body.adminToPrMessageTo).select("role")
+          : null;
+        if (!targetPr || !/^pr\d*$/i.test(String(targetPr.role || "").trim())) {
+          return res.status(400).json({
+            success: false,
+            message: "Please select a valid PR to send this message to.",
+          });
+        }
+      }
+    }
+
+    // PR -> executor and executor -> PR messages can be addressed to a specific
+    // account. Only the sender's role may set the address; a new unaddressed
+    // message or a cleared one drops any previous address.
+    if (!(isAdmin || isPR)) delete req.body.prToExecutorMessageTo;
+    if (!isExecutor) delete req.body.executorMessageTo;
+    for (const [field, targetField, roleRegex, label] of [
+      ["prToExecutorMessage", "prToExecutorMessageTo", /^executor\d*$/i, "executor"],
+      ["executorMessage", "executorMessageTo", /^pr\d*$/i, "PR"],
+    ]) {
+      if (typeof req.body[field] !== "string") continue;
+      if (req.body[field].trim() === "" || !req.body[targetField]) {
+        req.body[targetField] = null;
+        continue;
+      }
+      const target = await User.findById(req.body[targetField]).select("role");
+      if (!target || !roleRegex.test(String(target.role || "").trim())) {
+        return res.status(400).json({ success: false, message: `Please select a valid ${label} to send this message to.` });
+      }
+    }
+
+    const previousStatus = lead.status;
     const updateData = { ...req.body, updatedAt: Date.now() };
 
     // Detect executor rejecting the entire service — set the staging flag so PR must
@@ -991,6 +1098,15 @@ export const updateLead = async (req, res) => {
       });
     }
 
+    // Email the client on every reviewer-driven status change. The user's own
+    // actions (uploads, resubmits, draft accept/reject) don't notify, and an
+    // executor's service rejection stays hidden until PR clicks "Notify Client".
+    const isReviewer = isAdmin || isPR || isExecutor;
+    const isStagedExecutorRejection = isExecutor && !isAdmin && !isPR && updatedLead.status === "Rejected";
+    if (isReviewer && !isStagedExecutorRejection && updatedLead.status !== previousStatus) {
+      await emailStatusChange(updatedLead, req.user);
+    }
+
     const hydratedUpdatedLead = await attachReuploadMetadata(updatedLead);
     res.status(200).json({ success: true, lead: hydratedUpdatedLead });
   } catch (error) {
@@ -1122,6 +1238,21 @@ export const updateDocumentStatus = async (req, res) => {
       }
     }
 
+    // Per-document decision email. An executor's rejection is staged (hidden
+    // from the client) until PR clicks "Notify Client", so only acceptances
+    // and PR/admin decisions are emailed here.
+    const isStaffDecision = isAdmin || isPR || isAssignedPR || isAssignedExecutor;
+    const isStagedExecutorRejection = isAssignedExecutor && !isAdmin && !isPR && status === "Rejected";
+    if (isStaffDecision && !isStagedExecutorRejection) {
+      const accepted = status === "Accepted";
+      await notifyUserOfStatusChange(lead, {
+        actor: req.user,
+        outcome: accepted ? "approved" : "rejected",
+        headline: `Your document "${doc.name}" was ${accepted ? "approved" : "rejected"} by ${describeActor(req.user).label}.`,
+        detail: accepted ? "" : doc.rejectionMessage,
+      });
+    }
+
     const hydratedLead = await attachReuploadMetadata(lead);
     res.status(200).json({ success: true, lead: hydratedLead });
   } catch (error) {
@@ -1163,6 +1294,13 @@ export const notifyClientDocumentRejection = async (req, res) => {
     lead.updatedAt = Date.now();
     await lead.save();
 
+    await notifyUserOfStatusChange(lead, {
+      actor: req.user,
+      outcome: "rejected",
+      headline: `Your document "${doc.name}" was rejected by the Executor and relayed by PR. Please reupload it.`,
+      detail: doc.rejectionMessage,
+    });
+
     res.status(200).json({ success: true, lead });
   } catch (error) {
     console.error("Error notifying client:", error);
@@ -1203,6 +1341,13 @@ export const notifyClientServiceRejection = async (req, res) => {
     lead.initialSubmissionConfirmed = false;
     lead.updatedAt = Date.now();
     await lead.save();
+
+    await notifyUserOfStatusChange(lead, {
+      actor: req.user,
+      outcome: "rejected",
+      headline: "Your service was rejected by the Executor and relayed by PR.",
+      detail: lead.executorMessage || lead.prFeedback,
+    });
 
     res.status(200).json({ success: true, lead });
   } catch (error) {

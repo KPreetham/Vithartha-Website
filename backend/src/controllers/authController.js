@@ -578,16 +578,16 @@ export const assignUserRole = async (req, res) => {
     const { email, role } = req.body;
     if (!email || !role) return res.status(400).json({ message: "Email and role are required" });
     const normalizedRoleInput = String(role).trim().toLowerCase();
-    const isPR = normalizedRoleInput === "pr";
+    const isPRWithNum = /^pr\d+$/.test(normalizedRoleInput);
     const isExecutorWithNum = /^executor\d+$/.test(normalizedRoleInput);
-    if (!isPR && !isExecutorWithNum) {
+    if (!isPRWithNum && !isExecutorWithNum) {
       let message;
-      if (normalizedRoleInput === "executor") {
+      if (normalizedRoleInput === "pr") {
+        message = "PR role must include a number, e.g. pr1, pr2 …";
+      } else if (normalizedRoleInput === "executor") {
         message = "Executor role must include a number, e.g. executor1, executor2 …";
-      } else if (/^pr\d+$/.test(normalizedRoleInput)) {
-        message = "PR role must be exactly \"pr\" with no number.";
       } else {
-        message = "Invalid role. Use \"pr\" for PR role or \"executor1\", \"executor2\" … for Executor role.";
+        message = "Invalid role. Use \"pr1\", \"pr2\" … for PR role or \"executor1\", \"executor2\" … for Executor role.";
       }
       return res.status(400).json({ message });
     }
@@ -609,9 +609,12 @@ export const assignUserRole = async (req, res) => {
 
 export const getPRAndExecutors = async (req, res) => {
   try {
+    // Executors only need the PR list (to address messages) — never other staff emails.
+    const requesterRole = String(req.user?.role || "").trim().toLowerCase();
+    const executorRequester = /^executor\d*$/.test(requesterRole);
     const users = await User.find({
-      role: { $regex: /^(pr\d*|executor\d*)$/i }
-    }).select("-password").sort({ role: 1, name: 1 });
+      role: { $regex: executorRequester ? /^pr\d*$/i : /^(pr\d*|executor\d*)$/i }
+    }).select(executorRequester ? "name role" : "-password").sort({ role: 1, name: 1 });
     res.json(users);
   } catch (error) {
     res.status(500).json({ message: error.message });

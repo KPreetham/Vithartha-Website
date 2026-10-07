@@ -137,6 +137,13 @@ const PRDashboardModern = ({
     return r.charAt(0).toUpperCase() + r.slice(1);
   };
 
+  // Executor recipients are encoded as "executor:<userId>".
+  const getTargetExecutorLabel = (target) => {
+    if (!String(target || "").startsWith("executor:")) return "";
+    const ex = (Array.isArray(executors) ? executors : []).find((u) => `executor:${u._id}` === target);
+    return ex ? `${ex.name || ex.email} (${String(ex.role || "").toUpperCase()})` : "";
+  };
+
   const [serviceListModal, setServiceListModal] = React.useState(null);
   const [revenuePopup, setRevenuePopup] = React.useState(null);
   const [assigningExecutorLead, setAssigningExecutorLead] = React.useState(null);
@@ -2030,7 +2037,7 @@ const PRDashboardModern = ({
                                 userSelect: "none" 
                               }}
                             >
-                              <span>{messageTarget === "user" ? "Client" : messageTarget === "admin" ? "Admin" : assignedExecutorLabelForHub}</span>
+                              <span>{messageTarget === "user" ? "Client" : messageTarget === "admin" ? "Admin" : (getTargetExecutorLabel(messageTarget) || "Select executor")}</span>
                               <ChevronDown size={18} style={{ color: "#6b7280", transform: isMessageTargetOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
                               
                               {isMessageTargetOpen && (
@@ -2049,7 +2056,11 @@ const PRDashboardModern = ({
                                   {[
                                     { value: "user", label: "Client" },
                                     { value: "admin", label: "Admin" },
-                                    ...(hasAssignedExecutorForHub ? [{ value: "executor", label: assignedExecutorLabelForHub }] : []),
+                                    // One option per executor account in the DB — the message goes only to the one picked.
+                                    ...(Array.isArray(executors) ? executors : []).map((ex) => ({
+                                      value: `executor:${ex._id}`,
+                                      label: `${ex.name || ex.email} (${String(ex.role || "").toUpperCase()})`,
+                                    })),
                                   ].map((opt) => (
                                     <div 
                                       key={opt.value}
@@ -2066,7 +2077,7 @@ const PRDashboardModern = ({
                                         color: messageTarget === opt.value ? "#16a34a" : "#111111", 
                                         background: messageTarget === opt.value ? "rgba(22, 163, 74, 0.05)" : "transparent", 
                                         transition: "all 0.15s ease", 
-                                        borderBottom: opt.value !== "executor" ? "1px solid rgba(17,24,39,0.04)" : "none" 
+                                        borderBottom: "1px solid rgba(17,24,39,0.04)" 
                                       }}
                                       onMouseEnter={(e) => { if (messageTarget !== opt.value) e.currentTarget.style.background = "#f9fafb"; }}
                                       onMouseLeave={(e) => { if (messageTarget !== opt.value) e.currentTarget.style.background = "transparent"; }}
@@ -2084,7 +2095,7 @@ const PRDashboardModern = ({
                             <textarea 
                               value={messageDrafts[lead._id] || ""} 
                               onChange={(e) => setMessageDrafts((prev) => ({ ...prev, [lead._id]: e.target.value }))} 
-                              placeholder={`Send a message to the ${messageTarget === "user" ? "client" : messageTarget === "admin" ? "admin" : assignedExecutorLabelForHub}...`}
+                              placeholder={`Send a message to the ${messageTarget === "user" ? "client" : messageTarget === "admin" ? "admin" : (getTargetExecutorLabel(messageTarget) || "executor")}...`}
                               style={{ 
                                 minHeight: 140, 
                                 resize: "vertical", 

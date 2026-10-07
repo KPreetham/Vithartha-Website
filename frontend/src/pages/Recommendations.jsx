@@ -4093,18 +4093,23 @@ const Recommendations = () => {
               });
             };
             const isRejectedByAdmin = (name) => {
-              // Once the client has explicitly resubmitted (all documents reuploaded
-              // and Submit clicked), every document reads as reuploaded — never show
-              // "Reupload" again for this cycle regardless of any other stale signal.
-              if (currentLeadForRequiredDocs?.initialSubmissionConfirmed) return false;
-              if (isWholeServiceRejected) return !hasFreshReupload(name);
               const key = String(name || "").trim().toLowerCase();
-              return allDocs.some((d) => {
+              // A document explicitly marked Rejected is authoritative (reuploading it
+              // replaces the entry with a Pending one), so only that document gets the
+              // red Reupload button — independent of the submission-confirmed flag.
+              const docExplicitlyRejected = allDocs.some((d) => {
                 const docNameKey = String(d?.name || "").trim().toLowerCase();
                 const type = String(d?.type || "").trim().toLowerCase();
                 if (type === "draft" || type === "final") return false;
                 return docNameKey === key && String(d?.status || "").trim().toLowerCase() === "rejected";
               });
+              if (docExplicitlyRejected) return true;
+              // Once the client has explicitly resubmitted (all documents reuploaded
+              // and Submit clicked), every document reads as reuploaded — never show
+              // "Reupload" again for this cycle regardless of any other stale signal.
+              if (currentLeadForRequiredDocs?.initialSubmissionConfirmed) return false;
+              if (isWholeServiceRejected) return !hasFreshReupload(name);
+              return false;
             };
             // Identify who actually rejected this document so the reupload prompt
             // names the right reviewer instead of always saying "Admin" — a document

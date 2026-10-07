@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import { getStatusLabel, resolveExecutorLabel, hasAdminRejectedDocuments, isPreSubmissionStage } from "../utils/statusLabels";
+import { getStatusLabel, getPrReviewingLabel, resolvePrLabel, resolveExecutorLabel, hasAdminRejectedDocuments, isPreSubmissionStage } from "../utils/statusLabels";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Users,
@@ -89,6 +89,7 @@ const AdminDashboard = () => {
   const [updatingDocStatusId, setUpdatingDocStatusId] = useState(null);
   const [isUpdatingServiceStatus, setIsUpdatingServiceStatus] = useState(false);
   const [executors, setExecutors] = useState([]);
+  const [prUsers, setPrUsers] = useState([]);
   const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
   const currentUserId = storedUser?._id || storedUser?.id || "";
   const [hiddenLeads, setHiddenLeads] = useState(() => loadHiddenServiceIds("admin-dashboard", currentUserId));
@@ -104,14 +105,21 @@ const AdminDashboard = () => {
     saveHiddenServiceIds("admin-dashboard", currentUserId, hiddenLeads);
   }, [currentUserId, hiddenLeads]);
 
+  // PR recipients are encoded as "pr:<userId>" so each PR in the DB is its own target.
+  const getPrTargetId = (target) => (String(target || "").startsWith("pr:") ? String(target).slice(3) : "");
+
   const getMessageFieldByTarget = (target) => {
-    if (target === "pr") return "adminToPrMessage";
+    if (getPrTargetId(target)) return "adminToPrMessage";
     if (target === "executor") return "adminToExecutorMessage";
     if (target === "client") return "adminMessage";
   };
 
   const getMessageTextByTarget = (lead, target) => {
-    if (target === "pr") return lead?.prMessage || lead?.prFeedback || lead?.adminToPrMessage || "";
+    const prId = getPrTargetId(target);
+    if (prId) {
+      const addressedTo = String(lead?.adminToPrMessageTo || "");
+      return lead?.adminToPrMessage && addressedTo === prId ? lead.adminToPrMessage : "";
+    }
     if (target === "executor") return lead?.adminToExecutorMessage || "";
     return lead?.adminMessage || "";
   };
@@ -163,6 +171,10 @@ const AdminDashboard = () => {
   };
 
   const isExecutorRejectedLead = isExecutorRejectedState;
+
+  // "Rejected by PR 1 (Asha Rao)" — names the PR the lead is assigned to,
+  // falling back to the generic label when no PR is populated.
+  const getRejectedByPrLabel = (lead) => `Rejected by ${resolvePrLabel(lead) || "PR"}`;
 
   const hasServiceReviewMessage = (lead) =>
     [
@@ -375,6 +387,7 @@ const AdminDashboard = () => {
       // recipient dropdown.
       if (Array.isArray(executorsRes.data)) {
         setExecutors(executorsRes.data.filter((u) => /^executor\d+$/i.test(String(u?.role || "").trim())));
+        setPrUsers(executorsRes.data.filter((u) => /^pr\d*$/i.test(String(u?.role || "").trim())));
       }
       setLoading(false);
     } catch (error) {
@@ -427,9 +440,12 @@ const AdminDashboard = () => {
       const user = JSON.parse(localStorage.getItem("user"));
       const field = getMessageFieldByTarget(messageTarget);
 
+      const prTargetId = getPrTargetId(messageTarget);
       await axios.patch(
         `${apiUrl}/leads/${selectedLeadId}`,
-        { [field]: messageText },
+        prTargetId
+          ? { adminToPrMessage: messageText, adminToPrMessageTo: prTargetId }
+          : { [field]: messageText },
         { headers: { Authorization: `Bearer ${user.token}` } },
       );
 
@@ -605,17 +621,21 @@ const AdminDashboard = () => {
     }
   };
 
-  const handleAcceptService = async (leadId) => {
+  const handleAcceptService = async (leadId, prId) => {
+    if (!prId) {
+      toast.error("Please select a PR to send this service to");
+      return;
+    }
     setIsUpdatingServiceStatus(true);
     try {
       const apiUrl = import.meta.env.VITE_API_URL;
       const user = JSON.parse(localStorage.getItem("user"));
       await axios.patch(
         `${apiUrl}/leads/${leadId}`,
-        { status: "PendingReview" },
+        { status: "PendingReview", prId },
         { headers: { Authorization: `Bearer ${user.token}` } },
       );
-      toast.success("Service accepted and sent to PR");
+      toast.success("Service accepted and sent to the selected PR");
       fetchLeads();
     } catch (error) {
       toast.error(error.response?.data?.message || "Failed to accept service");
@@ -839,8 +859,8 @@ const AdminDashboard = () => {
     const rejectionLabel = getRejectionDisplayLabel(lead);
     if (rejectionLabel) return rejectionLabel;
     if (isPrReuploadReviewState(lead)) return "Pending PR Review";
-    if (status === "PendingReview") return "New Request";
-    if (status === "InformationRequired") return hasRejectedDocuments(lead) ? "Rejected by PR" : "PR Reviewing";
+    if (status === "PendingReview") return lead?.prId ? getPrReviewingLabel(lead) : "New Request";
+    if (status === "InformationRequired") return hasRejectedDocuments(lead) ? getRejectedByPrLabel(lead) : getPrReviewingLabel(lead);
     return getStatusLabel(status, lead, "admin");
   };
 
@@ -1319,7 +1339,7 @@ const AdminDashboard = () => {
     const prReason = String(lead?.prFeedback || "").trim();
     const adminReason = String(lead?.adminMessage || "").trim();
     const displayReason = prReason || adminReason;
-    return displayReason ? `Rejected by PR: ${displayReason}` : "Rejected by PR";
+    return displayReason ? `${getRejectedByPrLabel(lead)}: ${displayReason}` : getRejectedByPrLabel(lead);
   };
 
   const getDocumentStatusSummary = (lead) => {
@@ -1338,7 +1358,7 @@ const AdminDashboard = () => {
     const rejectionLabel = getRejectionDisplayLabel(lead);
     if (status === "DraftRejected") return "Draft Rejected by User";
     if (status === "DraftSent") return "Waiting for User Draft Approval";
-    if (isPrReuploadReviewState(lead)) return "PR Reviewing";
+    if (isPrReuploadReviewState(lead)) return getPrReviewingLabel(lead);
     if (rejectionLabel) return rejectionLabel;
     if (status === "Rejected") return "Service Rejected";
     if (status === "InformationRequired" && rejected.length > 0) {
@@ -1413,7 +1433,7 @@ const AdminDashboard = () => {
     if (rejectionLabel) return rejectionLabel;
     if (lead?.status === "Completed") return "Completed";
     if (lead?.status === "PR_Accepted") return "Accepted by PR";
-    if (lead?.status === "InformationRequired") return hasRejectedDocuments(lead) ? "Rejected by PR" : "PR Reviewing";
+    if (lead?.status === "InformationRequired") return hasRejectedDocuments(lead) ? getRejectedByPrLabel(lead) : getPrReviewingLabel(lead);
     if (lead?.status === "DraftRejected") return "Draft Rejected by User";
     if (summary.rejected.length > 0) {
       return summary.rejected.length === 1
@@ -1547,15 +1567,15 @@ const AdminDashboard = () => {
     if (status === "ExecutionFinished" && lead?.draftSentToPR) {
       return `Draft Sent to PR by ${resolveExecutorLabel(lead)}`;
     }
-    if (isPrReuploadReviewState(lead)) return "PR Reviewing";
+    if (isPrReuploadReviewState(lead)) return getPrReviewingLabel(lead);
     const rejectionLabel = getRejectionDisplayLabel(lead);
     if (rejectionLabel) return rejectionLabel;
     if (status === "Rejected" && !isPrReuploadReviewState(lead)) {
       const label = getRejectionDisplayLabel(lead);
       if (label) return label;
     }
-    if (status === "PendingReview") return "PR Reviewing";
-    if (status === "InformationRequired") return "Rejected by PR";
+    if (status === "PendingReview") return getPrReviewingLabel(lead);
+    if (status === "InformationRequired") return getRejectedByPrLabel(lead);
     return getStatusLabel(status, lead, "admin");
   };
 
@@ -1740,6 +1760,7 @@ const AdminDashboard = () => {
       setMessageText={setMessageText}
       getMessageTextByTarget={getMessageTextByTarget}
       executors={executors}
+      prUsers={prUsers}
       uploadingId={uploadingId}
       handleUploadDraft={handleUploadDraft}
       viewDocument={viewDocument}

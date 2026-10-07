@@ -69,7 +69,7 @@ function resolveAttachmentFilename(doc, response, formatHint) {
 // "auto" — so, like leadController's streamDocument, this has to try
 // several resource_type/delivery_type/format combinations rather than
 // assume one, falling back to a Cloudinary API lookup if all fail.
-async function fetchDocumentAttachment(doc) {
+export async function fetchDocumentAttachment(doc) {
   const parsedDocumentUrl = parseCloudinaryAssetUrl(doc?.url);
   const publicIds = uniqueValues([doc?.publicId, parsedDocumentUrl?.publicId]);
   if (publicIds.length === 0) return null;

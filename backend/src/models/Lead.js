@@ -66,10 +66,17 @@ const leadSchema = new mongoose.Schema({
   documentsRequiredNote: { type: String, default: "" },
   adminMessage: { type: String, default: "" },
   adminToPrMessage: { type: String, default: "" },
+  // The specific PR account the admin addressed adminToPrMessage to. Only that
+  // PR's dashboard shows the message. Null on messages that predate PR targeting.
+  adminToPrMessageTo: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
   prMessage: { type: String, default: "" },
   userMessage: { type: String, default: "" },
   executorMessage: { type: String, default: "" },
   prToExecutorMessage: { type: String, default: "" },
+  // Specific executor account the PR addressed prToExecutorMessage to (null = legacy/unaddressed).
+  prToExecutorMessageTo: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+  // Specific PR account the executor addressed executorMessage to (null = unaddressed, e.g. a service rejection).
+  executorMessageTo: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
   adminToExecutorMessage: { type: String, default: "" },
   draftReadyToSend: { type: Boolean, default: false },
   draftSentToPR: { type: Boolean, default: false },

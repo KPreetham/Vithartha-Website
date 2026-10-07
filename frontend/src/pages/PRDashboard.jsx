@@ -756,7 +756,10 @@ const PRDashboard = () => {
       const payload = {};
       if (target === "user") payload.prFeedback = trimmedMessage;
       else if (target === "admin") payload.prMessage = trimmedMessage;
-      else if (target === "executor") payload.prToExecutorMessage = trimmedMessage;
+      else if (String(target).startsWith("executor:")) {
+        payload.prToExecutorMessage = trimmedMessage;
+        payload.prToExecutorMessageTo = String(target).slice("executor:".length);
+      }
 
       await axios.patch(
         `${apiUrl}/leads/${leadId}`,
@@ -764,7 +767,7 @@ const PRDashboard = () => {
         { headers: { Authorization: `Bearer ${storedUser.token}` } },
       );
 
-      toast.success(`Message sent to ${target}`);
+      toast.success(`Message sent to ${String(target).startsWith("executor:") ? "executor" : target}`);
       setMessageDrafts((prev) => ({ ...prev, [leadId]: "" }));
       fetchData();
     } catch (error) {
