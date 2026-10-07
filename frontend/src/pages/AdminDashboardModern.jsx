@@ -2093,6 +2093,24 @@ const AdminDashboardModern = ({
               .manage-pr-modal::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; min-height: 30px; }
               .manage-pr-modal::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
               .manage-pr-modal::-webkit-scrollbar-button { display: none; }
+              body .manage-pr-modal input:-webkit-autofill,
+              body .manage-pr-modal input:-webkit-autofill:hover,
+              body .manage-pr-modal input:-webkit-autofill:focus,
+              body .manage-pr-modal input:-webkit-autofill:active,
+              body:not(.light-mode) .manage-pr-modal input:-webkit-autofill,
+              body:not(.light-mode) .manage-pr-modal input:-webkit-autofill:hover,
+              body:not(.light-mode) .manage-pr-modal input:-webkit-autofill:focus,
+              body:not(.light-mode) .manage-pr-modal input:-webkit-autofill:active,
+              body.light-mode .manage-pr-modal input:-webkit-autofill,
+              body.light-mode .manage-pr-modal input:-webkit-autofill:hover,
+              body.light-mode .manage-pr-modal input:-webkit-autofill:focus,
+              body.light-mode .manage-pr-modal input:-webkit-autofill:active {
+                -webkit-box-shadow: 0 0 0 1000px #fafafa inset !important;
+                box-shadow: 0 0 0 1000px #fafafa inset !important;
+                -webkit-text-fill-color: #111 !important;
+                caret-color: #111;
+                transition: background-color 600000s 0s;
+              }
             `}</style>
             {/* Outer: clips scrollbar to rounded corners */}
             <div

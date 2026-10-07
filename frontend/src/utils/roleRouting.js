@@ -9,9 +9,12 @@ export const normalizeRole = (role) => {
 export const getAssignableRoleError = (role) => {
   const value = String(role || "").trim().toLowerCase();
   if (/^pr\d+$/.test(value) || /^executor\d+$/.test(value)) return "";
+  if (!value) return "Please enter a role, e.g. pr1 or executor1.";
   if (value === "pr") return "PR role must include a number, e.g. pr1, pr2, pr3 …";
   if (value === "executor") return "Executor role must include a number, e.g. executor1, executor2, executor3 …";
-  return "Invalid role. Enter \"pr1\", \"pr2\" … for PR role, or \"executor1\", \"executor2\" … for Executor role.";
+  if (/^pr/.test(value)) return `Invalid PR role "${value}". The correct format is "pr" followed by a number with no spaces or symbols, e.g. pr1, pr2, pr3.`;
+  if (/^executor/.test(value)) return `Invalid Executor role "${value}". The correct format is "executor" followed by a number with no spaces or symbols, e.g. executor1, executor2.`;
+  return `Invalid role "${value}". Use "pr" + number (pr1, pr2 …) for PR or "executor" + number (executor1, executor2 …) for Executor.`;
 };
 
 export const getDashboardPathByRole = (role) => {
